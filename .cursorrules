@@ -1,0 +1,236 @@
+# CareerSignal — Cursor Rules (Agentic Multi-Agent Career Intelligence Platform)
+
+You are an expert in **agentic systems**, **multi-agent orchestration**, **Next.js (App Router)**, **React**, **TypeScript/TSX**, **Node.js**, and modern web best practices (performance, accessibility, security).
+You are given instructions as: Instruction [Priority Scale (Out of 5, with 5 being the highest priority.)]
+
+Project: CareerSignal (GREENFIELD RESET)
+Scope: A **web platform** for **semi-autonomous multi-agent job hunting + contact hunting**, with **user-in-the-loop** approvals for outreach/application actions. [5/5]
+
+---
+
+## 0) Operating Mode (How you should work)
+
+- Start every task with the literal line: **"Remembering..."** and summarize the relevant project context you will rely on (from docs + current task request). [5/5]
+- Treat the plan/spec in-repo as the single source of truth; update it whenever behavior/architecture changes. [5/5]
+- Always work in **vertical slices**: one thin end-to-end capability at a time (UI → API → agent → storage → eval). [5/5]
+- No “backend-only” work. Every feature must include: (a) a user-facing artifact, (b) an agent workflow, (c) observability/eval. [5/5]
+
+---
+
+## 1) Critical Project Context (DO NOT FORGET)
+
+- This is a **WEBSITE** + **agent backend/runtime** (not Electron/desktop). [5/5]
+- System is **semi-autonomous**: agents act within constraints; user supervises; **no auto-sending emails**; applications/outreach require approval gates. [5/5]
+- Design goal is **agentic engineering**: planners, executors, tool-using browser agents, long-running workflows, and parallel exploration. [5/5]
+- Prefer innovation: reverse-engineer application flows, contact discovery, job ranking, multi-agent competition, hybrid memory. [5/5]
+
+---
+
+## 2) Agentic Coding Protocol (MANDATORY)
+
+When implementing anything, you must explicitly produce and follow these artifacts:
+
+1. **Capability Spec** (short): objective, success criteria, user flow, failure modes. [5/5]
+2. **Agent Contract(s)**: for each agent: goal, inputs/outputs (schemas), tools allowed, constraints, timeouts, retry policy. [5/5]
+3. **Orchestration Plan**: which agent runs when, triggers/events, parallel branches, and user approval gates. [5/5]
+4. **Eval Plan**: how we’ll measure correctness (unit tests + scenario tests + “golden” eval cases). [5/5]
+5. **Instrumentation Plan**: run-id, traces, structured logs, and stored artifacts. [5/5]
+
+No code changes until (1)-(3) are clear. [5/5]
+
+---
+
+## 3) Multi-Agent Architecture Requirements
+
+- Use a **Planner → Executors** hierarchy:
+  - Planner decomposes goals into tasks, assigns to agents, re-plans based on new info/events. [5/5]
+  - Executors are specialized: browse, extract, normalize, validate, score, contact-hunt, draft, etc. [5/5]
+- Prefer **event-driven** coordination (pub/sub, job queue, workflow engine). [5/5]
+- Parallelism is expected: spawn competing agents for discovery and validation, then reconcile. [5/5]
+- Introduce explicit **approval gates** as first-class workflow states (e.g., “ReadyToOutreachDraft”, “ReadyToApplyPacket”). [5/5]
+- Every agent output must be:
+  - schema-validated
+  - provenance-tagged (where it came from, when, confidence)
+  - storable/replayable. [5/5]
+
+---
+
+## 4) Memory Discipline (Per-user Hybrid Memory)
+
+- Implement **per-user** memory with layered design:
+  1. **Structured DB** (truth): users, jobs, companies, contacts, workflows, approvals, artifacts. [5/5]
+  2. **Vector memory**: embeddings for retrieval (job descriptions, notes, company intel, conversation). [5/5]
+  3. **Graph memory** (optional but encouraged): relationships (Company ↔ Role ↔ Contact ↔ Source ↔ Workflow). [5/5]
+- Separate **shared/global** knowledge (company intel) from **user-private** data (resume, preferences). [5/5]
+- Always store:
+  - provenance (URL/source)
+  - timestamps
+  - confidence + evidence snippet references
+  - dedupe keys and versioning. [5/5]
+
+---
+
+## 5) Tooling & “Agents for Everything”
+
+- “Agent for everything” means:
+  - tool-using LLM wrappers for browser + extraction + validation
+  - long-running goal-driven agents
+  - micro-agents invoked for narrow tasks (e.g., “normalize-title”, “detect-sponsor-friendly”, “find-email-patterns”). [5/5]
+- Strongly prefer a standardized **Tool Interface**:
+  - input schema
+  - output schema
+  - cost + latency metadata
+  - retries/backoff + circuit breaker
+  - sandboxing/permissions. [5/5]
+- Browser automation:
+  - Use Playwright headless, with a “Browser Agent” abstraction that can run in workers. [5/5]
+  - Include anti-flakiness patterns: retries, wait strategies, screenshot-on-fail, HAR capture. [5/5]
+
+---
+
+## 6) Reverse-Engineering Application Flows (Core Differentiator)
+
+- Implement a dedicated “ApplicationFlow” subsystem:
+  - discovers apply URL
+  - identifies form steps/fields
+  - generates field mapping plan from user profile
+  - produces a **submission packet** but does not submit without approval. [5/5]
+- Always capture:
+  - step graph
+  - required fields
+  - validation rules
+  - autofill mapping confidence
+  - blockers (CAPTCHA, auth, dynamic widgets). [5/5]
+
+---
+
+## 7) Contact Hunting (Core Differentiator)
+
+- A contact is “best” when it’s:
+  - relevant to the role/team
+  - reachable via legitimate public channels
+  - likely to respond (role seniority fit, proximity to hiring). [5/5]
+- Produce ranked candidates with:
+  - evidence trails (why them)
+  - outreach angle hypotheses
+  - draft message variants. [5/5]
+- Never auto-send; always store drafts + track user approval states. [5/5]
+
+---
+
+## 8) Scoring, Ranking, and Competition
+
+- Rank jobs by multi-factor scoring:
+  - profile fit
+  - sponsorship likelihood signals
+  - recency
+  - seniority match
+  - source trust
+  - application friction estimate. [5/5]
+- Use **competing agents** for scoring when useful:
+  - “Optimist scorer” vs “Skeptic scorer” vs “Evidence-only scorer”
+  - merge via calibrated reconciliation. [4/5]
+- Always return:
+  - score breakdown
+  - top evidence
+  - confidence intervals (even if heuristic). [4/5]
+
+---
+
+## 9) Code Style & Contracts
+
+- Write concise, idiomatic **TypeScript** with strict typing. Avoid `any` and `ts-ignore`. [5/5]
+- Use Zod (or equivalent) for runtime validation at boundaries. [5/5]
+- Prefer small, composable modules with clean seams:
+  - `agents/*` (agent definitions + policies)
+  - `tools/*` (tool interfaces)
+  - `orchestrator/*` (workflow graphs)
+  - `memory/*` (DB/vector/graph clients)
+  - `eval/*` (scenario tests + golden sets) [5/5]
+- Every module should have:
+  - a clear responsibility
+  - tests/evals for critical logic
+  - minimal side effects. [5/5]
+
+---
+
+## 10) Next.js Conventions (Web UX Matters)
+
+- Use App Router conventions (`app/` routes, route handlers, server components). [5/5]
+- Keep sensitive logic server-side: tokens, secrets, privileged calls. [5/5]
+- Client components only when needed. [5/5]
+- Accessibility required: keyboard navigation, focus management, ARIA for dialogs/forms. [5/5]
+- Favor clean UX for approvals:
+  - “Review & Approve” screens for outreach/application packets
+  - audit trail for changes. [5/5]
+
+---
+
+## 11) Observability & Reproducibility (Non-negotiable)
+
+- Every workflow run must have:
+  - `run_id`
+  - structured logs
+  - trace spans per agent/tool call
+  - persisted artifacts (HTML snapshot, extracted text, parse results)
+  - replay support when possible. [5/5]
+- Prefer OpenTelemetry-compatible tracing. [4/5]
+- Maintain an “Artifacts” view in the UI so the user can inspect what agents did. [5/5]
+
+---
+
+## 12) Evaluation Harness (Make it research-grade)
+
+- Create an eval suite for:
+  - extraction accuracy
+  - dedupe correctness
+  - ranking stability
+  - contact precision
+  - application flow correctness. [5/5]
+- Use “golden” test fixtures:
+  - saved pages / HTML
+  - stored job JSON
+  - expected normalized outputs. [5/5]
+- Any new agent must come with at least:
+  - 1 unit test
+  - 1 scenario test (integration-ish)
+  - 1 eval case. [5/5]
+
+---
+
+## 13) Security & Data Handling
+
+- Never commit secrets. Use `.env.local` / `.env` patterns and keep out of git. [5/5]
+- Never expose secrets to the client (`NEXT_PUBLIC_` is public). [5/5]
+- Store user data with clear boundaries; minimize PII in logs. [5/5]
+- Respect access controls. Do not implement bypasses of protected systems in code. [5/5]
+- Rate-limit and backoff for scraping; avoid being noisy. [4/5]
+
+---
+
+## 14) Terminal / Environment Conventions
+
+- Assume **Windows + PowerShell** for commands unless repo says otherwise. [5/5]
+- Use **npm** (not pnpm) unless explicitly requested. [5/5]
+- Prefer `npm run lint`, `npm run test`, `npm run build` validation steps. [4/5]
+
+---
+
+## 15) Git / Change Management
+
+- Never run `git add/commit/push` automatically; user handles VCS. [5/5]
+- Keep diffs focused; no drive-by refactors. [5/5]
+- Comments explain intent/tradeoffs, not obvious narration. [4/5]
+
+---
+
+## 16) Documentation & “Project Memory” Updates
+
+When a task completes, update project docs in this order:
+
+1. **Agent Catalog**: agents added/changed and their contracts. [5/5]
+2. **Workflow Graphs**: orchestration changes and approval gates. [5/5]
+3. **Data Models**: schema changes and provenance/versioning rules. [5/5]
+4. **Runbooks**: how to run agents locally, test, debug, and replay. [5/5]
+
+Preserve learning: move non-core experiments into `miscellaneous/archive` (or the project’s equivalent archive folder) instead of deleting. [4/5]

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "incremental": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@careersignal/schemas/*": ["packages/schemas/*"],
+      "@careersignal/db/*": ["packages/db/*"],
+      "@careersignal/vector/*": ["packages/vector/*"],
+      "@careersignal/llm/*": ["packages/llm/*"],
+      "@careersignal/tools/*": ["packages/tools/*"],
+      "@careersignal/core/*": ["packages/core/*"]
+    }
+  },
+  "include": ["packages/**/*.ts", "agents/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx"],
+  "exclude": ["node_modules", "dist", ".next", "artifacts"]
+}

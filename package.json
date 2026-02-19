@@ -1,0 +1,27 @@
+{
+  "name": "careersignal-agentic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Semi-autonomous multi-agent career intelligence platform",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "agents/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "db:migrate": "echo 'Migration script coming soon'",
+    "db:seed": "echo 'Seed script coming soon'"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
