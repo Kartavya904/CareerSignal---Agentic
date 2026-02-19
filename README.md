@@ -145,29 +145,29 @@ Before starting development, ensure the following are installed and running:
 
 ## Quick Start
 
-> **Status:** Project scaffold only. Build has not started yet.
+> **Status:** Phase 0 complete. App runs with profile, sources, and runs (scan trigger). Agents not yet implemented.
 
 ```bash
 # 1. Verify prerequisites
 node --version        # >= 20.x
 npm --version         # >= 10.x
-ollama list           # Should show models above
-psql --version        # >= 15.x
+psql --version        # >= 15.x (or use Docker below)
 
-# 2. Pull required Ollama models (if not already present)
-ollama pull deepseek-r1:32b-qwen-distill-q4_K_M
-ollama pull qwen2.5:32b-instruct-q4_K_M
-ollama pull qwen2.5-coder:32b-instruct-q4_K_M
-ollama pull llama3.1:8b-instruct-q4_K_M
+# 2. Install dependencies
+npm install
 
-# 3. Start Ollama server
-ollama serve
+# 3. Start PostgreSQL (with pgvector). From repo root:
+docker compose -f infra/docker/docker-compose.yml up -d
+# Wait for DB to be ready, then push schema:
+npm run db:migrate
+# (If your local Postgres uses different credentials, set DATABASE_URL or edit packages/db/package.json db:push script.)
 
-# 4. (Coming soon) Initialize project
-# npm install
-# npm run db:migrate
-# npm run dev
+# 4. Copy env and run the app
+cp .env.example .env.local   # optional; defaults work for local Docker Postgres
+npm run dev
 ```
+
+Open http://localhost:3000. You can create a profile, add sources, and trigger a run (scan). The first request creates the default user and seeds 10 blessed job-board sources.
 
 ---
 

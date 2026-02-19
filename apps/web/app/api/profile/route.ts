@@ -1,0 +1,61 @@
+import { NextResponse } from 'next/server';
+import { getDb, getProfileByUserId, upsertProfile } from '@careersignal/db';
+import { getDefaultUserId } from '@/lib/user';
+import { profileInputSchema } from '@careersignal/schemas';
+
+export async function GET() {
+  try {
+    const userId = await getDefaultUserId();
+    const db = getDb();
+    const profile = await getProfileByUserId(db, userId);
+    return NextResponse.json(profile ?? null);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed to load profile' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const parsed = profileInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    const userId = await getDefaultUserId();
+    const db = getDb();
+    const data = parsed.data;
+    const profile = await upsertProfile(db, userId, {
+      name: data.name,
+      location: data.location,
+      workAuthorization: data.work_authorization,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      seniority: data.seniority ?? null,
+      targetRoles: data.target_roles,
+      skills: data.skills,
+      experience: data.experience as unknown[],
+      education: data.education as unknown[],
+      certifications: data.certifications,
+      industries: data.industries,
+      salaryRange: data.salary_range ?? null,
+      employmentType: data.employment_type,
+      remotePreference: data.remote_preference ?? null,
+      resumeRawText: data.resume_raw_text ?? null,
+      resumeFileRef: data.resume_file_ref ?? null,
+    });
+    return NextResponse.json(profile);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed to save profile' },
+      { status: 500 },
+    );
+  }
+}
