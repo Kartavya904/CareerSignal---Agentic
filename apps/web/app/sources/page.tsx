@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useReportAction } from '../components/UserActivityProvider';
 
 type Source = {
   id: string;
@@ -13,6 +14,7 @@ type Source = {
 };
 
 export default function SourcesPage() {
+  const reportAction = useReportAction();
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -41,6 +43,7 @@ export default function SourcesPage() {
     })
       .then((r) => r.json())
       .then(() => {
+        reportAction('add_source', { name: name.trim(), url: url.trim() });
         setName('');
         setUrl('');
         load();

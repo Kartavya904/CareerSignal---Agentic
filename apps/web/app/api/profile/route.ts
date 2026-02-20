@@ -1,14 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getDb, getProfileByUserId, upsertProfile } from '@careersignal/db';
+import { getDb, getProfileByUserId, resetProfile, upsertProfile } from '@careersignal/db';
 import { getRequiredUserId } from '@/lib/auth';
 import { profileInputSchema } from '@careersignal/schemas';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const userId = await getRequiredUserId();
     const db = getDb();
     const profile = await getProfileByUserId(db, userId);
-    return NextResponse.json(profile ?? null);
+    return NextResponse.json(profile ?? null, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        Pragma: 'no-cache',
+      },
+    });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -67,6 +74,24 @@ export async function POST(request: Request) {
     console.error(e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Failed to save profile' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE() {
+  try {
+    const userId = await getRequiredUserId();
+    const db = getDb();
+    await resetProfile(db, userId);
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    console.error(e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed to reset profile' },
       { status: 500 },
     );
   }

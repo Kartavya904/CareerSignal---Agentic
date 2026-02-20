@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useToast } from './ToastContext';
 
 interface LogEntry {
   id: number;
@@ -21,10 +22,12 @@ interface ParsingTerminalProps {
 }
 
 export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) {
+  const { addToast } = useToast();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentStep, setCurrentStep] = useState<StepInfo | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [showWaitingMessage, setShowWaitingMessage] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const logIdRef = useRef(0);
   const hasStartedRef = useRef(false);
@@ -38,20 +41,30 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
     setCurrentStep(null);
     setIsComplete(false);
     setHasError(false);
+    setShowWaitingMessage(false);
 
     const eventSource = new EventSource('/api/profile/parse-resume/stream');
 
+    // If no logs after 2.5s, show "Waiting for server response..." so user knows connection is alive
+    const waitingTimer = setTimeout(() => setShowWaitingMessage(true), 2500);
+
     eventSource.addEventListener('log', (event) => {
+      setShowWaitingMessage(false);
       const data = JSON.parse(event.data);
-      setLogs((prev) => [
-        ...prev,
-        {
-          id: ++logIdRef.current,
-          type: data.type,
-          message: data.message,
-          timestamp: new Date(),
-        },
-      ]);
+      setLogs((prev) => {
+        if (prev.length === 0) {
+          addToast('Resume parser agent has started.', 'success');
+        }
+        return [
+          ...prev,
+          {
+            id: ++logIdRef.current,
+            type: data.type,
+            message: data.message,
+            timestamp: new Date(),
+          },
+        ];
+      });
     });
 
     eventSource.addEventListener('step', (event) => {
@@ -61,6 +74,7 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
 
     eventSource.addEventListener('complete', (event) => {
       const data = JSON.parse(event.data);
+      addToast('Resume parser agent has finished.', 'success');
       setIsComplete(true);
       setLogs((prev) => [
         ...prev,
@@ -115,6 +129,7 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
     eventSource.addEventListener('error', (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data);
+        addToast(data?.message ?? 'Resume parser failed.', 'error');
         setHasError(true);
         setLogs((prev) => [
           ...prev,
@@ -126,6 +141,7 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
           },
         ]);
       } catch {
+        addToast('Resume parser failed.', 'error');
         setHasError(true);
         setLogs((prev) => [
           ...prev,
@@ -145,6 +161,7 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
     };
 
     return () => {
+      clearTimeout(waitingTimer);
       eventSource.close();
     };
   }, [isActive, onComplete]);
@@ -153,6 +170,7 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
   useEffect(() => {
     if (!isActive) {
       hasStartedRef.current = false;
+      setShowWaitingMessage(false);
     }
   }, [isActive]);
 
@@ -282,9 +300,18 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
         }}
       >
         {logs.length === 0 && (
-          <div style={{ color: '#8b949e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>◐</span>
-            <span>Initializing parser...</span>
+          <div style={{ color: '#8b949e' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>
+                ◐
+              </span>
+              <span>Initializing parser...</span>
+            </div>
+            {showWaitingMessage && (
+              <div style={{ marginTop: '6px', fontSize: '11px', opacity: 0.9 }}>
+                Waiting for server response...
+              </div>
+            )}
           </div>
         )}
         {logs.map((log) => (

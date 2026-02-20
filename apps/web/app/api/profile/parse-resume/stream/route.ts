@@ -20,6 +20,9 @@ export async function GET(request: Request) {
         controller.enqueue(encoder.encode(createSSEMessage(event, data)));
       };
 
+      // Send one event immediately so the client gets an update before any async work (avoids buffering)
+      send('log', { type: 'info', message: 'Resume parser started. Connecting...' });
+
       try {
         // Authenticate
         send('log', { type: 'info', message: 'Authenticating user...' });
@@ -164,6 +167,13 @@ export async function GET(request: Request) {
         send('step', { step: 4, total: 4, name: 'Saving to Database' });
 
         const existingProfile = await getProfileByUserId(db, userId);
+        console.log('[parse-resume/stream] Saving to DB', {
+          userId,
+          experienceCount: sections.experience.length,
+          projectsCount: sections.projects.length,
+          educationCount: sections.education.length,
+          skillsCount: normalizedSkills.all.length,
+        });
 
         // Transform camelCase to snake_case for date fields
         const transformExperience = (exp: (typeof sections.experience)[number]) => ({
@@ -212,6 +222,7 @@ export async function GET(request: Request) {
           education: sections.education.map(transformEducation),
           projects: sections.projects.map(transformProject),
           skills: normalizedSkills.all,
+          highlightedSkills: normalizedSkills.proficient ?? [],
           certifications: sections.certifications,
           languages: sections.languages,
           resumeRawText: extracted.text,
@@ -220,6 +231,7 @@ export async function GET(request: Request) {
         };
 
         await upsertProfile(db, userId, profileData);
+        console.log('[parse-resume/stream] upsertProfile completed for user', userId);
 
         send('log', { type: 'success', message: 'Profile updated successfully!' });
         send('complete', {
@@ -234,6 +246,7 @@ export async function GET(request: Request) {
         });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        console.error('[parse-resume/stream] Error', err);
         send('log', { type: 'error', message: `Error: ${errorMessage}` });
         send('error', { message: errorMessage });
       } finally {
@@ -247,6 +260,7 @@ export async function GET(request: Request) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }

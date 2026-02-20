@@ -6,6 +6,12 @@ import {
   remotePreferenceEnum,
 } from './enums';
 
+const bulletScoreSchema = z.object({
+  bullet: z.string(),
+  score: z.number().min(1).max(5),
+  feedback: z.string(),
+});
+
 export const experienceSchema = z.object({
   company: z.string(),
   title: z.string(),
@@ -15,6 +21,7 @@ export const experienceSchema = z.object({
   description: z.string().optional().nullable(),
   bullets: z.array(z.string()).default([]),
   projects: z.array(z.string()).default([]),
+  bullet_scores: z.array(bulletScoreSchema).optional(),
 });
 
 export const educationSchema = z.object({
@@ -37,6 +44,7 @@ export const projectSchema = z.object({
   technologies: z.array(z.string()).default([]),
   bullets: z.array(z.string()).default([]),
   achievements: z.array(z.string()).default([]),
+  bullet_scores: z.array(bulletScoreSchema).optional(),
 });
 
 export const skillsSchema = z.object({
@@ -66,6 +74,7 @@ export const profileSchema = z.object({
   target_roles: z.array(z.string()).default([]),
   skills: z.array(z.string()).default([]),
   highlighted_skills: z.array(z.string()).default([]),
+  suggested_skills: z.array(z.string()).default([]),
   experience: z.array(experienceSchema).default([]),
   education: z.array(educationSchema).default([]),
   projects: z.array(projectSchema).default([]),
