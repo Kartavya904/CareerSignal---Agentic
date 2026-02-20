@@ -1,0 +1,33 @@
+{
+  "name": "@careersignal/agents",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./profile/*": {
+      "types": "./dist/profile/*.d.ts",
+      "default": "./dist/profile/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@careersignal/llm": "*",
+    "@careersignal/schemas": "*",
+    "pdf-parse": "^1.1.1",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.4",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -64,10 +64,23 @@ export async function POST(request: Request) {
       });
     }
 
+    // Trigger resume parsing asynchronously (don't wait)
+    // The client can poll /api/profile/parse-resume GET to check status
+    const parseUrl = new URL('/api/profile/parse-resume', request.url);
+    fetch(parseUrl.toString(), {
+      method: 'POST',
+      headers: {
+        cookie: request.headers.get('cookie') || '',
+      },
+    }).catch((err) => {
+      console.error('Failed to trigger resume parsing:', err);
+    });
+
     return NextResponse.json({
       success: true,
       filename: `resume${ext}`,
-      message: 'Resume uploaded successfully',
+      message: 'Resume uploaded successfully. Parsing in progress...',
+      parsing: true,
     });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {

@@ -23,15 +23,22 @@ export async function upsertProfile(
     seniority?: string | null;
     targetRoles?: string[];
     skills?: string[];
+    highlightedSkills?: string[];
     experience?: unknown[];
     education?: unknown[];
+    projects?: unknown[];
     certifications?: string[];
     industries?: string[];
+    languages?: string[];
     salaryRange?: { min: number; max: number; currency: string } | null;
     employmentType?: string[];
     remotePreference?: string | null;
+    linkedinUrl?: string | null;
+    githubUrl?: string | null;
+    portfolioUrl?: string | null;
     resumeRawText?: string | null;
     resumeFileRef?: string | null;
+    resumeParsedAt?: Date | null;
   },
 ) {
   const [profile] = await db
@@ -62,15 +69,22 @@ export async function upsertProfile(
         | undefined,
       targetRoles: data.targetRoles ?? [],
       skills: data.skills ?? [],
+      highlightedSkills: data.highlightedSkills ?? [],
       experience: data.experience ?? [],
       education: data.education ?? [],
+      projects: data.projects ?? [],
       certifications: data.certifications ?? [],
       industries: data.industries ?? [],
+      languages: data.languages ?? [],
       salaryRange: data.salaryRange ?? null,
       employmentType: data.employmentType ?? [],
       remotePreference: data.remotePreference as 'REMOTE' | 'HYBRID' | 'ONSITE' | 'ANY' | undefined,
+      linkedinUrl: data.linkedinUrl ?? null,
+      githubUrl: data.githubUrl ?? null,
+      portfolioUrl: data.portfolioUrl ?? null,
       resumeRawText: data.resumeRawText ?? null,
       resumeFileRef: data.resumeFileRef ?? null,
+      resumeParsedAt: data.resumeParsedAt ?? null,
     })
     .onConflictDoUpdate({
       target: profilesTable.userId,
@@ -99,10 +113,13 @@ export async function upsertProfile(
           | undefined,
         targetRoles: data.targetRoles ?? [],
         skills: data.skills ?? [],
+        highlightedSkills: data.highlightedSkills ?? [],
         experience: data.experience ?? [],
         education: data.education ?? [],
+        projects: data.projects ?? [],
         certifications: data.certifications ?? [],
         industries: data.industries ?? [],
+        languages: data.languages ?? [],
         salaryRange: data.salaryRange ?? null,
         employmentType: data.employmentType ?? [],
         remotePreference: data.remotePreference as
@@ -111,8 +128,12 @@ export async function upsertProfile(
           | 'ONSITE'
           | 'ANY'
           | undefined,
+        linkedinUrl: data.linkedinUrl ?? null,
+        githubUrl: data.githubUrl ?? null,
+        portfolioUrl: data.portfolioUrl ?? null,
         resumeRawText: data.resumeRawText ?? null,
         resumeFileRef: data.resumeFileRef ?? null,
+        resumeParsedAt: data.resumeParsedAt ?? null,
         updatedAt: new Date(),
       },
     })

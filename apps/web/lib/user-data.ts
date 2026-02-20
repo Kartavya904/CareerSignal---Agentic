@@ -59,3 +59,17 @@ export function getResumeFilename(userDir: string): string | null {
   }
   return null;
 }
+
+/**
+ * Get the full absolute path to the user's resume file.
+ */
+export function getResumeFullPath(userDir: string): string | null {
+  const extensions = ['.pdf', '.docx', '.doc', '.txt'];
+  for (const ext of extensions) {
+    const resumePath = path.join(userDir, `resume${ext}`);
+    if (existsSync(resumePath)) {
+      return resumePath;
+    }
+  }
+  return null;
+}

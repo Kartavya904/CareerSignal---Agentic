@@ -7,11 +7,12 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "agents/*"
+    "agents"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
-    "build": "npm run build --workspace=@careersignal/core && npm run build --workspace=@careersignal/schemas && npm run build --workspace=@careersignal/db && npm run build --workspace=apps/web",
+    "build": "npm run build --workspace=@careersignal/core && npm run build --workspace=@careersignal/schemas && npm run build --workspace=@careersignal/db && npm run build --workspace=@careersignal/llm && npm run build --workspace=@careersignal/agents && npm run build --workspace=apps/web",
+    "build:packages": "npm run build --workspace=@careersignal/llm && npm run build --workspace=@careersignal/agents",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

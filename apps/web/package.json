@@ -9,7 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@careersignal/agents": "*",
     "@careersignal/db": "*",
+    "@careersignal/llm": "*",
     "@careersignal/schemas": "*",
     "bcryptjs": "^3.0.3",
     "next": "14.2.0",

@@ -13,7 +13,8 @@ export interface CreateUserInput {
 async function getLegacyUserIdIfSingle(db: Db): Promise<string | null> {
   const all = await db.select({ id: users.id, email: users.email }).from(users);
   if (all.length !== 1) return null;
-  const [u] = all;
+  const u = all[0];
+  if (!u) return null;
   return u.email == null ? u.id : null;
 }
 
