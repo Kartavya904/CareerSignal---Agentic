@@ -65,10 +65,14 @@ export const runStatusEnum = pgEnum('run_status', [
   'CANCELLED',
 ]);
 
-// Single-user V1: one row for the developer
+// Single-user V1: one row per account (email + password for sign up / sign in)
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
+  email: varchar('email', { length: 255 }).unique(),
+  passwordHash: text('password_hash'),
+  name: varchar('name', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 export const profiles = pgTable('profiles', {

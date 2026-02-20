@@ -163,11 +163,13 @@ npm run db:migrate
 # (If your local Postgres uses different credentials, set DATABASE_URL or edit packages/db/package.json db:push script.)
 
 # 4. Copy env and run the app
-cp .env.example .env.local   # optional; defaults work for local Docker Postgres
+cp .env.example .env.local
+# Edit .env.local: set DATABASE_URL if your Postgres user/password differ from postgres:postgres
+# and set AUTH_SECRET (e.g. run: openssl rand -base64 24)
 npm run dev
 ```
 
-Open http://localhost:3000. You can create a profile, add sources, and trigger a run (scan). The first request creates the default user and seeds 10 blessed job-board sources.
+Open http://localhost:3000. Sign up (create account) or sign in, then create a profile, add sources, and trigger a run (scan).
 
 ---
 

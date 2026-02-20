@@ -4,3 +4,4 @@ export * from './runs';
 export * from './profiles';
 export * from './sources';
 export * from './seed';
+export * from './users';

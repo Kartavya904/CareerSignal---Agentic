@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getDb, getProfileByUserId, upsertProfile } from '@careersignal/db';
-import { getDefaultUserId } from '@/lib/user';
+import { getRequiredUserId } from '@/lib/auth';
 import { profileInputSchema } from '@careersignal/schemas';
 
 export async function GET() {
   try {
-    const userId = await getDefaultUserId();
+    const userId = await getRequiredUserId();
     const db = getDb();
     const profile = await getProfileByUserId(db, userId);
     return NextResponse.json(profile ?? null);
   } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error(e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Failed to load profile' },
@@ -28,7 +31,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const userId = await getDefaultUserId();
+    const userId = await getRequiredUserId();
     const db = getDb();
     const data = parsed.data;
     const profile = await upsertProfile(db, userId, {
@@ -52,6 +55,9 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(profile);
   } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error(e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Failed to save profile' },

@@ -9,7 +9,7 @@
     "clean": "rimraf dist",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push:pg --driver pg --schema ./src/schema.ts --connectionString postgresql://postgres:postgres@localhost:5432/careersignal",
+    "db:push": "drizzle-kit push:pg --driver pg --schema ./src/schema.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
