@@ -5,7 +5,7 @@
 import pg from 'pg';
 
 const connectionString =
-  process.env.DATABASE_URL || 'postgresql://postgres:Kart%401710@localhost:5433/careersignal';
+  process.env.DATABASE_URL || 'postgresql://postgres:Password@localhost:5433/careersignal';
 
 async function main() {
   const client = new pg.Client({ connectionString });

@@ -2,10 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { ParsingTerminal } from '../components/ParsingTerminal';
-<<<<<<< HEAD
 import { useToast } from '../components/ToastContext';
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
 import { useReportAction } from '../components/UserActivityProvider';
 
 const WORK_AUTH_OPTIONS = ['US_CITIZEN', 'GREEN_CARD', 'H1B', 'OPT', 'EAD', 'OTHER'] as const;
@@ -215,10 +212,7 @@ function MinusIcon({ size = 16 }: { size?: number }) {
 
 export default function ProfilePage() {
   const reportAction = useReportAction();
-<<<<<<< HEAD
   const { addToast } = useToast();
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -521,10 +515,7 @@ export default function ProfilePage() {
       projects.some((p: Project) => (p.bullets?.length ?? 0) > 0);
     if (!hasBulletsToAnalyze) return;
 
-<<<<<<< HEAD
     addToast('Bullet analyzer started.', 'success');
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     setAnalyzingAllBullets(true);
     try {
       const newExperience = [...experience] as (Experience & { bullet_scores?: BulletScore[] })[];
@@ -608,12 +599,9 @@ export default function ProfilePage() {
           }),
         });
       }
-<<<<<<< HEAD
       addToast('All bullet analyses finished.', 'success');
     } catch {
       addToast('Bullet analysis failed.', 'error');
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     } finally {
       setAnalyzingAllBullets(false);
     }
@@ -656,10 +644,7 @@ export default function ProfilePage() {
             languages: editableLanguages,
           }),
         });
-<<<<<<< HEAD
         addToast('Bullet analysis finished.', 'success');
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
       }
     } catch {
       addToast('Bullet analysis failed.', 'error');
@@ -673,10 +658,7 @@ export default function ProfilePage() {
     const proj = editableProjects[projIdx];
     if (!proj) return;
 
-<<<<<<< HEAD
     addToast('Bullet analyzer started.', 'success');
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     try {
       const res = await fetch('/api/profile/analyze-bullets', {
         method: 'POST',
@@ -709,16 +691,10 @@ export default function ProfilePage() {
             languages: editableLanguages,
           }),
         });
-<<<<<<< HEAD
         addToast('Bullet analysis finished.', 'success');
       }
     } catch {
       addToast('Bullet analysis failed.', 'error');
-=======
-      }
-    } catch {
-      // ignore
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     } finally {
       setAnalyzingProjIdx(null);
     }
@@ -963,26 +939,19 @@ export default function ProfilePage() {
   };
 
   const handleAnalyzeSkills = async () => {
-<<<<<<< HEAD
     addToast('Skills analyzer started.', 'success');
-=======
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     setAnalyzingSkills(true);
     try {
       const res = await fetch('/api/profile/analyze-skills', { method: 'POST' });
       const data = await res.json();
       if (res.ok && Array.isArray(data.suggestedSkills)) {
         setSuggestedSkills(data.suggestedSkills);
-<<<<<<< HEAD
         addToast('Skills analysis finished.', 'success');
       } else {
         addToast('Skills analysis failed.', 'error');
       }
     } catch {
       addToast('Skills analysis failed.', 'error');
-=======
-      }
->>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     } finally {
       setAnalyzingSkills(false);
     }
@@ -1287,9 +1256,6 @@ export default function ProfilePage() {
                     justifyContent: 'flex-end',
                   }}
                 >
-                  <button type="button" onClick={closeAddModal} style={smallButtonStyle}>
-                    Cancel
-                  </button>
                   <button
                     type="button"
                     onClick={saveAddExperience}
@@ -1297,6 +1263,9 @@ export default function ProfilePage() {
                     style={buttonStyle}
                   >
                     {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button type="button" onClick={closeAddModal} style={smallButtonStyle}>
+                    Cancel
                   </button>
                 </div>
               </>
@@ -1431,9 +1400,6 @@ export default function ProfilePage() {
                     justifyContent: 'flex-end',
                   }}
                 >
-                  <button type="button" onClick={closeAddModal} style={smallButtonStyle}>
-                    Cancel
-                  </button>
                   <button
                     type="button"
                     onClick={saveAddProject}
@@ -1441,6 +1407,9 @@ export default function ProfilePage() {
                     style={buttonStyle}
                   >
                     {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button type="button" onClick={closeAddModal} style={smallButtonStyle}>
+                    Cancel
                   </button>
                 </div>
               </>
@@ -1518,9 +1487,6 @@ export default function ProfilePage() {
                     justifyContent: 'flex-end',
                   }}
                 >
-                  <button type="button" onClick={closeAddModal} style={smallButtonStyle}>
-                    Cancel
-                  </button>
                   <button
                     type="button"
                     onClick={saveAddEducation}
@@ -1528,6 +1494,9 @@ export default function ProfilePage() {
                     style={buttonStyle}
                   >
                     {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button type="button" onClick={closeAddModal} style={smallButtonStyle}>
+                    Cancel
                   </button>
                 </div>
               </>
@@ -1978,35 +1947,34 @@ export default function ProfilePage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {editableEducation.map((edu, idx) => (
                   <div key={idx} style={{ ...cardStyle, position: 'relative' }}>
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '0.75rem',
-                        right: '0.75rem',
-                        display: 'flex',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setEditingEduIdx(editingEduIdx === idx ? null : idx)}
+                    {editingEduIdx !== idx && (
+                      <div
                         style={{
-                          ...iconButtonStyle,
-                          color: editingEduIdx === idx ? '#3b82f6' : 'var(--muted)',
+                          position: 'absolute',
+                          top: '0.75rem',
+                          right: '0.75rem',
+                          display: 'flex',
+                          gap: '0.5rem',
                         }}
-                        title="Edit"
                       >
-                        <EditIcon />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => confirmDeleteCard('education', idx)}
-                        style={{ ...iconButtonStyle, color: '#ef4444' }}
-                        title="Delete"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingEduIdx(idx)}
+                          style={{ ...iconButtonStyle, color: 'var(--muted)' }}
+                          title="Edit"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => confirmDeleteCard('education', idx)}
+                          style={{ ...iconButtonStyle, color: '#ef4444' }}
+                          title="Delete"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    )}
 
                     {editingEduIdx === idx ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -2080,16 +2048,45 @@ export default function ProfilePage() {
                             style={inputStyle}
                           />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingEduIdx(null);
-                            saveSection();
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            marginTop: '0.25rem',
                           }}
-                          style={{ ...smallButtonStyle, alignSelf: 'flex-start' }}
                         >
-                          Save
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingEduIdx(null);
+                              saveSection();
+                            }}
+                            style={buttonStyle}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingEduIdx(null)}
+                            style={smallButtonStyle}
+                          >
+                            Cancel
+                          </button>
+                          <div style={{ flex: 1 }} />
+                          <button
+                            type="button"
+                            onClick={() => confirmDeleteCard('education', idx)}
+                            style={{
+                              ...smallButtonStyle,
+                              color: '#ef4444',
+                              borderColor: 'rgba(239, 68, 68, 0.5)',
+                            }}
+                            title="Delete"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -2185,54 +2182,53 @@ export default function ProfilePage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {editableExperience.map((exp, idx) => (
                   <div key={idx} style={{ ...cardStyle, position: 'relative' }}>
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '0.75rem',
-                        right: '0.75rem',
-                        display: 'flex',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setEditingExpIdx(editingExpIdx === idx ? null : idx)}
+                    {editingExpIdx !== idx && (
+                      <div
                         style={{
-                          ...iconButtonStyle,
-                          color: editingExpIdx === idx ? '#3b82f6' : 'var(--muted)',
+                          position: 'absolute',
+                          top: '0.75rem',
+                          right: '0.75rem',
+                          display: 'flex',
+                          gap: '0.5rem',
                         }}
-                        title="Edit"
                       >
-                        <EditIcon />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAnalyzeExperience(idx)}
-                        disabled={analyzingExpIdx === idx}
-                        style={{
-                          ...iconButtonStyle,
-                          color:
-                            (exp.bullet_scores?.length ?? bulletScores.has(`exp-${idx}`))
-                              ? '#22c55e'
-                              : 'var(--muted)',
-                        }}
-                        title="Analyze bullet points"
-                      >
-                        {analyzingExpIdx === idx ? (
-                          <span style={{ fontSize: '12px' }}>...</span>
-                        ) : (
-                          <AnalyzeIcon />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => confirmDeleteCard('experience', idx)}
-                        style={{ ...iconButtonStyle, color: '#ef4444' }}
-                        title="Delete"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingExpIdx(idx)}
+                          style={{ ...iconButtonStyle, color: 'var(--muted)' }}
+                          title="Edit"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAnalyzeExperience(idx)}
+                          disabled={analyzingExpIdx === idx}
+                          style={{
+                            ...iconButtonStyle,
+                            color:
+                              (exp.bullet_scores?.length ?? bulletScores.has(`exp-${idx}`))
+                                ? '#22c55e'
+                                : 'var(--muted)',
+                          }}
+                          title="Analyze bullet points"
+                        >
+                          {analyzingExpIdx === idx ? (
+                            <span style={{ fontSize: '12px' }}>...</span>
+                          ) : (
+                            <AnalyzeIcon />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => confirmDeleteCard('experience', idx)}
+                          style={{ ...iconButtonStyle, color: '#ef4444' }}
+                          title="Delete"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    )}
 
                     {editingExpIdx === idx ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -2376,16 +2372,45 @@ export default function ProfilePage() {
                             ))
                           )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingExpIdx(null);
-                            saveSection();
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            marginTop: '0.25rem',
                           }}
-                          style={{ ...smallButtonStyle, alignSelf: 'flex-start' }}
                         >
-                          Save
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingExpIdx(null);
+                              saveSection();
+                            }}
+                            style={buttonStyle}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingExpIdx(null)}
+                            style={smallButtonStyle}
+                          >
+                            Cancel
+                          </button>
+                          <div style={{ flex: 1 }} />
+                          <button
+                            type="button"
+                            onClick={() => confirmDeleteCard('experience', idx)}
+                            style={{
+                              ...smallButtonStyle,
+                              color: '#ef4444',
+                              borderColor: 'rgba(239, 68, 68, 0.5)',
+                            }}
+                            title="Delete"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -2538,54 +2563,53 @@ export default function ProfilePage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {editableProjects.map((proj, idx) => (
                   <div key={idx} style={{ ...cardStyle, position: 'relative' }}>
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '0.75rem',
-                        right: '0.75rem',
-                        display: 'flex',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setEditingProjIdx(editingProjIdx === idx ? null : idx)}
+                    {editingProjIdx !== idx && (
+                      <div
                         style={{
-                          ...iconButtonStyle,
-                          color: editingProjIdx === idx ? '#3b82f6' : 'var(--muted)',
+                          position: 'absolute',
+                          top: '0.75rem',
+                          right: '0.75rem',
+                          display: 'flex',
+                          gap: '0.5rem',
                         }}
-                        title="Edit"
                       >
-                        <EditIcon />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAnalyzeProject(idx)}
-                        disabled={analyzingProjIdx === idx}
-                        style={{
-                          ...iconButtonStyle,
-                          color:
-                            (proj.bullet_scores?.length ?? bulletScores.has(`proj-${idx}`))
-                              ? '#22c55e'
-                              : 'var(--muted)',
-                        }}
-                        title="Analyze bullet points"
-                      >
-                        {analyzingProjIdx === idx ? (
-                          <span style={{ fontSize: '12px' }}>...</span>
-                        ) : (
-                          <AnalyzeIcon />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => confirmDeleteCard('project', idx)}
-                        style={{ ...iconButtonStyle, color: '#ef4444' }}
-                        title="Delete"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingProjIdx(idx)}
+                          style={{ ...iconButtonStyle, color: 'var(--muted)' }}
+                          title="Edit"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAnalyzeProject(idx)}
+                          disabled={analyzingProjIdx === idx}
+                          style={{
+                            ...iconButtonStyle,
+                            color:
+                              (proj.bullet_scores?.length ?? bulletScores.has(`proj-${idx}`))
+                                ? '#22c55e'
+                                : 'var(--muted)',
+                          }}
+                          title="Analyze bullet points"
+                        >
+                          {analyzingProjIdx === idx ? (
+                            <span style={{ fontSize: '12px' }}>...</span>
+                          ) : (
+                            <AnalyzeIcon />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => confirmDeleteCard('project', idx)}
+                          style={{ ...iconButtonStyle, color: '#ef4444' }}
+                          title="Delete"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    )}
 
                     {editingProjIdx === idx ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -2719,16 +2743,45 @@ export default function ProfilePage() {
                             ))
                           )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingProjIdx(null);
-                            saveSection();
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            marginTop: '0.25rem',
                           }}
-                          style={{ ...smallButtonStyle, alignSelf: 'flex-start' }}
                         >
-                          Save
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProjIdx(null);
+                              saveSection();
+                            }}
+                            style={buttonStyle}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingProjIdx(null)}
+                            style={smallButtonStyle}
+                          >
+                            Cancel
+                          </button>
+                          <div style={{ flex: 1 }} />
+                          <button
+                            type="button"
+                            onClick={() => confirmDeleteCard('project', idx)}
+                            style={{
+                              ...smallButtonStyle,
+                              color: '#ef4444',
+                              borderColor: 'rgba(239, 68, 68, 0.5)',
+                            }}
+                            title="Delete"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <>
