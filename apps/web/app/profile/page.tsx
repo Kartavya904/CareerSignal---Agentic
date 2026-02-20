@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { ParsingTerminal } from '../components/ParsingTerminal';
+<<<<<<< HEAD
 import { useToast } from '../components/ToastContext';
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
 import { useReportAction } from '../components/UserActivityProvider';
 
 const WORK_AUTH_OPTIONS = ['US_CITIZEN', 'GREEN_CARD', 'H1B', 'OPT', 'EAD', 'OTHER'] as const;
@@ -212,7 +215,10 @@ function MinusIcon({ size = 16 }: { size?: number }) {
 
 export default function ProfilePage() {
   const reportAction = useReportAction();
+<<<<<<< HEAD
   const { addToast } = useToast();
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -515,7 +521,10 @@ export default function ProfilePage() {
       projects.some((p: Project) => (p.bullets?.length ?? 0) > 0);
     if (!hasBulletsToAnalyze) return;
 
+<<<<<<< HEAD
     addToast('Bullet analyzer started.', 'success');
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     setAnalyzingAllBullets(true);
     try {
       const newExperience = [...experience] as (Experience & { bullet_scores?: BulletScore[] })[];
@@ -599,9 +608,12 @@ export default function ProfilePage() {
           }),
         });
       }
+<<<<<<< HEAD
       addToast('All bullet analyses finished.', 'success');
     } catch {
       addToast('Bullet analysis failed.', 'error');
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     } finally {
       setAnalyzingAllBullets(false);
     }
@@ -644,7 +656,10 @@ export default function ProfilePage() {
             languages: editableLanguages,
           }),
         });
+<<<<<<< HEAD
         addToast('Bullet analysis finished.', 'success');
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
       }
     } catch {
       addToast('Bullet analysis failed.', 'error');
@@ -658,7 +673,10 @@ export default function ProfilePage() {
     const proj = editableProjects[projIdx];
     if (!proj) return;
 
+<<<<<<< HEAD
     addToast('Bullet analyzer started.', 'success');
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     try {
       const res = await fetch('/api/profile/analyze-bullets', {
         method: 'POST',
@@ -691,10 +709,16 @@ export default function ProfilePage() {
             languages: editableLanguages,
           }),
         });
+<<<<<<< HEAD
         addToast('Bullet analysis finished.', 'success');
       }
     } catch {
       addToast('Bullet analysis failed.', 'error');
+=======
+      }
+    } catch {
+      // ignore
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     } finally {
       setAnalyzingProjIdx(null);
     }
@@ -939,19 +963,26 @@ export default function ProfilePage() {
   };
 
   const handleAnalyzeSkills = async () => {
+<<<<<<< HEAD
     addToast('Skills analyzer started.', 'success');
+=======
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     setAnalyzingSkills(true);
     try {
       const res = await fetch('/api/profile/analyze-skills', { method: 'POST' });
       const data = await res.json();
       if (res.ok && Array.isArray(data.suggestedSkills)) {
         setSuggestedSkills(data.suggestedSkills);
+<<<<<<< HEAD
         addToast('Skills analysis finished.', 'success');
       } else {
         addToast('Skills analysis failed.', 'error');
       }
     } catch {
       addToast('Skills analysis failed.', 'error');
+=======
+      }
+>>>>>>> cfe4a32f7c4e28ab8122c7c5fdd5a190405a27a9
     } finally {
       setAnalyzingSkills(false);
     }
