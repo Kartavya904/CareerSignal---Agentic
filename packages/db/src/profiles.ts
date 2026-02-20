@@ -24,6 +24,7 @@ export async function upsertProfile(
     targetRoles?: string[];
     skills?: string[];
     highlightedSkills?: string[];
+    suggestedSkills?: string[];
     experience?: unknown[];
     education?: unknown[];
     projects?: unknown[];
@@ -70,6 +71,7 @@ export async function upsertProfile(
       targetRoles: data.targetRoles ?? [],
       skills: data.skills ?? [],
       highlightedSkills: data.highlightedSkills ?? [],
+      suggestedSkills: data.suggestedSkills ?? [],
       experience: data.experience ?? [],
       education: data.education ?? [],
       projects: data.projects ?? [],
@@ -114,6 +116,7 @@ export async function upsertProfile(
         targetRoles: data.targetRoles ?? [],
         skills: data.skills ?? [],
         highlightedSkills: data.highlightedSkills ?? [],
+        suggestedSkills: data.suggestedSkills ?? [],
         experience: data.experience ?? [],
         education: data.education ?? [],
         projects: data.projects ?? [],
@@ -139,4 +142,50 @@ export async function upsertProfile(
     })
     .returning();
   return profile;
+}
+
+/** Update only suggested skills for a profile. */
+export async function updateSuggestedSkills(db: Db, userId: string, suggestedSkills: string[]) {
+  const [profile] = await db
+    .update(profilesTable)
+    .set({ suggestedSkills, updatedAt: new Date() })
+    .where(eq(profilesTable.userId, userId))
+    .returning();
+  return profile ?? null;
+}
+
+/** Reset profile to empty state, keeping only name and email. */
+export async function resetProfile(db: Db, userId: string) {
+  const existing = await getProfileByUserId(db, userId);
+  if (!existing) return null;
+  const [profile] = await db
+    .update(profilesTable)
+    .set({
+      phone: null,
+      location: existing.location ?? 'Unknown',
+      workAuthorization: (existing.workAuthorization as string) ?? 'OTHER',
+      targetRoles: [],
+      skills: [],
+      highlightedSkills: [],
+      suggestedSkills: [],
+      experience: [],
+      education: [],
+      projects: [],
+      certifications: [],
+      industries: [],
+      languages: [],
+      salaryRange: null,
+      employmentType: [],
+      remotePreference: null,
+      linkedinUrl: null,
+      githubUrl: null,
+      portfolioUrl: null,
+      resumeRawText: null,
+      resumeFileRef: null,
+      resumeParsedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(profilesTable.userId, userId))
+    .returning();
+  return profile ?? null;
 }

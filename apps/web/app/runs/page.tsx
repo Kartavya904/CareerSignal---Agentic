@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useReportAction } from '../components/UserActivityProvider';
+
+type PlanStep = { id: string; name: string; status: string };
+type PlanSnapshot = { steps?: PlanStep[]; status?: string };
 
 type Run = {
   id: string;
@@ -8,9 +12,13 @@ type Run = {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  planSnapshot?: PlanSnapshot | null;
 };
 
+const POLL_INTERVAL_MS = 2000;
+
 export default function RunsPage() {
+  const reportAction = useReportAction();
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -26,7 +34,15 @@ export default function RunsPage() {
     load();
   }, []);
 
+  const hasActiveRun = runs.some((r) => r.status === 'PENDING' || r.status === 'RUNNING');
+  useEffect(() => {
+    if (!hasActiveRun) return;
+    const t = setInterval(load, POLL_INTERVAL_MS);
+    return () => clearInterval(t);
+  }, [hasActiveRun, runs.length]);
+
   const startScan = () => {
+    reportAction('start_scan');
     setStarting(true);
     fetch('/api/runs', {
       method: 'POST',
@@ -86,6 +102,15 @@ export default function RunsPage() {
             >
               <strong>{r.id.slice(0, 8)}…</strong>
               <span style={{ marginLeft: '0.5rem', color: 'var(--muted)' }}>{r.status}</span>
+              {(r.status === 'RUNNING' || r.status === 'PAUSED') && r.planSnapshot?.steps && (
+                <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem' }}>
+                  —{' '}
+                  {r.planSnapshot.steps.find((s) => s.status === 'running')?.name ??
+                    r.planSnapshot.steps.filter((s) => s.status === 'completed').slice(-1)[0]
+                      ?.name ??
+                    'Starting…'}
+                </span>
+              )}
               <br />
               <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
                 Created {new Date(r.createdAt).toLocaleString()}

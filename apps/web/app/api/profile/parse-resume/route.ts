@@ -85,6 +85,7 @@ export async function POST() {
       education: transformedEducation,
       projects: transformedProjects,
       skills: parsed.skills.all,
+      highlightedSkills: parsed.skills.proficient ?? [],
       certifications: parsed.certifications,
       languages: parsed.languages,
       resumeRawText: parsed.rawText,
@@ -128,32 +129,46 @@ export async function GET() {
       return NextResponse.json({ parsed: false, data: null });
     }
 
-    // Check if resume has been parsed (resumeParsedAt exists)
-    const isParsed = !!profile.resumeParsedAt;
+    // Consider parsed if we have resumeParsedAt OR persisted section data (so UI can show data from DB even if set by form save)
+    const hasSectionData =
+      (Array.isArray(profile.experience) && profile.experience.length > 0) ||
+      (Array.isArray(profile.projects) && profile.projects.length > 0) ||
+      (Array.isArray(profile.education) && profile.education.length > 0) ||
+      (Array.isArray(profile.skills) && profile.skills.length > 0);
+    const isParsed = !!profile.resumeParsedAt || hasSectionData;
 
-    return NextResponse.json({
-      parsed: isParsed,
-      parsedAt: profile.resumeParsedAt,
-      data: isParsed
-        ? {
-            basicInfo: {
-              name: profile.name,
-              email: profile.email,
-              phone: profile.phone,
-              location: profile.location,
-              linkedinUrl: profile.linkedinUrl,
-              githubUrl: profile.githubUrl,
-              portfolioUrl: profile.portfolioUrl,
-            },
-            experience: profile.experience,
-            education: profile.education,
-            projects: profile.projects,
-            skills: profile.skills,
-            certifications: profile.certifications,
-            languages: profile.languages,
-          }
-        : null,
-    });
+    return NextResponse.json(
+      {
+        parsed: isParsed,
+        parsedAt: profile.resumeParsedAt,
+        data: isParsed
+          ? {
+              basicInfo: {
+                name: profile.name,
+                email: profile.email,
+                phone: profile.phone,
+                location: profile.location,
+                linkedinUrl: profile.linkedinUrl,
+                githubUrl: profile.githubUrl,
+                portfolioUrl: profile.portfolioUrl,
+              },
+              experience: profile.experience,
+              education: profile.education,
+              projects: profile.projects,
+              skills: profile.skills,
+              highlightedSkills: profile.highlightedSkills ?? [],
+              certifications: profile.certifications,
+              languages: profile.languages,
+            }
+          : null,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      },
+    );
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

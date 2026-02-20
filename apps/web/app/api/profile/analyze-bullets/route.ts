@@ -13,7 +13,7 @@ const BulletAnalysisSchema = z.object({
   ),
 });
 
-const ANALYSIS_PROMPT = `You are an expert resume reviewer. Analyze each bullet point from this work experience and rate it on a scale of 1-5 based on:
+const EXPERIENCE_PROMPT = `You are an expert resume reviewer. Analyze each bullet point from this work experience and rate it on a scale of 1-5 based on:
 
 1 = Weak: Vague, no metrics, doesn't show impact
 2 = Below Average: Some specificity but lacks quantification
@@ -40,20 +40,53 @@ Return JSON with this exact structure:
 
 Provide constructive feedback that helps improve each bullet.`;
 
+const PROJECT_PROMPT = `You are an expert resume reviewer. Analyze each bullet point from this project and rate it on a scale of 1-5 based on:
+
+1 = Weak: Vague, no clear outcome or technical depth
+2 = Below Average: Some detail but lacks impact or specificity
+3 = Average: Clear what was done but could be stronger
+4 = Good: Shows impact, technologies, or results
+5 = Excellent: Quantified results, clear impact, demonstrates skills
+
+Project: {name}
+Context: {context}
+
+Bullet Points to Analyze:
+{bullets}
+
+Return JSON with this exact structure:
+{
+  "scores": [
+    {
+      "bullet": "the original bullet text",
+      "score": 4,
+      "feedback": "Brief 1-sentence feedback on how to improve or why it's good"
+    }
+  ]
+}
+
+Provide constructive feedback that helps improve each bullet.`;
+
 export async function POST(request: Request) {
   try {
     await getRequiredUserId();
 
     const body = await request.json();
-    const { company, title, bullets } = body;
+    const { type, company, title, name, context, bullets } = body;
 
     if (!bullets || !Array.isArray(bullets) || bullets.length === 0) {
       return NextResponse.json({ error: 'No bullets to analyze' }, { status: 400 });
     }
 
-    const prompt = ANALYSIS_PROMPT.replace('{company}', company || 'Unknown')
-      .replace('{title}', title || 'Unknown')
-      .replace('{bullets}', bullets.map((b: string, i: number) => `${i + 1}. ${b}`).join('\n'));
+    const bulletsText = bullets.map((b: string, i: number) => `${i + 1}. ${b}`).join('\n');
+    const prompt =
+      type === 'project'
+        ? PROJECT_PROMPT.replace('{name}', name || 'Unknown')
+            .replace('{context}', context || '')
+            .replace('{bullets}', bulletsText)
+        : EXPERIENCE_PROMPT.replace('{company}', company || 'Unknown')
+            .replace('{title}', title || 'Unknown')
+            .replace('{bullets}', bulletsText);
 
     const response = await complete(prompt, 'FAST', {
       format: 'json',

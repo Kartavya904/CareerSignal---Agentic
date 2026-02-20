@@ -38,7 +38,7 @@ export async function updateRunStatus(
   db: Db,
   runId: string,
   userId: string,
-  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED',
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'PAUSED',
   errorMessage?: string,
 ) {
   const updates: Record<string, unknown> = { status, updatedAt: new Date() };
@@ -48,6 +48,21 @@ export async function updateRunStatus(
   const [updated] = await db
     .update(runsTable)
     .set(updates as Record<string, unknown>)
+    .where(eq(runsTable.id, runId))
+    .returning();
+  if (!updated || updated.userId !== userId) return null;
+  return updated;
+}
+
+export async function updateRunPlanSnapshot(
+  db: Db,
+  runId: string,
+  userId: string,
+  planSnapshot: unknown,
+) {
+  const [updated] = await db
+    .update(runsTable)
+    .set({ planSnapshot, updatedAt: new Date() })
     .where(eq(runsTable.id, runId))
     .returning();
   if (!updated || updated.userId !== userId) return null;

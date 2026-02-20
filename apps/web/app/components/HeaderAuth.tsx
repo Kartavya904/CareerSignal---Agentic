@@ -2,13 +2,16 @@
 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useReportAction } from './UserActivityProvider';
 
 type User = { id: string; email: string | null; name: string | null };
 
 export function HeaderAuth({ user }: { user: User | null }) {
   const router = useRouter();
+  const reportAction = useReportAction();
 
   const handleSignOut = async () => {
+    reportAction('sign_out');
     await fetch('/api/auth/signout', { method: 'POST' });
     router.push('/signin');
     router.refresh();

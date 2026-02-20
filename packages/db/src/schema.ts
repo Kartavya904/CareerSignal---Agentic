@@ -63,6 +63,7 @@ export const runStatusEnum = pgEnum('run_status', [
   'COMPLETED',
   'FAILED',
   'CANCELLED',
+  'PAUSED',
 ]);
 
 // Single-user V1: one row per account (email + password for sign up / sign in)
@@ -90,6 +91,7 @@ export const profiles = pgTable('profiles', {
   targetRoles: jsonb('target_roles').$type<string[]>().default([]),
   skills: jsonb('skills').$type<string[]>().default([]),
   highlightedSkills: jsonb('highlighted_skills').$type<string[]>().default([]),
+  suggestedSkills: jsonb('suggested_skills').$type<string[]>().default([]),
   experience: jsonb('experience').$type<unknown[]>().default([]),
   education: jsonb('education').$type<unknown[]>().default([]),
   projects: jsonb('projects').$type<unknown[]>().default([]),
@@ -139,6 +141,7 @@ export const runs = pgTable('runs', {
   sourceIds: jsonb('source_ids').$type<string[]>().default([]),
   events: jsonb('events').$type<unknown[]>(),
   errorMessage: text('error_message'),
+  planSnapshot: jsonb('plan_snapshot').$type<unknown>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
