@@ -134,8 +134,9 @@ export function estimateTotalYearsFromWork(experience: unknown[]): number {
   return Math.round(months / 12);
 }
 
-/** 1 year = Entry; 2 years = Junior; 3–7 = Mid; 8+ = Senior (title overrides for Senior+/Senior). */
+/** Under 2 years = Entry; 2–2.99 = Junior; 3–7 = Mid; 8+ = Senior. Title overrides for Senior+/Senior only. */
 export function inferSeniority(totalYears: number, experience: unknown[]): string {
+  if (totalYears < 2) return 'Entry';
   const titles = (experience as Array<Record<string, unknown>>)
     .map((e) => String(e.title ?? '').toLowerCase())
     .join(' ');

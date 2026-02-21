@@ -29,8 +29,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <UserActivityProvider>
           <ToastProvider>
             <header
-              className="border-b border-[var(--border)] bg-[var(--surface)]/80 backdrop-blur-sm sticky top-0 z-50"
+              className="border-b border-[var(--border)] z-50"
               style={{
+                position: 'sticky',
+                top: 0,
+                backgroundColor: '#222529',
                 padding: '0.75rem 1.5rem',
                 display: 'flex',
                 alignItems: 'center',

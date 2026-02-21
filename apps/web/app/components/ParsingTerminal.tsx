@@ -29,15 +29,33 @@ interface ParsingTerminalProps {
   startJob?: boolean;
   onComplete: () => void;
   onDismiss?: () => void;
+  /** Called once the job has been started (so parent can set startJob to false and avoid re-POST on remount) */
+  onJobStarted?: () => void;
 }
 
-const POLL_INTERVAL = 350;
+const POLL_INTERVAL_MS = 350;
+
+/** Sleep for ms but resolve immediately when the page becomes visible (so polling resumes when user returns to tab). */
+function sleepWithVisibilityWake(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        clearTimeout(t);
+        document.removeEventListener('visibilitychange', onVisible);
+        resolve();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+  });
+}
 
 export function ParsingTerminal({
   isActive,
   startJob = true,
   onComplete,
   onDismiss,
+  onJobStarted,
 }: ParsingTerminalProps) {
   const { addToast } = useToast();
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -53,16 +71,21 @@ export function ParsingTerminal({
   onCompleteRef.current = onComplete;
   const addToastRef = useRef(addToast);
   addToastRef.current = addToast;
+  const onJobStartedRef = useRef(onJobStarted);
+  onJobStartedRef.current = onJobStarted;
 
   useEffect(() => {
-    if (!isActive || hasStartedRef.current) return;
-    hasStartedRef.current = true;
-    announcedStartRef.current = false;
+    if (!isActive) return;
+    if (startJob && hasStartedRef.current) return;
+    if (startJob) hasStartedRef.current = true;
+    if (startJob) announcedStartRef.current = false;
 
-    setLogs([]);
-    setCurrentStep(null);
-    setIsComplete(false);
-    setHasError(false);
+    if (startJob) {
+      setLogs([]);
+      setCurrentStep(null);
+      setIsComplete(false);
+      setHasError(false);
+    }
 
     let stopped = false;
     let lastId = -1;
@@ -173,6 +196,7 @@ export function ParsingTerminal({
             ]);
             return;
           }
+          onJobStartedRef.current?.();
         } catch {
           addToastRef.current('Failed to start resume parser.', 'error');
           setHasError(true);
@@ -223,7 +247,7 @@ export function ParsingTerminal({
           break;
         }
 
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+        await sleepWithVisibilityWake(POLL_INTERVAL_MS);
       }
     };
 

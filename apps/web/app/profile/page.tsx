@@ -697,30 +697,38 @@ export default function ProfilePage() {
 
     await runAnalyzeAllBullets(experience, projects);
 
-    // Run AI Insights after parse so scores are ready (and refresh metadata)
-    fetch('/api/profile/insights', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data && typeof data.totalYearsExperience === 'number') {
-          setProfileInsights({
-            totalYearsExperience: data.totalYearsExperience,
-            totalMonthsExperience:
-              typeof data.totalMonthsExperience === 'number'
-                ? data.totalMonthsExperience
-                : data.totalYearsExperience * 12,
-            seniority: data.seniority ?? '—',
-            keywordDepth: data.keywordDepth ?? 0,
-            strengthScore: data.strengthScore ?? 0,
-            overallScore: data.overallScore ?? 0,
-            resumeRating: data.resumeRating ?? '',
-            insightsGeneratedAt: data.insightsGeneratedAt ?? null,
-          });
-          if (data.insightsGeneratedAt) {
-            setProfileMetadata((m) => ({ ...m, insightsGeneratedAt: data.insightsGeneratedAt }));
-          }
-        }
-      })
-      .catch(() => {});
+    // Run skill analyzer then AI Insights (force refresh) after successful parse
+    try {
+      const skillsRes = await fetch('/api/profile/analyze-skills', { method: 'POST' });
+      const skillsData = await skillsRes.json();
+      if (skillsRes.ok && Array.isArray(skillsData.suggestedSkills)) {
+        setSuggestedSkills(skillsData.suggestedSkills);
+      }
+    } catch {
+      // ignore
+    }
+
+    const insightsRes = await fetch('/api/profile/insights?refresh=1', { cache: 'no-store' });
+    const data = insightsRes.ok ? await insightsRes.json() : null;
+    if (data && typeof data.totalYearsExperience === 'number') {
+      setProfileInsights({
+        totalYearsExperience: data.totalYearsExperience,
+        totalMonthsExperience:
+          typeof data.totalMonthsExperience === 'number'
+            ? data.totalMonthsExperience
+            : data.totalYearsExperience * 12,
+        seniority: data.seniority ?? '—',
+        keywordDepth: data.keywordDepth ?? 0,
+        strengthScore: data.strengthScore ?? 0,
+        overallScore: data.overallScore ?? 0,
+        resumeRating: data.resumeRating ?? '',
+        insightsGeneratedAt: data.insightsGeneratedAt ?? null,
+      });
+      if (data.insightsGeneratedAt) {
+        setProfileMetadata((m) => ({ ...m, insightsGeneratedAt: data.insightsGeneratedAt }));
+      }
+    }
+
     fetch('/api/profile/metadata', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((meta) => {
@@ -2140,21 +2148,23 @@ export default function ProfilePage() {
               }}
             >
               <div>
-                <strong style={{ color: '#22c55e' }}>
-                  {parsedData.parsed ? 'Resume parsed' : 'Resume uploaded'}
-                </strong>
-                <p style={{ margin: '0.25rem 0 0 0', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.85rem' }}>
+                  <strong style={{ color: '#22c55e' }}>
+                    {parsedData.parsed ? 'Resume parsed' : 'Resume uploaded'}
+                  </strong>
                   {parsedData.parsed &&
                     (() => {
                       const lastParsed =
                         profileMetadata.resumeParsedAt ?? parsedData.parsedAt ?? null;
                       return lastParsed ? (
                         <>
-                          Last parsed {new Date(lastParsed).toLocaleString()}
                           {' · '}
+                          Last parsed {new Date(lastParsed).toLocaleString()}
                         </>
                       ) : null;
                     })()}
+                </p>
+                <p style={{ margin: '0.25rem 0 0 0', color: 'var(--muted)', fontSize: '0.85rem' }}>
                   <button
                     type="button"
                     onClick={() => setResumeModalOpen(true)}
@@ -2202,6 +2212,7 @@ export default function ProfilePage() {
               startJob={shouldStartJob}
               onComplete={handleParsingComplete}
               onDismiss={() => setShowTerminal(false)}
+              onJobStarted={() => setShouldStartJob(false)}
             />
             {analyzingAllBullets && (
               <p
