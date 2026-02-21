@@ -779,10 +779,21 @@ export default function ProfilePage() {
   const profileComplete =
     !!form.name.trim() && !!form.location.trim() && !!form.work_authorization && !!resume.hasResume;
   useEffect(() => {
-    if (!profileComplete || hasRequestedInsightsRef.current) return;
+    if (!profileComplete || loading || hasRequestedInsightsRef.current) return;
+    const insightsAt = profileMetadata.insightsGeneratedAt
+      ? new Date(profileMetadata.insightsGeneratedAt).getTime()
+      : 0;
+    const profileDates = [
+      profileMetadata.resumeParsedAt,
+      profileMetadata.resumeUploadedAt,
+      profileMetadata.profileUpdatedAt,
+    ].filter(Boolean) as string[];
+    const profileNewerThanInsights =
+      insightsAt > 0 && profileDates.some((d) => new Date(d).getTime() > insightsAt);
     hasRequestedInsightsRef.current = true;
     setLoadingInsights(true);
-    fetch('/api/profile/insights', { cache: 'no-store' })
+    const url = `/api/profile/insights${profileNewerThanInsights ? '?refresh=1' : ''}`;
+    fetch(url, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && typeof data.totalYearsExperience === 'number') {
@@ -806,7 +817,14 @@ export default function ProfilePage() {
       })
       .catch(() => {})
       .finally(() => setLoadingInsights(false));
-  }, [profileComplete]);
+  }, [
+    profileComplete,
+    loading,
+    profileMetadata.insightsGeneratedAt,
+    profileMetadata.resumeParsedAt,
+    profileMetadata.resumeUploadedAt,
+    profileMetadata.profileUpdatedAt,
+  ]);
 
   const refreshProfileInsights = useCallback(async () => {
     setLoadingInsights(true);

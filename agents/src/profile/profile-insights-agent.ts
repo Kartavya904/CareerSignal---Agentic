@@ -6,7 +6,9 @@
 import { complete, parseJsonResponse } from '@careersignal/llm';
 import { z } from 'zod';
 
+const SeniorityLevel = z.enum(['Entry', 'Junior', 'Mid', 'Senior', 'Senior+']);
 const InsightsSchema = z.object({
+  seniority: SeniorityLevel,
   keywordDepth: z.number().min(0).max(100),
   strengthScore: z.number().min(0).max(100),
   overallScore: z.number().min(0).max(100),
@@ -134,9 +136,13 @@ export function estimateTotalYearsFromWork(experience: unknown[]): number {
   return Math.round(months / 12);
 }
 
-/** Under 2 years = Entry; 2–2.99 = Junior; 3–7 = Mid; 8+ = Senior. Title overrides for Senior+/Senior only. */
-export function inferSeniority(totalYears: number, experience: unknown[]): string {
-  if (totalYears < 2) return 'Entry';
+/**
+ * Seniority from computed experience. Uses totalMonths so that e.g. 23 months is Entry (not rounded to 2 years).
+ * Rules: under 24 months = Entry; 24 to under 36 = Junior; 36 to under 96 (8y) = Mid; 8+ = Senior. Title overrides for Senior+/Senior only.
+ */
+export function inferSeniority(totalMonths: number, experience: unknown[]): string {
+  if (totalMonths < 24) return 'Entry';
+  const totalYears = Math.round(totalMonths / 12);
   const titles = (experience as Array<Record<string, unknown>>)
     .map((e) => String(e.title ?? '').toLowerCase())
     .join(' ');
@@ -148,8 +154,8 @@ export function inferSeniority(totalYears: number, experience: unknown[]): strin
   )
     return 'Senior+';
   if (totalYears >= 8 || titles.includes('senior') || titles.includes('staff')) return 'Senior';
-  if (totalYears >= 3 || titles.includes('mid') || titles.includes('engineer')) return 'Mid';
-  if (totalYears >= 2 || titles.includes('junior')) return 'Junior';
+  if (totalMonths >= 36 || titles.includes('mid') || titles.includes('engineer')) return 'Mid';
+  if (totalMonths >= 24 || titles.includes('junior')) return 'Junior';
   return 'Entry';
 }
 
@@ -168,13 +174,13 @@ export async function computeProfileInsights(
   const skills = profile.skills ?? [];
   const totalMonths = estimateTotalMonthsFromWork(experience);
   const totalYears = Math.round(totalMonths / 12);
-  const seniority = inferSeniority(totalYears, experience);
+  const seniorityFromCode = inferSeniority(totalMonths, experience);
 
   if (!profile.resumeRawText?.trim()) {
     return {
       totalYearsExperience: totalYears,
       totalMonthsExperience: totalMonths,
-      seniority,
+      seniority: seniorityFromCode,
       keywordDepth: 0,
       strengthScore: 0,
       overallScore: 0,
@@ -194,18 +200,26 @@ export async function computeProfileInsights(
 ${fullResume}
 --- END RESUME ---
 
-PROFILE SUMMARY (work experience only for years):
-- Total years experience: ${totalYears}
+PROFILE SUMMARY (experience is computed from work history dates only; use these numbers for seniority):
+- Total experience: ${totalYears} years, ${totalMonths % 12} months (${totalMonths} total months)
 - Number of roles: ${experience.length}
-- Inferred seniority: ${seniority}
 - Skills (${skills.length}): ${skills.slice(0, 50).join(', ')}${skills.length > 50 ? '...' : ''}
 
-Provide a concise evaluation. Return JSON only. All three scores must be integers from 0 to 100.
+SENIORITY RULES (you MUST apply these exactly from the total months above; do not infer from job titles alone):
+- Under 24 months total experience → seniority MUST be "Entry"
+- 24 to under 36 months (2 to under 3 years) → "Junior"
+- 36 to under 96 months (3 to under 8 years) → "Mid" (unless title override below)
+- 96+ months (8+ years) or title contains Senior/Staff → "Senior"
+- 15+ years or title contains Director/VP/Principal → "Senior+"
+Title overrides only apply when experience is already in range (e.g. "Senior" title can make it Senior only if experience is at least 3 years). Under 24 months must always be Entry.
+
+Provide a concise evaluation. Return JSON only. Include "seniority" (exactly one of: Entry, Junior, Mid, Senior, Senior+) and scores as integers 0-100.
 {
-  "keywordDepth": <0-100, how well keywords and skills are represented and aligned with typical job postings>,
-  "strengthScore": <0-100, overall strength of experience and impact>,
-  "overallScore": <0-100, holistic resume quality for the target roles>,
-  "resumeRating": "<2-3 sentence paragraph: how would you rate this resume? Be specific and constructive.>"
+  "seniority": "<Entry|Junior|Mid|Senior|Senior+ per rules above>",
+  "keywordDepth": <0-100>,
+  "strengthScore": <0-100>,
+  "overallScore": <0-100>,
+  "resumeRating": "<2-3 sentence paragraph>"
 }`;
 
   const response = await complete(prompt, 'GENERAL', {
@@ -220,13 +234,19 @@ Provide a concise evaluation. Return JSON only. All three scores must be integer
     return {
       totalYearsExperience: totalYears,
       totalMonthsExperience: totalMonths,
-      seniority,
+      seniority: seniorityFromCode,
       keywordDepth: 0,
       strengthScore: 0,
       overallScore: 0,
       resumeRating: 'Unable to generate rating. Please try again.',
     };
   }
+
+  const llmSeniority =
+    result.data.seniority && SeniorityLevel.safeParse(result.data.seniority).success
+      ? result.data.seniority
+      : seniorityFromCode;
+  const seniority = totalMonths < 24 ? 'Entry' : llmSeniority;
 
   return {
     totalYearsExperience: totalYears,
