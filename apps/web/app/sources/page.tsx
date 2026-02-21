@@ -13,11 +13,171 @@ type Source = {
   status: string;
 };
 
+function SourceRow({
+  source: s,
+  onToggle,
+  onDelete,
+}: {
+  source: Source;
+  onToggle: (enabled: boolean) => void;
+  onDelete: () => void;
+}) {
+  const [toggling, setToggling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const handleToggle = () => {
+    const next = !s.enabled;
+    setToggling(true);
+    fetch(`/api/sources/${s.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    })
+      .then((r) => {
+        if (r.ok) onToggle(next);
+      })
+      .finally(() => setToggling(false));
+  };
+  const handleDelete = () => {
+    if (deleting) return;
+    setDeleting(true);
+    fetch(`/api/sources/${s.id}`, { method: 'DELETE' })
+      .then((r) => {
+        if (r.ok) onDelete();
+      })
+      .finally(() => setDeleting(false));
+  };
+
+  const [deleteHover, setDeleteHover] = useState(false);
+  return (
+    <li
+      className="card"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        position: 'relative',
+      }}
+    >
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={deleting}
+        aria-label="Remove source"
+        onMouseEnter={() => setDeleteHover(true)}
+        onMouseLeave={() => setDeleteHover(false)}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          border: `1px solid ${deleteHover ? 'rgba(239, 68, 68, 0.8)' : 'var(--border)'}`,
+          background: deleteHover ? 'rgba(239, 68, 68, 0.1)' : 'var(--surface-elevated)',
+          color: deleteHover ? '#ef4444' : 'var(--muted)',
+          fontSize: '1.25rem',
+          lineHeight: 1,
+          cursor: deleting ? 'not-allowed' : 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'border-color 0.15s ease, background 0.15s ease, color 0.15s ease',
+          transform: 'translate(50%, -50%)',
+        }}
+      >
+        ×
+      </button>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <strong style={{ color: 'var(--text)', fontSize: '1rem' }}>{s.name}</strong>
+        {s.isBlessed && (
+          <span className="badge badge-muted" style={{ fontSize: '0.7rem' }}>
+            default
+          </span>
+        )}
+        <span
+          className="badge"
+          style={{
+            marginLeft: 'auto',
+            background: s.enabled ? 'rgba(234, 179, 8, 0.2)' : 'var(--surface-elevated)',
+            color: s.enabled ? '#eab308' : 'var(--muted)',
+          }}
+        >
+          {s.enabled ? 'Active' : 'Inactive'}
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <a
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--accent)',
+            wordBreak: 'break-all',
+            flex: '1 1 auto',
+            minWidth: 0,
+          }}
+        >
+          {s.url}
+        </a>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={s.enabled}
+          disabled={toggling}
+          onClick={handleToggle}
+          style={{
+            width: 36,
+            height: 20,
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+            background: s.enabled ? 'var(--accent)' : 'var(--surface-elevated)',
+            cursor: toggling ? 'not-allowed' : 'pointer',
+            position: 'relative',
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              top: 2,
+              left: s.enabled ? 20 : 2,
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              background: '#fff',
+              transition: 'left 0.2s ease',
+            }}
+          />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+type DefaultSource = { name: string; url: string; type: string };
+
 export default function SourcesPage() {
   const reportAction = useReportAction();
   const [sources, setSources] = useState<Source[]>([]);
+  const [defaults, setDefaults] = useState<DefaultSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [addingDefault, setAddingDefault] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
 
@@ -30,6 +190,13 @@ export default function SourcesPage() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/sources/defaults')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setDefaults)
+      .catch(() => setDefaults([]));
   }, []);
 
   const handleAdd = (e: React.FormEvent) => {
@@ -66,56 +233,140 @@ export default function SourcesPage() {
       <div className="page-head" style={{ marginBottom: '1.5rem' }}>
         <h1>Sources</h1>
         <p>
-          Job boards and company career pages. Default sources are pre-seeded when you first run the
-          app.
+          Job boards and company career pages. Add custom sources or choose from the default list;
+          only the ones you add are stored.
         </p>
       </div>
 
-      <div className="card" style={{ marginBottom: '2rem', maxWidth: '28rem' }}>
-        <h2
-          className="section-title"
-          style={{
-            color: 'var(--accent)',
-            textTransform: 'none',
-            letterSpacing: '0',
-            marginTop: 0,
-          }}
-        >
-          Add source
-        </h2>
-        <form
-          onSubmit={handleAdd}
-          style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
-        >
-          <div>
-            <label className="label">Name</label>
-            <input
-              type="text"
-              className="input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. LinkedIn Jobs"
-            />
-          </div>
-          <div>
-            <label className="label">URL</label>
-            <input
-              type="url"
-              className="input"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={adding}
-            className="btn btn-primary"
-            style={{ alignSelf: 'flex-start' }}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '1.5rem',
+          marginBottom: '2rem',
+        }}
+      >
+        <div className="card">
+          <h2
+            className="section-title"
+            style={{
+              color: 'var(--accent)',
+              textTransform: 'none',
+              letterSpacing: '0',
+              marginTop: 0,
+            }}
           >
-            {adding ? 'Adding…' : 'Add source'}
-          </button>
-        </form>
+            Add source
+          </h2>
+          <form
+            onSubmit={handleAdd}
+            style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+          >
+            <div>
+              <label className="label">Name</label>
+              <input
+                type="text"
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. LinkedIn Jobs"
+              />
+            </div>
+            <div>
+              <label className="label">URL</label>
+              <input
+                type="url"
+                className="input"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={adding}
+              className="btn btn-primary"
+              style={{ alignSelf: 'flex-start' }}
+            >
+              {adding ? 'Adding…' : 'Add source'}
+            </button>
+          </form>
+        </div>
+
+        <div className="card">
+          <h2
+            className="section-title"
+            style={{
+              color: 'var(--accent)',
+              textTransform: 'none',
+              letterSpacing: '0',
+              marginTop: 0,
+            }}
+          >
+            Add default sources
+          </h2>
+          <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
+            Add only the ones you want. They are saved to your account when you add them.
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              justifyContent: 'center',
+            }}
+          >
+            {defaults.map((d) => {
+              const alreadyAdded = sources.some((s) => s.url === d.url);
+              const isAdding = addingDefault === d.url;
+              return (
+                <button
+                  key={d.url}
+                  type="button"
+                  disabled={alreadyAdded || isAdding}
+                  onClick={() => {
+                    if (alreadyAdded || isAdding) return;
+                    setAddingDefault(d.url);
+                    fetch('/api/sources', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: d.name,
+                        url: d.url,
+                        type: d.type,
+                        is_blessed: true,
+                      }),
+                    })
+                      .then((r) => r.json())
+                      .then(() => {
+                        reportAction('add_source', { name: d.name, url: d.url });
+                        load();
+                      })
+                      .finally(() => setAddingDefault(null));
+                  }}
+                  style={{
+                    padding: '0.35rem 0.5rem',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    background: alreadyAdded ? 'var(--surface-elevated)' : 'var(--surface)',
+                    color: alreadyAdded ? 'var(--muted)' : 'var(--text)',
+                    fontSize: '0.8125rem',
+                    whiteSpace: 'nowrap',
+                    cursor: alreadyAdded || isAdding ? 'default' : 'pointer',
+                    opacity: alreadyAdded ? 0.85 : 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.125rem',
+                  }}
+                >
+                  <span>{alreadyAdded ? 'Added' : isAdding ? 'Adding…' : d.name}</span>
+                  <span style={{ fontSize: '0.75rem', color: '#22c55e' }}>0 jobs</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <h2 className="section-title" style={{ marginBottom: '0.75rem' }}>
@@ -126,7 +377,7 @@ export default function SourcesPage() {
           className="card"
           style={{ color: 'var(--muted)', textAlign: 'center', padding: '2rem' }}
         >
-          No sources yet. Add one above or run the app once to seed default boards.
+          No sources yet. Add a custom source or add from the default list above.
         </div>
       ) : (
         <ul
@@ -136,45 +387,18 @@ export default function SourcesPage() {
             margin: 0,
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem',
+            gap: '1.5rem',
           }}
         >
           {sources.map((s) => (
-            <li
+            <SourceRow
               key={s.id}
-              className="card"
-              style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
-            >
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
-              >
-                <strong style={{ color: 'var(--text)', fontSize: '1rem' }}>{s.name}</strong>
-                {s.isBlessed && (
-                  <span className="badge badge-muted" style={{ fontSize: '0.7rem' }}>
-                    default
-                  </span>
-                )}
-                <span
-                  className="badge"
-                  style={{
-                    marginLeft: 'auto',
-                    background:
-                      s.status === 'ACTIVE' ? 'var(--accent-muted)' : 'var(--surface-elevated)',
-                    color: s.status === 'ACTIVE' ? 'var(--accent)' : 'var(--muted)',
-                  }}
-                >
-                  {s.status}
-                </span>
-              </div>
-              <a
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: '0.875rem', color: 'var(--accent)', wordBreak: 'break-all' }}
-              >
-                {s.url}
-              </a>
-            </li>
+              source={s}
+              onToggle={(enabled) => {
+                setSources((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled } : x)));
+              }}
+              onDelete={() => setSources((prev) => prev.filter((x) => x.id !== s.id))}
+            />
           ))}
         </ul>
       )}

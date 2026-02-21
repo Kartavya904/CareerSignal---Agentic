@@ -68,8 +68,8 @@ export default function RunsPage() {
   if (loading) {
     return (
       <div className="page-head">
-        <h1>Runs</h1>
-        <p style={{ color: 'var(--muted)' }}>Loading runs…</p>
+        <h1>Results</h1>
+        <p style={{ color: 'var(--muted)' }}>Loading results…</p>
       </div>
     );
   }
@@ -77,10 +77,8 @@ export default function RunsPage() {
   return (
     <div>
       <div className="page-head" style={{ marginBottom: '1.5rem' }}>
-        <h1>Runs</h1>
-        <p>
-          Each run is a scan across your enabled sources. Agents extract, rank, and surface jobs.
-        </p>
+        <h1>Results</h1>
+        <p>Each scan runs across your enabled sources. Agents extract, rank, and surface jobs.</p>
       </div>
 
       <div
@@ -122,14 +120,14 @@ export default function RunsPage() {
       </div>
 
       <h2 className="section-title" style={{ marginBottom: '0.75rem' }}>
-        Run history
+        Scan history
       </h2>
       {runs.length === 0 ? (
         <div
           className="card"
           style={{ color: 'var(--muted)', textAlign: 'center', padding: '2rem' }}
         >
-          No runs yet. Click &quot;Start scan&quot; to create one.
+          No results yet. Click &quot;Start scan&quot; to create one.
         </div>
       ) : (
         <ul

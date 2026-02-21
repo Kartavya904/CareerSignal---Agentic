@@ -55,17 +55,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <a href="/dashboard" className={navLinkClass}>
                       Dashboard
                     </a>
-                    <a href="/profile" className={navLinkClass}>
-                      Profile
-                    </a>
-                    <a href="/preferences" className={navLinkClass}>
-                      Preferences
-                    </a>
                     <a href="/sources" className={navLinkClass}>
                       Sources
                     </a>
                     <a href="/runs" className={navLinkClass}>
-                      Runs
+                      Results
                     </a>
                   </>
                 )}

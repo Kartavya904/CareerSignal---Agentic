@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from './client';
 import { users } from './schema';
-import { seedBlessedSources } from './seed';
 
 export interface CreateUserInput {
   email: string;
@@ -52,7 +51,6 @@ export async function createUserWithAccount(
     })
     .returning({ id: users.id, email: users.email, name: users.name });
   if (!user) throw new Error('Failed to create user');
-  await seedBlessedSources(user.id);
   return {
     id: user.id,
     email: user.email ?? input.email,

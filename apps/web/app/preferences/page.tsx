@@ -20,7 +20,14 @@ const SENIORITY_OPTIONS = [
   'VP',
   'C_LEVEL',
 ] as const;
-const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'FREELANCE', 'UNKNOWN'] as const;
+const EMPLOYMENT_TYPES = [
+  'INTERNSHIP',
+  'FULL_TIME',
+  'PART_TIME',
+  'CONTRACT',
+  'FREELANCE',
+  'UNKNOWN',
+] as const;
 const STRICT_OPTIONS = ['STRICT', 'SEMI_STRICT', 'OFF'] as const;
 const MAX_CONTACTS_OPTIONS = [1, 2, 3, 5] as const;
 
@@ -226,7 +233,7 @@ export default function PreferencesPage() {
     <div>
       <div className="page-head" style={{ marginBottom: '1.5rem' }}>
         <h1>Preferences</h1>
-        <p>Job search and ranking preferences. Used for scoring and filtering runs.</p>
+        <p>Job search and ranking preferences. Used for scoring and filtering results.</p>
       </div>
 
       <form onSubmit={save}>
@@ -283,34 +290,38 @@ export default function PreferencesPage() {
           </div>
           <div>
             <label className="label">Employment types *</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-              {EMPLOYMENT_TYPES.map((t) => (
-                <label
-                  key={t}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.employment_types.includes(t)}
-                    onChange={(e) => {
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {EMPLOYMENT_TYPES.map((t) => {
+                const selected = form.employment_types.includes(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
                       setForm((f) => ({
                         ...f,
-                        employment_types: e.target.checked
-                          ? [...f.employment_types, t]
-                          : f.employment_types.filter((x) => x !== t),
+                        employment_types: selected
+                          ? f.employment_types.filter((x) => x !== t)
+                          : [...f.employment_types, t],
                       }));
                     }}
-                  />
-                  {t.replace(/_/g, ' ')}
-                </label>
-              ))}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: 8,
+                      border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                      color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.875rem',
+                      fontWeight: selected ? 600 : 500,
+                      cursor: 'pointer',
+                      transition:
+                        'border-color 0.15s ease, background 0.15s ease, color 0.15s ease',
+                    }}
+                  >
+                    {t.replace(/_/g, ' ')}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -427,33 +438,37 @@ export default function PreferencesPage() {
           <div>
             <label className="label">Target seniority</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              {SENIORITY_OPTIONS.map((s) => (
-                <label
-                  key={s}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.target_seniority.includes(s)}
-                    onChange={(e) => {
+              {SENIORITY_OPTIONS.map((s) => {
+                const selected = form.target_seniority.includes(s);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
                       setForm((f) => ({
                         ...f,
-                        target_seniority: e.target.checked
-                          ? [...f.target_seniority, s]
-                          : f.target_seniority.filter((x) => x !== s),
+                        target_seniority: selected
+                          ? f.target_seniority.filter((x) => x !== s)
+                          : [...f.target_seniority, s],
                       }));
                     }}
-                  />
-                  {s}
-                </label>
-              ))}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: 8,
+                      border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                      color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.875rem',
+                      fontWeight: selected ? 600 : 500,
+                      cursor: 'pointer',
+                      transition:
+                        'border-color 0.15s ease, background 0.15s ease, color 0.15s ease',
+                    }}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

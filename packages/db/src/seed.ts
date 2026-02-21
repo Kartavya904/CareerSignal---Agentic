@@ -2,7 +2,7 @@ import { getDb } from './client';
 import { users } from './schema';
 import { addSource } from './sources';
 
-const BLESSED_SOURCES = [
+export const BLESSED_SOURCES = [
   { name: 'LinkedIn Jobs', url: 'https://www.linkedin.com/jobs/', type: 'AGGREGATOR' as const },
   { name: 'Indeed', url: 'https://www.indeed.com/jobs', type: 'AGGREGATOR' as const },
   { name: 'Wellfound (AngelList)', url: 'https://wellfound.com/jobs', type: 'AGGREGATOR' as const },
@@ -19,14 +19,13 @@ const BLESSED_SOURCES = [
   },
 ];
 
-/** Ensures default user exists; returns user id. Seeds blessed sources on first run. */
+/** Ensures default user exists; returns user id. Default sources are not auto-seeded; user adds them from the Sources page. */
 export async function ensureDefaultUser(): Promise<string> {
   const db = getDb();
   const [existing] = await db.select().from(users).limit(1);
   if (existing) return existing.id;
   const [user] = await db.insert(users).values({}).returning();
   if (!user) throw new Error('Failed to create default user');
-  await seedBlessedSources(user.id);
   return user.id;
 }
 
