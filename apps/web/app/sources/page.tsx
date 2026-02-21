@@ -52,115 +52,128 @@ export default function SourcesPage() {
       .catch(() => setAdding(false));
   };
 
-  if (loading) return <p>Loading sources…</p>;
+  if (loading) {
+    return (
+      <div className="page-head">
+        <h1>Sources</h1>
+        <p style={{ color: 'var(--muted)' }}>Loading sources…</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Sources</h1>
-      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
-        Job boards and company career pages. Default sources are pre-seeded when you first run the
-        app.
-      </p>
+      <div className="page-head" style={{ marginBottom: '1.5rem' }}>
+        <h1>Sources</h1>
+        <p>
+          Job boards and company career pages. Default sources are pre-seeded when you first run the
+          app.
+        </p>
+      </div>
 
-      <form
-        onSubmit={handleAdd}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem',
-          maxWidth: '28rem',
-          marginBottom: '2rem',
-        }}
-      >
-        <h2 style={{ fontSize: '1rem', margin: 0 }}>Add source</h2>
-        <label>
-          Name
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. LinkedIn Jobs"
-            style={{
-              display: 'block',
-              marginTop: '0.25rem',
-              padding: '0.5rem',
-              width: '100%',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-            }}
-          />
-        </label>
-        <label>
-          URL
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://..."
-            style={{
-              display: 'block',
-              marginTop: '0.25rem',
-              padding: '0.5rem',
-              width: '100%',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-            }}
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={adding}
+      <div className="card" style={{ marginBottom: '2rem', maxWidth: '28rem' }}>
+        <h2
+          className="section-title"
           style={{
-            padding: '0.6rem 1rem',
-            background: 'var(--accent)',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            alignSelf: 'flex-start',
+            color: 'var(--accent)',
+            textTransform: 'none',
+            letterSpacing: '0',
+            marginTop: 0,
           }}
         >
-          {adding ? 'Adding…' : 'Add source'}
-        </button>
-      </form>
+          Add source
+        </h2>
+        <form
+          onSubmit={handleAdd}
+          style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+        >
+          <div>
+            <label className="label">Name</label>
+            <input
+              type="text"
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. LinkedIn Jobs"
+            />
+          </div>
+          <div>
+            <label className="label">URL</label>
+            <input
+              type="url"
+              className="input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={adding}
+            className="btn btn-primary"
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {adding ? 'Adding…' : 'Add source'}
+          </button>
+        </form>
+      </div>
 
-      <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Your sources</h2>
+      <h2 className="section-title" style={{ marginBottom: '0.75rem' }}>
+        Your sources
+      </h2>
       {sources.length === 0 ? (
-        <p style={{ color: 'var(--muted)' }}>
+        <div
+          className="card"
+          style={{ color: 'var(--muted)', textAlign: 'center', padding: '2rem' }}
+        >
           No sources yet. Add one above or run the app once to seed default boards.
-        </p>
+        </div>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+          }}
+        >
           {sources.map((s) => (
             <li
               key={s.id}
-              style={{
-                padding: '0.75rem',
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                marginBottom: '0.5rem',
-              }}
+              className="card"
+              style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
             >
-              <strong>{s.name}</strong>
-              {s.isBlessed && (
-                <span style={{ marginLeft: '0.5rem', color: 'var(--muted)', fontSize: '0.875rem' }}>
-                  default
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
+              >
+                <strong style={{ color: 'var(--text)', fontSize: '1rem' }}>{s.name}</strong>
+                {s.isBlessed && (
+                  <span className="badge badge-muted" style={{ fontSize: '0.7rem' }}>
+                    default
+                  </span>
+                )}
+                <span
+                  className="badge"
+                  style={{
+                    marginLeft: 'auto',
+                    background:
+                      s.status === 'ACTIVE' ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                    color: s.status === 'ACTIVE' ? 'var(--accent)' : 'var(--muted)',
+                  }}
+                >
+                  {s.status}
                 </span>
-              )}
-              <br />
+              </div>
               <a
                 href={s.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontSize: '0.875rem' }}
+                style={{ fontSize: '0.875rem', color: 'var(--accent)', wordBreak: 'break-all' }}
               >
                 {s.url}
               </a>
-              <span style={{ marginLeft: '0.5rem', color: 'var(--muted)', fontSize: '0.875rem' }}>
-                ({s.status})
-              </span>
             </li>
           ))}
         </ul>

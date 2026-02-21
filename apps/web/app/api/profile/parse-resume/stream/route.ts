@@ -1,4 +1,10 @@
-import { getDb, getUserById, upsertProfile, getProfileByUserId } from '@careersignal/db';
+import {
+  getDb,
+  getUserById,
+  upsertProfile,
+  getProfileByUserId,
+  updateUserMetadata,
+} from '@careersignal/db';
 import { getRequiredUserId } from '@/lib/auth';
 import { getUserDataDir, getResumeFullPath } from '@/lib/user-data';
 import { extractText } from '@careersignal/agents';
@@ -11,88 +17,89 @@ function createSSEMessage(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(createSSEMessage(event, data)));
+      let closed = false;
+      const send = async (event: string, data: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(createSSEMessage(event, data)));
+          await new Promise<void>((r) => setImmediate(r));
+          await new Promise<void>((r) => setTimeout(r, 10));
+        } catch {
+          closed = true;
+        }
       };
 
-      // Send one event immediately so the client gets an update before any async work (avoids buffering)
-      send('log', { type: 'info', message: 'Resume parser started. Connecting...' });
-
       try {
-        // Authenticate
-        send('log', { type: 'info', message: 'Authenticating user...' });
+        await send('log', { type: 'info', message: 'Authenticating user...' });
         const userId = await getRequiredUserId();
         const db = getDb();
         const user = await getUserById(db, userId);
 
         if (!user?.email) {
-          send('error', { message: 'User email not found' });
+          await send('error', { message: 'User email not found' });
+          closed = true;
           controller.close();
           return;
         }
 
-        send('log', { type: 'success', message: `Authenticated as ${user.email}` });
+        await send('log', { type: 'success', message: `Authenticated as ${user.email}` });
 
-        // Get resume path
-        send('log', { type: 'info', message: 'Locating resume file...' });
+        await send('log', { type: 'info', message: 'Locating resume file...' });
         const userDir = await getUserDataDir(user.email);
         const resumePath = getResumeFullPath(userDir);
 
         if (!resumePath) {
-          send('error', { message: 'No resume file found' });
+          await send('error', { message: 'No resume file found' });
+          closed = true;
           controller.close();
           return;
         }
 
-        send('log', {
+        await send('log', {
           type: 'success',
           message: `Found resume at ${resumePath.split(/[/\\]/).pop()}`,
         });
 
-        // Step 1: Extract PDF text
-        send('log', { type: 'info', message: 'Extracting text from PDF...' });
-        send('step', { step: 1, total: 4, name: 'PDF Text Extraction' });
+        await send('log', { type: 'info', message: 'Extracting text from PDF...' });
+        await send('step', { step: 1, total: 4, name: 'PDF Text Extraction' });
 
         const extracted = await extractText(resumePath);
-        send('log', {
+        await send('log', {
           type: 'success',
           message: `Extracted ${extracted.text.length} characters from ${extracted.numPages} page(s)`,
         });
 
-        // Step 2: Parse basic info
-        send('log', {
+        await send('log', {
           type: 'info',
           message: 'Parsing basic information (name, email, phone, location)...',
         });
-        send('step', { step: 2, total: 4, name: 'Basic Info Extraction' });
+        await send('step', { step: 2, total: 4, name: 'Basic Info Extraction' });
 
         const basicInfo = extractBasicInfo(extracted.text);
-        send('log', { type: 'success', message: `Found: ${basicInfo.name}` });
+        await send('log', { type: 'success', message: `Found: ${basicInfo.name}` });
         if (basicInfo.email)
-          send('log', { type: 'detail', message: `  Email: ${basicInfo.email}` });
+          await send('log', { type: 'detail', message: `  Email: ${basicInfo.email}` });
         if (basicInfo.phone)
-          send('log', { type: 'detail', message: `  Phone: ${basicInfo.phone}` });
+          await send('log', { type: 'detail', message: `  Phone: ${basicInfo.phone}` });
         if (basicInfo.location)
-          send('log', { type: 'detail', message: `  Location: ${basicInfo.location}` });
+          await send('log', { type: 'detail', message: `  Location: ${basicInfo.location}` });
         if (basicInfo.linkedinUrl)
-          send('log', { type: 'detail', message: `  LinkedIn: ${basicInfo.linkedinUrl}` });
+          await send('log', { type: 'detail', message: `  LinkedIn: ${basicInfo.linkedinUrl}` });
         if (basicInfo.githubUrl)
-          send('log', { type: 'detail', message: `  GitHub: ${basicInfo.githubUrl}` });
+          await send('log', { type: 'detail', message: `  GitHub: ${basicInfo.githubUrl}` });
 
-        // Step 3: Multi-step LLM extraction
-        send('log', { type: 'info', message: 'Starting multi-step AI extraction...' });
-        send('step', { step: 3, total: 4, name: 'AI Section Extraction' });
-        send('log', {
+        await send('log', { type: 'info', message: 'Starting multi-step AI extraction...' });
+        await send('step', { step: 3, total: 4, name: 'AI Section Extraction' });
+        await send('log', {
           type: 'thinking',
           message: 'Using Planner + Extractor approach for reliability',
         });
 
-        // Import and run the section extraction with progress callback
         const { extractSections, normalizeSkills } = await import('@careersignal/agents');
 
         const sections = await extractSections(extracted.text, (progress) => {
@@ -104,7 +111,7 @@ export async function GET(request: Request) {
               : progress.status === 'error'
                 ? 'error'
                 : 'thinking';
-          send('log', {
+          void send('log', {
             type,
             message: `${statusEmoji} [${progress.step}] ${progress.message || progress.status}`,
           });
@@ -112,7 +119,6 @@ export async function GET(request: Request) {
 
         const normalizedSkills = normalizeSkills(sections.skills);
 
-        // Check if extraction was successful (not empty defaults)
         const extractionSuccessful =
           sections.education.length > 0 ||
           sections.experience.length > 0 ||
@@ -120,31 +126,37 @@ export async function GET(request: Request) {
           normalizedSkills.all.length > 0;
 
         if (!extractionSuccessful) {
-          send('log', {
+          await send('log', {
             type: 'error',
             message: 'LLM extraction returned empty results. Keeping existing data.',
           });
-          send('log', {
+          await send('log', {
             type: 'info',
             message: 'This may be due to LLM timeout. Try re-parsing.',
           });
-          send('error', { message: 'Extraction failed - LLM returned empty results' });
+          await send('error', { message: 'Extraction failed - LLM returned empty results' });
+          closed = true;
           controller.close();
           return;
         }
 
-        send('log', {
+        await send('log', {
           type: 'success',
           message: `Extracted ${sections.education.length} education entries`,
         });
-        send('log', {
+        await send('log', {
           type: 'success',
           message: `Extracted ${sections.experience.length} work experiences`,
         });
-        send('log', { type: 'success', message: `Extracted ${sections.projects.length} projects` });
-        send('log', { type: 'success', message: `Found ${normalizedSkills.all.length} skills` });
+        await send('log', {
+          type: 'success',
+          message: `Extracted ${sections.projects.length} projects`,
+        });
+        await send('log', {
+          type: 'success',
+          message: `Found ${normalizedSkills.all.length} skills`,
+        });
 
-        // Log bullet counts for verification
         const totalExpBullets = sections.experience.reduce(
           (sum, exp) => sum + (exp.bullets?.length || 0),
           0,
@@ -153,29 +165,20 @@ export async function GET(request: Request) {
           (sum, proj) => sum + (proj.bullets?.length || 0),
           0,
         );
-        send('log', {
+        await send('log', {
           type: 'detail',
           message: `  Total experience bullets: ${totalExpBullets}`,
         });
-        send('log', {
+        await send('log', {
           type: 'detail',
           message: `  Total project bullets: ${totalProjBullets}`,
         });
 
-        // Step 4: Save to database
-        send('log', { type: 'info', message: 'Saving parsed data to database...' });
-        send('step', { step: 4, total: 4, name: 'Saving to Database' });
+        await send('log', { type: 'info', message: 'Saving parsed data to database...' });
+        await send('step', { step: 4, total: 4, name: 'Saving to Database' });
 
         const existingProfile = await getProfileByUserId(db, userId);
-        console.log('[parse-resume/stream] Saving to DB', {
-          userId,
-          experienceCount: sections.experience.length,
-          projectsCount: sections.projects.length,
-          educationCount: sections.education.length,
-          skillsCount: normalizedSkills.all.length,
-        });
 
-        // Transform camelCase to snake_case for date fields
         const transformExperience = (exp: (typeof sections.experience)[number]) => ({
           company: exp.company,
           title: exp.title,
@@ -231,10 +234,10 @@ export async function GET(request: Request) {
         };
 
         await upsertProfile(db, userId, profileData);
-        console.log('[parse-resume/stream] upsertProfile completed for user', userId);
+        await updateUserMetadata(db, userId, { resumeParsedAt: new Date() });
 
-        send('log', { type: 'success', message: 'Profile updated successfully!' });
-        send('complete', {
+        await send('log', { type: 'success', message: 'Profile updated successfully!' });
+        await send('complete', {
           success: true,
           summary: {
             name: basicInfo.name,
@@ -246,10 +249,10 @@ export async function GET(request: Request) {
         });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        console.error('[parse-resume/stream] Error', err);
-        send('log', { type: 'error', message: `Error: ${errorMessage}` });
-        send('error', { message: errorMessage });
+        await send('log', { type: 'error', message: `Error: ${errorMessage}` });
+        await send('error', { message: errorMessage });
       } finally {
+        closed = true;
         controller.close();
       }
     },

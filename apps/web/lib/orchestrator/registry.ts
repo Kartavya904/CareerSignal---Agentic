@@ -2,7 +2,12 @@
  * Agent registry: maps workflow step agent names to executors.
  * Each executor receives step inputs and run context, returns updates to merge into context.
  */
-import { getProfileByUserId, getSourceById, getEnabledSourceIds } from '@careersignal/db';
+import {
+  getProfileByUserId,
+  getPreferencesByUserId,
+  getSourceById,
+  getEnabledSourceIds,
+} from '@careersignal/db';
 import {
   validateSource,
   extractJobsFromHtml,
@@ -46,27 +51,57 @@ async function profileLoader(
   if (!profile) {
     return { profile: null, preferences: {} };
   }
-  const prefsResult = await buildPreferencesFromProfile({
-    name: profile.name,
-    location: profile.location ?? undefined,
-    workAuthorization: profile.workAuthorization ?? undefined,
-    skills: (profile.skills as string[]) ?? [],
-    experience: (profile.experience as { title: string; company: string }[]) ?? [],
-    education: (profile.education as { institution: string; degree?: string }[]) ?? [],
-    targetRoles: (profile.targetRoles as string[]) ?? [],
-  });
-  const preferences: UserPreferences = {
-    workAuthorization:
-      (profile.workAuthorization as UserPreferences['workAuthorization']) ?? 'OTHER',
-    targetLocations: prefsResult.preferences.targetLocations ?? [],
-    remotePreference: (profile.remotePreference as UserPreferences['remotePreference']) ?? 'ANY',
-    targetSeniority: prefsResult.preferences.targetSeniority ?? [],
-    targetRoles: (profile.targetRoles as string[]) ?? [],
-    skills: (profile.skills as string[]) ?? [],
-    industries: (profile.industries as string[]) ?? [],
-    employmentTypes: (profile.employmentType as string[]) ?? [],
-    strictMode: true,
-  };
+
+  const prefsRow = await getPreferencesByUserId(db, userId);
+  let preferences: UserPreferences;
+
+  if (prefsRow) {
+    preferences = {
+      workAuthorization: prefsRow.workAuthorization as UserPreferences['workAuthorization'],
+      targetLocations: prefsRow.targetLocations ?? [],
+      remotePreference: (prefsRow.remotePreference as UserPreferences['remotePreference']) ?? 'ANY',
+      targetSeniority: prefsRow.targetSeniority ?? [],
+      targetRoles: prefsRow.targetRoles ?? [],
+      skills: prefsRow.skills ?? [],
+      industries: prefsRow.industries ?? [],
+      employmentTypes: prefsRow.employmentTypes ?? [],
+      salaryMin: prefsRow.salaryMin != null ? Number(prefsRow.salaryMin) : undefined,
+      salaryMax: prefsRow.salaryMax != null ? Number(prefsRow.salaryMax) : undefined,
+      salaryCurrency: prefsRow.salaryCurrency ?? undefined,
+      strictFilterLevel:
+        (prefsRow.strictFilterLevel as UserPreferences['strictFilterLevel']) ?? 'STRICT',
+      maxContactsPerJob: prefsRow.maxContactsPerJob as UserPreferences['maxContactsPerJob'],
+      outreachTone: prefsRow.outreachTone ?? undefined,
+    };
+  } else {
+    const prefsResult = await buildPreferencesFromProfile({
+      name: profile.name,
+      location: profile.location ?? undefined,
+      workAuthorization: profile.workAuthorization ?? undefined,
+      skills: (profile.skills as string[]) ?? [],
+      experience: (profile.experience as { title: string; company: string }[]) ?? [],
+      education: (profile.education as { institution: string; degree?: string }[]) ?? [],
+      targetRoles: (profile.targetRoles as string[]) ?? [],
+    });
+    const rawLocs = prefsResult.preferences.targetLocations ?? [];
+    const targetLocations = rawLocs.map((loc) =>
+      typeof loc === 'string' ? { country: loc } : loc,
+    ) as UserPreferences['targetLocations'];
+    preferences = {
+      workAuthorization:
+        (profile.workAuthorization as UserPreferences['workAuthorization']) ?? 'OTHER',
+      targetLocations,
+      remotePreference: (profile.remotePreference as UserPreferences['remotePreference']) ?? 'ANY',
+      targetSeniority: prefsResult.preferences.targetSeniority ?? [],
+      targetRoles: (profile.targetRoles as string[]) ?? [],
+      skills: (profile.skills as string[]) ?? [],
+      industries: (profile.industries as string[]) ?? [],
+      employmentTypes: (profile.employmentType as string[]) ?? [],
+      strictFilterLevel: 'STRICT',
+      maxContactsPerJob: 2,
+    };
+  }
+
   return {
     profile: profile as unknown,
     preferences: preferences as unknown,

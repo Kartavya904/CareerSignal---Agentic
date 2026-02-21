@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
 import { writeFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
-import { getDb, getUserById, upsertProfile, getProfileByUserId } from '@careersignal/db';
+import {
+  getDb,
+  getUserById,
+  getProfileByUserId,
+  updateProfileResume,
+  updateUserMetadata,
+} from '@careersignal/db';
 import { getRequiredUserId } from '@/lib/auth';
 import { getUserDataDir, getResumeFilePath, getResumeFilename } from '@/lib/user-data';
+import { extractText } from '@careersignal/agents';
 import path from 'path';
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt'];
@@ -53,15 +60,20 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     await writeFile(resumePath, Buffer.from(bytes));
 
-    // Update profile with resume reference
+    // Extract raw text and save to profile so AI Insights and parse have it; keep other profile fields intact
     const profile = await getProfileByUserId(db, userId);
     if (profile) {
-      await upsertProfile(db, userId, {
-        name: profile.name,
-        location: profile.location,
-        workAuthorization: profile.workAuthorization,
-        resumeFileRef: `resume${ext}`,
-      });
+      try {
+        const extracted = await extractText(resumePath);
+        await updateProfileResume(db, userId, {
+          resumeFileRef: `resume${ext}`,
+          resumeRawText: extracted.text,
+        });
+      } catch (err) {
+        console.warn('[profile/resume] Extract text failed, continuing. Parse will retry.', err);
+        await updateProfileResume(db, userId, { resumeFileRef: `resume${ext}` });
+      }
+      await updateUserMetadata(db, userId, { resumeUploadedAt: new Date() });
     }
 
     // Trigger resume parsing asynchronously (don't wait)
@@ -143,14 +155,34 @@ export async function DELETE() {
       }
     }
 
-    // Clear resume reference in profile
+    // Clear only resume-related fields; keep experience, education, skills, etc.
     const profile = await getProfileByUserId(db, userId);
     if (profile) {
       await upsertProfile(db, userId, {
         name: profile.name,
         location: profile.location,
         workAuthorization: profile.workAuthorization,
+        email: profile.email ?? null,
+        phone: profile.phone ?? null,
+        seniority: profile.seniority ?? null,
+        targetRoles: (profile.targetRoles as string[]) ?? [],
+        skills: (profile.skills as string[]) ?? [],
+        highlightedSkills: (profile.highlightedSkills as string[]) ?? [],
+        suggestedSkills: (profile.suggestedSkills as string[]) ?? [],
+        experience: (profile.experience as unknown[]) ?? [],
+        education: (profile.education as unknown[]) ?? [],
+        projects: (profile.projects as unknown[]) ?? [],
+        certifications: (profile.certifications as string[]) ?? [],
+        industries: (profile.industries as string[]) ?? [],
+        languages: (profile.languages as string[]) ?? [],
+        employmentType: (profile.employmentType as string[]) ?? [],
+        remotePreference: profile.remotePreference ?? null,
+        linkedinUrl: profile.linkedinUrl ?? null,
+        githubUrl: profile.githubUrl ?? null,
+        portfolioUrl: profile.portfolioUrl ?? null,
+        resumeRawText: null,
         resumeFileRef: null,
+        resumeParsedAt: null,
       });
     }
 

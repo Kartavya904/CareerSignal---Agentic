@@ -37,9 +37,22 @@ export const ScoredJobSchema = z.object({
 
 export type ScoredJob = z.infer<typeof ScoredJobSchema>;
 
+/** Structured target location: country required; state/city optional (no city without state). */
+export const TargetLocationSchema = z
+  .object({
+    country: z.string().min(1),
+    state: z.string().optional(),
+    city: z.string().optional(),
+  })
+  .refine((loc) => !loc.city || loc.state, { message: 'City requires state' });
+export type TargetLocation = z.infer<typeof TargetLocationSchema>;
+
+export const StrictFilterLevelSchema = z.enum(['STRICT', 'SEMI_STRICT', 'OFF']);
+export type StrictFilterLevel = z.infer<typeof StrictFilterLevelSchema>;
+
 export const UserPreferencesSchema = z.object({
   workAuthorization: z.enum(['US_CITIZEN', 'GREEN_CARD', 'H1B', 'OPT', 'EAD', 'OTHER']),
-  targetLocations: z.array(z.string()).default([]),
+  targetLocations: z.array(TargetLocationSchema).default([]),
   remotePreference: z.enum(['REMOTE', 'HYBRID', 'ONSITE', 'ANY']).default('ANY'),
   targetSeniority: z.array(z.string()).default([]),
   targetRoles: z.array(z.string()).default([]),
@@ -47,7 +60,13 @@ export const UserPreferencesSchema = z.object({
   industries: z.array(z.string()).default([]),
   employmentTypes: z.array(z.string()).default([]),
   salaryMin: z.number().optional(),
-  strictMode: z.boolean().default(false),
+  salaryMax: z.number().optional(),
+  salaryCurrency: z.string().optional(),
+  strictFilterLevel: StrictFilterLevelSchema.default('STRICT'),
+  maxContactsPerJob: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5)]).default(2),
+  outreachTone: z.string().optional(),
+  /** @deprecated Use strictFilterLevel instead; kept for backward compatibility. */
+  strictMode: z.boolean().optional(),
 });
 
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>;

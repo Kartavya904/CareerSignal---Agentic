@@ -8,3 +8,4 @@
 
 export * from './resume-parser/index.js';
 export * from './preference-builder-agent.js';
+export * from './profile-insights-agent.js';

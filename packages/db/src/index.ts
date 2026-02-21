@@ -5,3 +5,6 @@ export * from './profiles';
 export * from './sources';
 export * from './seed';
 export * from './users';
+export * from './preferences';
+export * from './profile-insights';
+export * from './user-metadata';

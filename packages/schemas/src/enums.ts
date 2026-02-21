@@ -12,6 +12,7 @@ export type WorkAuthorization = z.infer<typeof workAuthorizationEnum>;
 
 export const seniorityEnum = z.enum([
   'INTERN',
+  'ENTRY',
   'JUNIOR',
   'MID',
   'SENIOR',

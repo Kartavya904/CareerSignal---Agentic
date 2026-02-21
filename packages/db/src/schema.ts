@@ -9,6 +9,7 @@ import {
   decimal,
   date,
   pgEnum,
+  integer,
 } from 'drizzle-orm/pg-core';
 
 // Enums (storage)
@@ -22,6 +23,7 @@ export const workAuthorizationEnum = pgEnum('work_authorization', [
 ]);
 export const seniorityEnum = pgEnum('seniority', [
   'INTERN',
+  'ENTRY',
   'JUNIOR',
   'MID',
   'SENIOR',
@@ -31,6 +33,11 @@ export const seniorityEnum = pgEnum('seniority', [
   'VP',
   'C_LEVEL',
   'UNKNOWN',
+]);
+export const strictFilterLevelEnum = pgEnum('strict_filter_level', [
+  'STRICT',
+  'SEMI_STRICT',
+  'OFF',
 ]);
 export const employmentTypeEnum = pgEnum('employment_type', [
   'FULL_TIME',
@@ -76,6 +83,13 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/** Structured target location: country required; state/city optional (no city without state). */
+export type TargetLocationRow = {
+  country: string;
+  state?: string;
+  city?: string;
+};
+
 export const profiles = pgTable('profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
@@ -107,6 +121,65 @@ export const profiles = pgTable('profiles', {
   resumeRawText: text('resume_raw_text'),
   resumeFileRef: varchar('resume_file_ref', { length: 512 }),
   resumeParsedAt: timestamp('resume_parsed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** One row per user; used for scoring and preferences UI. */
+export const userPreferences = pgTable('user_preferences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  workAuthorization: workAuthorizationEnum('work_authorization').notNull(),
+  targetLocations: jsonb('target_locations').$type<TargetLocationRow[]>().default([]),
+  remotePreference: remotePreferenceEnum('remote_preference').notNull().default('ANY'),
+  targetSeniority: jsonb('target_seniority').$type<string[]>().default([]),
+  targetRoles: jsonb('target_roles').$type<string[]>().default([]),
+  skills: jsonb('skills').$type<string[]>().default([]),
+  industries: jsonb('industries').$type<string[]>().default([]),
+  employmentTypes: jsonb('employment_types').$type<string[]>().default([]),
+  salaryMin: decimal('salary_min', { precision: 12, scale: 2 }),
+  salaryMax: decimal('salary_max', { precision: 12, scale: 2 }),
+  salaryCurrency: varchar('salary_currency', { length: 8 }),
+  strictFilterLevel: strictFilterLevelEnum('strict_filter_level').notNull().default('STRICT'),
+  maxContactsPerJob: integer('max_contacts_per_job').notNull().default(2),
+  outreachTone: varchar('outreach_tone', { length: 64 }).default('PROFESSIONAL_CONCISE'),
+  syncedFromProfileAt: timestamp('synced_from_profile_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** One row per user: timestamps for resume upload, parse, insights, and profile edits. */
+export const userMetadata = pgTable('user_metadata', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  resumeUploadedAt: timestamp('resume_uploaded_at'),
+  resumeParsedAt: timestamp('resume_parsed_at'),
+  insightsGeneratedAt: timestamp('insights_generated_at'),
+  profileUpdatedAt: timestamp('profile_updated_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** Cached AI insights per user (years, seniority, scores 0–100, rating). */
+export const userProfileInsights = pgTable('user_profile_insights', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  totalYearsExperience: integer('total_years_experience').notNull().default(0),
+  seniority: varchar('seniority', { length: 32 }).notNull().default('Unknown'),
+  keywordDepth: integer('keyword_depth').notNull().default(0),
+  strengthScore: integer('strength_score').notNull().default(0),
+  overallScore: integer('overall_score').notNull().default(0),
+  resumeRating: text('resume_rating'),
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

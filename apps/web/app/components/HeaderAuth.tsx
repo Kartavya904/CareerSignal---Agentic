@@ -19,7 +19,11 @@ export function HeaderAuth({ user }: { user: User | null }) {
 
   if (!user) {
     return (
-      <Link href="/signin" style={{ fontSize: '0.9rem' }}>
+      <Link
+        href="/signin"
+        className="btn btn-primary"
+        style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}
+      >
         Sign in
       </Link>
     );
@@ -27,20 +31,13 @@ export function HeaderAuth({ user }: { user: User | null }) {
 
   const label = user.name?.trim() || user.email || 'Account';
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-      <span style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>{label}</span>
+    <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      <span style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>{label}</span>
       <button
         type="button"
         onClick={handleSignOut}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: 'var(--muted)',
-          fontSize: '0.9rem',
-          padding: 0,
-          cursor: 'pointer',
-          textDecoration: 'underline',
-        }}
+        className="btn btn-ghost"
+        style={{ padding: '0.4rem 0.75rem', fontSize: '0.875rem' }}
       >
         Sign out
       </button>

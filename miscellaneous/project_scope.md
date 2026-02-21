@@ -2,6 +2,10 @@
 
 **Purpose:** Definitive scope document for V1, V2, and V3. All decisions are locked unless explicitly marked `[OPEN]`. Derived from `plan.md` and stakeholder confirmation session.
 
+**Implementation Context (Agentic Rebuild):**
+
+- This is an **agentic re-implementation** of an existing working application. Most features (profile, preferences, sources, scan, extraction, ranking, top-15) are implemented or ported. The main gap is **contact search/discovery** — implementation can be ported from the previous version.
+
 **Key Constraints (Shape Everything):**
 
 | Constraint         | Decision                                                                         |
@@ -264,12 +268,15 @@ Profile {
 
 ### Decisions Locked
 
-| Decision               | Answer                                                                            |
-| ---------------------- | --------------------------------------------------------------------------------- |
-| Sources per user       | **Unlimited**                                                                     |
-| Blessed default boards | **Yes, at least 10** (pre-seeded, user can toggle on/off)                         |
-| URL correction         | **Yes** — if URL is wrong/broken, system should figure out correct URL and update |
-| User control           | User can add/remove/disable any source (including blessed defaults)               |
+| Decision               | Answer                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| Sources per user       | **Unlimited**                                                                              |
+| Blessed default boards | **Yes, at least 10** (pre-seeded master list in backend; user adds which to use)           |
+| Crawl timing           | **On add** — browser agent crawls a source when the user adds it; jobs populate in user DB |
+| URL correction         | **Yes** — if URL is wrong/broken, system should figure out correct URL and update          |
+| User control           | User can add/remove/disable any source (including blessed defaults)                        |
+
+**Model:** A master list of known boards (LinkedIn Jobs, Indeed, Wellfound, etc.) lives in the backend. User adds sources (e.g. Google careers page) from this list or custom URLs. When a source is added, the browser agent crawls it and extracted jobs populate in the **user’s** database. Sources are user-scoped.
 
 ### Blessed Default Sources (10)
 
@@ -543,14 +550,29 @@ Global view:
   display as unified ranked list (with source attribution)
 ```
 
-### "Rolling Top 15"
+### "Rolling Top 15" (Lazy Surfacing)
 
-- When user moves a job from "Discovered" to another pipeline stage (e.g., "Contacted"), the #16 job surfaces into the top 15
-- This keeps the active list always at 15 actionable items per source/company
+- Initially show **max 15** ranked results per source/company
+- All ranked jobs are stored in the DB; only the top 15 are shown
+- When the user changes a job’s status (e.g. Discovered → Applied), the **next-ranked** job (e.g. #16) surfaces into the visible list
+- This keeps the active list at ~15 actionable items; no manual pagination — results are lazy-loaded as the user processes the list
 
 ---
 
-## 1.7 Contact Discovery from Public Web
+## 1.7 Job Detail UI (Match Explanation + Cover Letter)
+
+### Decisions Locked
+
+| Element               | Answer                                                               |
+| --------------------- | -------------------------------------------------------------------- |
+| Match explanation     | **Yes** — short “Why you’re a perfect match” (keywords, fit summary) |
+| Company description   | **Yes** — short blurb about the company                              |
+| Full job description  | **Yes** — visible when user expands or opens the job                 |
+| Generate cover letter | **Yes** — button to draft a cover letter for that specific position  |
+
+---
+
+## 1.8 Contact Discovery from Public Web
 
 ### Decisions Locked
 
@@ -581,8 +603,9 @@ The contact must **align with the position** (e.g., don't suggest a marketing ma
 ### Contact Discovery Flow (Full Multi-Source — Option B Confirmed)
 
 ```
-1. Contact Strategy Agent: decides which archetype to hunt based on job + company size + role type
-2. People Search Agent: searches ALL public web sources for names matching archetype
+1. Check job description first: if it contains an email → scrape, save as contact, draft cold email
+2. Otherwise: Contact Strategy Agent decides which archetype to hunt based on job + company size + role type
+3. People Search Agent: searches ALL public web sources (public records, LinkedIn public, company sites, etc.) for names matching archetype
    - Company team/about pages
    - LinkedIn public profiles (no login required)
    - GitHub org members + contributors
@@ -593,8 +616,11 @@ The contact must **align with the position** (e.g., don't suggest a marketing ma
    - Open-source project maintainers
    - Company podcasts / interviews
    - Patent filings, academic papers (for research roles)
-3. Contact Verifier Agent: validates relevance + freshness + confidence
-4. Output: top 3 contacts per job, ranked by priority + confidence
+4. Contact Verifier Agent: validates relevance + freshness + confidence
+5. Output: top 3 contacts per job, ranked by priority + confidence
+6. Draft outreach:
+   - If contact has **email** → draft cold email
+   - If contact has **LinkedIn** (no email) → draft LinkedIn connection/DM message
 ```
 
 This is the thorough Option B — takes longer per job but produces higher quality contacts with stronger evidence trails.
@@ -622,7 +648,7 @@ Contact {
 
 ---
 
-## 1.8 Outreach Drafting
+## 1.9 Outreach Drafting
 
 ### Decisions Locked
 
@@ -678,7 +704,7 @@ OutreachDraft {
 
 ---
 
-## 1.9 Application Flow Blueprinting
+## 1.10 Application Flow Blueprinting
 
 ### Decisions Locked
 
@@ -732,7 +758,7 @@ FormField {
 
 ---
 
-## 1.10 Tracker: Pipeline Stages
+## 1.11 Tracker: Pipeline Stages
 
 ### Decisions Locked
 

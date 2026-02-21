@@ -144,6 +144,33 @@ export async function upsertProfile(
   return profile;
 }
 
+/** Update only resume-related fields (does not overwrite other profile data). */
+export async function updateProfileResume(
+  db: Db,
+  userId: string,
+  data: {
+    resumeFileRef?: string | null;
+    resumeRawText?: string | null;
+    resumeParsedAt?: Date | null;
+  },
+) {
+  const set: {
+    resumeFileRef?: string | null;
+    resumeRawText?: string | null;
+    resumeParsedAt?: Date | null;
+    updatedAt: Date;
+  } = { updatedAt: new Date() };
+  if (data.resumeFileRef !== undefined) set.resumeFileRef = data.resumeFileRef;
+  if (data.resumeRawText !== undefined) set.resumeRawText = data.resumeRawText;
+  if (data.resumeParsedAt !== undefined) set.resumeParsedAt = data.resumeParsedAt;
+  const [profile] = await db
+    .update(profilesTable)
+    .set(set)
+    .where(eq(profilesTable.userId, userId))
+    .returning();
+  return profile ?? null;
+}
+
 /** Update only suggested skills for a profile. */
 export async function updateSuggestedSkills(db: Db, userId: string, suggestedSkills: string[]) {
   const [profile] = await db
@@ -163,7 +190,13 @@ export async function resetProfile(db: Db, userId: string) {
     .set({
       phone: null,
       location: existing.location ?? 'Unknown',
-      workAuthorization: (existing.workAuthorization as string) ?? 'OTHER',
+      workAuthorization: (existing.workAuthorization ?? 'OTHER') as
+        | 'US_CITIZEN'
+        | 'GREEN_CARD'
+        | 'H1B'
+        | 'OPT'
+        | 'EAD'
+        | 'OTHER',
       targetRoles: [],
       skills: [],
       highlightedSkills: [],

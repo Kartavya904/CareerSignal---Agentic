@@ -17,6 +17,14 @@ type Run = {
 
 const POLL_INTERVAL_MS = 2000;
 
+function statusBadge(status: string) {
+  const s = status.toUpperCase();
+  if (s === 'COMPLETED') return 'badge-success';
+  if (s === 'RUNNING' || s === 'PENDING') return 'badge-warning';
+  if (s === 'FAILED' || s === 'CANCELLED') return 'badge-error';
+  return 'badge-muted';
+}
+
 export default function RunsPage() {
   const reportAction = useReportAction();
   const [runs, setRuns] = useState<Run[]>([]);
@@ -57,66 +65,117 @@ export default function RunsPage() {
       .catch(() => setStarting(false));
   };
 
-  if (loading) return <p>Loading runs…</p>;
+  if (loading) {
+    return (
+      <div className="page-head">
+        <h1>Runs</h1>
+        <p style={{ color: 'var(--muted)' }}>Loading runs…</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Runs</h1>
-      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
-        Each run is a scan across your enabled sources. Agents will extract, rank, and surface jobs
-        (once implemented).
-      </p>
+      <div className="page-head" style={{ marginBottom: '1.5rem' }}>
+        <h1>Runs</h1>
+        <p>
+          Each run is a scan across your enabled sources. Agents extract, rank, and surface jobs.
+        </p>
+      </div>
 
-      <button
-        onClick={startScan}
-        disabled={starting}
+      <div
+        className="card"
         style={{
-          padding: '0.75rem 1.25rem',
-          background: 'var(--accent)',
-          color: 'white',
-          border: 'none',
-          borderRadius: 6,
           marginBottom: '2rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
         }}
       >
-        {starting ? 'Starting…' : 'Start scan'}
-      </button>
+        <div>
+          <h2
+            className="section-title"
+            style={{
+              color: 'var(--accent)',
+              textTransform: 'none',
+              letterSpacing: '0',
+              marginTop: 0,
+              marginBottom: '0.25rem',
+            }}
+          >
+            New scan
+          </h2>
+          <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.875rem' }}>
+            Start a scan to fetch and rank jobs from your enabled sources.
+          </p>
+        </div>
+        <button
+          onClick={startScan}
+          disabled={starting}
+          className="btn btn-primary"
+          style={{ flexShrink: 0 }}
+        >
+          {starting ? 'Starting…' : 'Start scan'}
+        </button>
+      </div>
 
-      <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Run history</h2>
+      <h2 className="section-title" style={{ marginBottom: '0.75rem' }}>
+        Run history
+      </h2>
       {runs.length === 0 ? (
-        <p style={{ color: 'var(--muted)' }}>
+        <div
+          className="card"
+          style={{ color: 'var(--muted)', textAlign: 'center', padding: '2rem' }}
+        >
           No runs yet. Click &quot;Start scan&quot; to create one.
-        </p>
+        </div>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+          }}
+        >
           {runs.map((r) => (
             <li
               key={r.id}
-              style={{
-                padding: '0.75rem',
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                marginBottom: '0.5rem',
-              }}
+              className="card"
+              style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
             >
-              <strong>{r.id.slice(0, 8)}…</strong>
-              <span style={{ marginLeft: '0.5rem', color: 'var(--muted)' }}>{r.status}</span>
-              {(r.status === 'RUNNING' || r.status === 'PAUSED') && r.planSnapshot?.steps && (
-                <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem' }}>
-                  —{' '}
-                  {r.planSnapshot.steps.find((s) => s.status === 'running')?.name ??
-                    r.planSnapshot.steps.filter((s) => s.status === 'completed').slice(-1)[0]
-                      ?.name ??
-                    'Starting…'}
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {r.id.slice(0, 8)}…
                 </span>
-              )}
-              <br />
-              <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+                <span className={`badge ${statusBadge(r.status)}`}>{r.status}</span>
+                {(r.status === 'RUNNING' || r.status === 'PAUSED') && r.planSnapshot?.steps && (
+                  <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+                    —{' '}
+                    {r.planSnapshot.steps.find((s) => s.status === 'running')?.name ??
+                      r.planSnapshot.steps.filter((s) => s.status === 'completed').slice(-1)[0]
+                        ?.name ??
+                      'Starting…'}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--muted)' }}>
                 Created {new Date(r.createdAt).toLocaleString()}
                 {r.startedAt && ` · Started ${new Date(r.startedAt).toLocaleString()}`}
                 {r.finishedAt && ` · Finished ${new Date(r.finishedAt).toLocaleString()}`}
-              </span>
+              </div>
             </li>
           ))}
         </ul>

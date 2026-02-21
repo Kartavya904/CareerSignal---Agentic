@@ -10,39 +10,65 @@ export const metadata: Metadata = {
   description: 'Semi-autonomous career intelligence platform',
 };
 
+const navLinkClass =
+  'text-[var(--text-secondary)] hover:text-[var(--accent)] text-sm font-medium transition-colors';
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
         <UserActivityProvider>
           <ToastProvider>
             <header
+              className="border-b border-[var(--border)] bg-[var(--surface)]/80 backdrop-blur-sm sticky top-0 z-50"
               style={{
-                borderBottom: '1px solid var(--border)',
-                padding: '1rem 1.5rem',
+                padding: '0.75rem 1.5rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '1.5rem',
               }}
             >
-              <nav style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                <a href="/" style={{ fontWeight: 700, fontSize: '1.25rem' }}>
-                  CareerSignal
+              <nav style={{ display: 'flex', alignItems: 'center', gap: '1.75rem' }}>
+                <a
+                  href="/"
+                  className="font-bold text-lg tracking-tight hover:opacity-90 transition-opacity"
+                  style={{ color: 'var(--text)' }}
+                >
+                  <span style={{ color: 'var(--accent)' }}>Career</span>Signal
                 </a>
                 {user && (
                   <>
-                    <a href="/">Dashboard</a>
-                    <a href="/profile">Profile</a>
-                    <a href="/sources">Sources</a>
-                    <a href="/runs">Runs</a>
+                    <a href="/dashboard" className={navLinkClass}>
+                      Dashboard
+                    </a>
+                    <a href="/profile" className={navLinkClass}>
+                      Profile
+                    </a>
+                    <a href="/preferences" className={navLinkClass}>
+                      Preferences
+                    </a>
+                    <a href="/sources" className={navLinkClass}>
+                      Sources
+                    </a>
+                    <a href="/runs" className={navLinkClass}>
+                      Runs
+                    </a>
                   </>
                 )}
               </nav>
               <HeaderAuth user={user} />
             </header>
-            <main style={{ padding: '1.5rem', maxWidth: '960px', margin: '0 auto' }}>
+            <main className="container" style={{ padding: '1.75rem 1.5rem' }}>
               {children}
             </main>
           </ToastProvider>

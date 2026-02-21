@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getDb, getProfileByUserId, resetProfile, upsertProfile } from '@careersignal/db';
+import {
+  getDb,
+  getProfileByUserId,
+  resetProfile,
+  updateUserMetadata,
+  upsertProfile,
+} from '@careersignal/db';
 import { getRequiredUserId } from '@/lib/auth';
 import { profileInputSchema } from '@careersignal/schemas';
 
@@ -41,6 +47,17 @@ export async function POST(request: Request) {
     const userId = await getRequiredUserId();
     const db = getDb();
     const data = parsed.data;
+    const existing = await getProfileByUserId(db, userId);
+    // Preserve resume raw text and file ref when client doesn't send them (e.g. form save after parse)
+    const resumeRawText =
+      data.resume_raw_text !== undefined ? data.resume_raw_text : (existing?.resumeRawText ?? null);
+    const resumeFileRef =
+      data.resume_file_ref !== undefined ? data.resume_file_ref : (existing?.resumeFileRef ?? null);
+    const resumeParsedAt =
+      data.resume_parsed_at !== undefined
+        ? data.resume_parsed_at
+        : (existing?.resumeParsedAt ?? null);
+
     const profile = await upsertProfile(db, userId, {
       name: data.name,
       location: data.location,
@@ -63,9 +80,11 @@ export async function POST(request: Request) {
       linkedinUrl: data.linkedin_url || null,
       githubUrl: data.github_url || null,
       portfolioUrl: data.portfolio_url || null,
-      resumeRawText: data.resume_raw_text ?? null,
-      resumeFileRef: data.resume_file_ref ?? null,
+      resumeRawText,
+      resumeFileRef,
+      resumeParsedAt,
     });
+    await updateUserMetadata(db, userId, { profileUpdatedAt: new Date() });
     return NextResponse.json(profile);
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {

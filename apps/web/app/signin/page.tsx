@@ -40,79 +40,57 @@ export default function SignInPage() {
 
   return (
     <div style={{ maxWidth: '400px', margin: '0 auto' }}>
-      <h1 style={{ marginTop: 0 }}>Sign in</h1>
-      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
-        Sign in to your CareerSignal account.
-      </p>
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <label
-            htmlFor="email"
-            style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--muted)' }}
+      <div className="page-head" style={{ marginBottom: '1.5rem' }}>
+        <h1>Sign in</h1>
+        <p>Sign in to your CareerSignal account.</p>
+      </div>
+      <div className="card" style={{ padding: '1.5rem' }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+        >
+          <div>
+            <label htmlFor="email" className="label">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="input"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className="label">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          {error && <p style={{ color: 'var(--error)', margin: 0, fontSize: '0.9rem' }}>{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn btn-primary"
+            style={{ marginTop: '0.25rem' }}
           >
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-        <div>
-          <label
-            htmlFor="password"
-            style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--muted)' }}
-          >
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-        {error && <p style={{ color: 'var(--accent)', margin: 0, fontSize: '0.9rem' }}>{error}</p>}
-        <button type="submit" disabled={loading} style={buttonStyle}>
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
       <p style={{ color: 'var(--muted)', marginTop: '1.5rem', fontSize: '0.9rem' }}>
         Don&apos;t have an account? <Link href="/signup">Create one</Link>
       </p>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.75rem',
-  border: '1px solid var(--border)',
-  borderRadius: '6px',
-  background: 'var(--surface)',
-  color: 'var(--text)',
-};
-
-const buttonStyle: React.CSSProperties = {
-  padding: '0.6rem 1rem',
-  background: 'var(--accent)',
-  color: 'white',
-  border: 'none',
-  borderRadius: '6px',
-  fontWeight: 600,
-  marginTop: '0.5rem',
-};

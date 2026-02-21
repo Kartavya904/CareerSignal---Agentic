@@ -218,6 +218,7 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [shouldStartJob, setShouldStartJob] = useState(true);
 
   const [form, setForm] = useState<ProfileForm>({
     name: '',
@@ -277,6 +278,46 @@ export default function ProfilePage() {
   const [suggestedSkills, setSuggestedSkills] = useState<string[]>([]);
   const [analyzingSkills, setAnalyzingSkills] = useState(false);
 
+  const hasAutoRunInsightsRef = useRef(false);
+  const hasRequestedInsightsRef = useRef(false);
+
+  interface ProfileInsight {
+    totalYearsExperience: number;
+    totalMonthsExperience: number;
+    seniority: string;
+    keywordDepth: number;
+    strengthScore: number;
+    overallScore: number;
+    resumeRating: string;
+    insightsGeneratedAt?: string | null;
+  }
+  const [profileInsights, setProfileInsights] = useState<ProfileInsight | null>(null);
+
+  /** Format experience as "1 year", "2 years", or "1 year 3 months". */
+  const formatExperience = (totalMonths: number): string => {
+    if (totalMonths <= 0) return '0 years';
+    const years = Math.floor(totalMonths / 12);
+    const months = totalMonths % 12;
+    if (months === 0) return years === 1 ? '1 year' : `${years} years`;
+    return years === 0
+      ? `${months} month${months === 1 ? '' : 's'}`
+      : `${years} year${years === 1 ? '' : 's'} ${months} month${months === 1 ? '' : 's'}`;
+  };
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [resumeModalOpen, setResumeModalOpen] = useState(false);
+
+  const [profileMetadata, setProfileMetadata] = useState<{
+    resumeUploadedAt: string | null;
+    resumeParsedAt: string | null;
+    insightsGeneratedAt: string | null;
+    profileUpdatedAt: string | null;
+  }>({
+    resumeUploadedAt: null,
+    resumeParsedAt: null,
+    insightsGeneratedAt: null,
+    profileUpdatedAt: null,
+  });
+
   const fetchParsedData = useCallback(async () => {
     try {
       const res = await fetch('/api/profile/parse-resume', { cache: 'no-store' });
@@ -300,9 +341,18 @@ export default function ProfilePage() {
     Promise.all([
       fetch('/api/profile', { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/profile/resume', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/profile/metadata', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
       fetchParsedData(),
     ])
-      .then(([profileData, resumeData, parsedData]) => {
+      .then(([profileData, resumeData, metadata, parsedData]) => {
+        if (metadata) {
+          setProfileMetadata({
+            resumeUploadedAt: metadata.resumeUploadedAt ?? null,
+            resumeParsedAt: metadata.resumeParsedAt ?? null,
+            insightsGeneratedAt: metadata.insightsGeneratedAt ?? null,
+            profileUpdatedAt: metadata.profileUpdatedAt ?? null,
+          });
+        }
         if (profileData?.name) {
           setForm({
             name: profileData.name,
@@ -362,6 +412,16 @@ export default function ProfilePage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    fetch('/api/profile/parse-resume/status', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((status) => {
+        if (status?.exists && status.active) {
+          setShouldStartJob(false);
+          setShowTerminal(true);
+        }
+      })
+      .catch(() => {});
   }, [fetchParsedData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -386,6 +446,14 @@ export default function ProfilePage() {
       setSaved(true);
       setIsEditing(false);
       setTimeout(() => setSaved(false), 3000);
+      fetch('/api/profile/metadata', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((meta) => {
+          if (meta?.profileUpdatedAt) {
+            setProfileMetadata((m) => ({ ...m, profileUpdatedAt: meta.profileUpdatedAt }));
+          }
+        })
+        .catch(() => {});
     } finally {
       setSaving(false);
     }
@@ -431,6 +499,14 @@ export default function ProfilePage() {
         setEditableProjects(projectsToSave);
         handleAnalyzeProject(projIdx);
       }
+      fetch('/api/profile/metadata', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((meta) => {
+          if (meta?.profileUpdatedAt) {
+            setProfileMetadata((m) => ({ ...m, profileUpdatedAt: meta.profileUpdatedAt }));
+          }
+        })
+        .catch(() => {});
     } finally {
       setSaving(false);
     }
@@ -457,6 +533,14 @@ export default function ProfilePage() {
       } else {
         setResume({ hasResume: true, filename: data.filename });
         setShowTerminal(true);
+        fetch('/api/profile/metadata', { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((meta) => {
+            if (meta?.resumeUploadedAt) {
+              setProfileMetadata((m) => ({ ...m, resumeUploadedAt: meta.resumeUploadedAt }));
+            }
+          })
+          .catch(() => {});
       }
     } catch {
       setUploadError('Upload failed');
@@ -473,7 +557,7 @@ export default function ProfilePage() {
       await fetch('/api/profile/resume', { method: 'DELETE' });
       reportAction('delete_resume');
       setResume({ hasResume: false, filename: null });
-      setParsedData({ parsed: false });
+      // Do not clear parsedData or profile sections — only the resume file is removed; experience, education, etc. stay
     } catch {
       // ignore
     }
@@ -481,8 +565,109 @@ export default function ProfilePage() {
 
   const handleParseResume = () => {
     reportAction('parse_resume');
+    setShouldStartJob(true);
     setShowTerminal(true);
   };
+
+  const runAnalyzeAllBullets = useCallback(
+    async (experience: Experience[], projects: Project[]) => {
+      const hasBulletsToAnalyze =
+        experience.some((e: Experience) => (e.bullets?.length ?? 0) > 0) ||
+        projects.some((p: Project) => (p.bullets?.length ?? 0) > 0);
+      if (!hasBulletsToAnalyze) return;
+
+      addToast('AI Insights: analyzing bullet points…', 'success');
+      setAnalyzingAllBullets(true);
+      try {
+        const newExperience = [...experience] as (Experience & { bullet_scores?: BulletScore[] })[];
+        const newProjects = [...projects] as (Project & { bullet_scores?: BulletScore[] })[];
+
+        for (let i = 0; i < newExperience.length; i++) {
+          const exp = newExperience[i];
+          if (!exp || !exp.bullets?.length) continue;
+          try {
+            const res = await fetch('/api/profile/analyze-bullets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                company: exp.company,
+                title: exp.title,
+                bullets: exp.bullets,
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              newExperience[i] = { ...exp, bullet_scores: data.scores };
+              setBulletScores((prev) => new Map(prev).set(`exp-${i}`, data.scores));
+              setEditableExperience([...newExperience]);
+            }
+          } catch {
+            // skip this item
+          }
+        }
+
+        for (let i = 0; i < newProjects.length; i++) {
+          const proj = newProjects[i];
+          if (proj?.bullets?.length) {
+            try {
+              const res = await fetch('/api/profile/analyze-bullets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'project',
+                  name: proj.name,
+                  context: proj.context || '',
+                  bullets: proj.bullets,
+                }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                newProjects[i] = { ...proj, bullet_scores: data.scores };
+                setBulletScores((prev) => new Map(prev).set(`proj-${i}`, data.scores));
+                setEditableProjects([...newProjects]);
+              }
+            } catch {
+              // skip this item
+            }
+          }
+        }
+
+        setEditableExperience(newExperience);
+        setEditableProjects(newProjects);
+
+        const profileRes = await fetch('/api/profile');
+        const profile = await profileRes.json();
+        if (profile?.name) {
+          await fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: profile.name,
+              location: profile.location,
+              work_authorization: profile.workAuthorization ?? 'OTHER',
+              email: profile.email ?? '',
+              phone: profile.phone ?? '',
+              linkedin_url: profile.linkedinUrl ?? '',
+              github_url: profile.githubUrl ?? '',
+              portfolio_url: profile.portfolioUrl ?? '',
+              experience: newExperience,
+              projects: newProjects,
+              education: profile.education ?? [],
+              skills: profile.skills ?? [],
+              highlighted_skills: profile.highlightedSkills ?? [],
+              languages: profile.languages ?? [],
+            }),
+          });
+        }
+        addToast('AI Insights complete.', 'success');
+      } catch {
+        addToast('Bullet analysis failed.', 'error');
+      } finally {
+        setAnalyzingAllBullets(false);
+      }
+    },
+    [addToast],
+  );
 
   const handleParsingComplete = async () => {
     const parsed = await fetchParsedData();
@@ -510,102 +695,144 @@ export default function ProfilePage() {
     }
     setShowTerminal(false);
 
-    const hasBulletsToAnalyze =
-      experience.some((e: Experience) => (e.bullets?.length ?? 0) > 0) ||
-      projects.some((p: Project) => (p.bullets?.length ?? 0) > 0);
-    if (!hasBulletsToAnalyze) return;
+    await runAnalyzeAllBullets(experience, projects);
 
-    addToast('Bullet analyzer started.', 'success');
-    setAnalyzingAllBullets(true);
-    try {
-      const newExperience = [...experience] as (Experience & { bullet_scores?: BulletScore[] })[];
-      const newProjects = [...projects] as (Project & { bullet_scores?: BulletScore[] })[];
-
-      for (let i = 0; i < newExperience.length; i++) {
-        const exp = newExperience[i];
-        if (exp.bullets?.length) {
-          try {
-            const res = await fetch('/api/profile/analyze-bullets', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                company: exp.company,
-                title: exp.title,
-                bullets: exp.bullets,
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              newExperience[i] = { ...exp, bullet_scores: data.scores };
-              setBulletScores((prev) => new Map(prev).set(`exp-${i}`, data.scores));
-              setEditableExperience([...newExperience]);
-            }
-          } catch {
-            // skip this item
+    // Run AI Insights after parse so scores are ready (and refresh metadata)
+    fetch('/api/profile/insights', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.totalYearsExperience === 'number') {
+          setProfileInsights({
+            totalYearsExperience: data.totalYearsExperience,
+            totalMonthsExperience:
+              typeof data.totalMonthsExperience === 'number'
+                ? data.totalMonthsExperience
+                : data.totalYearsExperience * 12,
+            seniority: data.seniority ?? '—',
+            keywordDepth: data.keywordDepth ?? 0,
+            strengthScore: data.strengthScore ?? 0,
+            overallScore: data.overallScore ?? 0,
+            resumeRating: data.resumeRating ?? '',
+            insightsGeneratedAt: data.insightsGeneratedAt ?? null,
+          });
+          if (data.insightsGeneratedAt) {
+            setProfileMetadata((m) => ({ ...m, insightsGeneratedAt: data.insightsGeneratedAt }));
           }
         }
-      }
-
-      for (let i = 0; i < newProjects.length; i++) {
-        const proj = newProjects[i];
-        if (proj.bullets?.length) {
-          try {
-            const res = await fetch('/api/profile/analyze-bullets', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'project',
-                name: proj.name,
-                context: proj.context || '',
-                bullets: proj.bullets,
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              newProjects[i] = { ...proj, bullet_scores: data.scores };
-              setBulletScores((prev) => new Map(prev).set(`proj-${i}`, data.scores));
-              setEditableProjects([...newProjects]);
-            }
-          } catch {
-            // skip this item
-          }
+      })
+      .catch(() => {});
+    fetch('/api/profile/metadata', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((meta) => {
+        if (meta) {
+          setProfileMetadata((m) => ({
+            ...m,
+            resumeUploadedAt: meta.resumeUploadedAt ?? m.resumeUploadedAt,
+            resumeParsedAt: meta.resumeParsedAt ?? m.resumeParsedAt,
+            insightsGeneratedAt: meta.insightsGeneratedAt ?? m.insightsGeneratedAt,
+            profileUpdatedAt: meta.profileUpdatedAt ?? m.profileUpdatedAt,
+          }));
         }
-      }
-
-      setEditableExperience(newExperience);
-      setEditableProjects(newProjects);
-
-      const profileRes = await fetch('/api/profile');
-      const profile = await profileRes.json();
-      if (profile?.name) {
-        await fetch('/api/profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: profile.name,
-            location: profile.location,
-            work_authorization: profile.workAuthorization ?? 'OTHER',
-            email: profile.email ?? '',
-            phone: profile.phone ?? '',
-            linkedin_url: profile.linkedinUrl ?? '',
-            github_url: profile.githubUrl ?? '',
-            portfolio_url: profile.portfolioUrl ?? '',
-            experience: newExperience,
-            projects: newProjects,
-            education: profile.education ?? [],
-            skills: profile.skills ?? [],
-            highlighted_skills: profile.highlightedSkills ?? [],
-            languages: profile.languages ?? [],
-          }),
-        });
-      }
-      addToast('All bullet analyses finished.', 'success');
-    } catch {
-      addToast('Bullet analysis failed.', 'error');
-    } finally {
-      setAnalyzingAllBullets(false);
-    }
+      })
+      .catch(() => {});
   };
+
+  // When profile is complete and not already analyzing, run AI Insights (bullet analysis) once
+  useEffect(() => {
+    if (loading || analyzingAllBullets || hasAutoRunInsightsRef.current) return;
+    const complete = !!(
+      form.name.trim() &&
+      form.location.trim() &&
+      form.work_authorization &&
+      resume.hasResume
+    );
+    if (!complete) return;
+
+    const needsInsights =
+      editableExperience.some((e) => (e.bullets?.length ?? 0) > 0 && !e.bullet_scores?.length) ||
+      editableProjects.some((p) => (p.bullets?.length ?? 0) > 0 && !p.bullet_scores?.length);
+    if (!needsInsights) return;
+
+    hasAutoRunInsightsRef.current = true;
+    runAnalyzeAllBullets(editableExperience, editableProjects);
+  }, [
+    loading,
+    analyzingAllBullets,
+    form.name,
+    form.location,
+    form.work_authorization,
+    resume.hasResume,
+    editableExperience,
+    editableProjects,
+    runAnalyzeAllBullets,
+  ]);
+
+  // Fetch overall profile insights when profile is complete (years, seniority, scores, rating)
+  const profileComplete =
+    !!form.name.trim() && !!form.location.trim() && !!form.work_authorization && !!resume.hasResume;
+  useEffect(() => {
+    if (!profileComplete || hasRequestedInsightsRef.current) return;
+    hasRequestedInsightsRef.current = true;
+    setLoadingInsights(true);
+    fetch('/api/profile/insights', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.totalYearsExperience === 'number') {
+          setProfileInsights({
+            totalYearsExperience: data.totalYearsExperience,
+            totalMonthsExperience:
+              typeof data.totalMonthsExperience === 'number'
+                ? data.totalMonthsExperience
+                : data.totalYearsExperience * 12,
+            seniority: data.seniority ?? '—',
+            keywordDepth: data.keywordDepth ?? 0,
+            strengthScore: data.strengthScore ?? 0,
+            overallScore: data.overallScore ?? 0,
+            resumeRating: data.resumeRating ?? '',
+            insightsGeneratedAt: data.insightsGeneratedAt ?? null,
+          });
+          if (data.insightsGeneratedAt) {
+            setProfileMetadata((m) => ({ ...m, insightsGeneratedAt: data.insightsGeneratedAt }));
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingInsights(false));
+  }, [profileComplete]);
+
+  const refreshProfileInsights = useCallback(async () => {
+    setLoadingInsights(true);
+    addToast('Running AI Insights…', 'success');
+    try {
+      const r = await fetch('/api/profile/insights?refresh=1', { cache: 'no-store' });
+      const data = r.ok ? await r.json() : null;
+      if (data && typeof data.totalYearsExperience === 'number') {
+        setProfileInsights({
+          totalYearsExperience: data.totalYearsExperience,
+          totalMonthsExperience:
+            typeof data.totalMonthsExperience === 'number'
+              ? data.totalMonthsExperience
+              : data.totalYearsExperience * 12,
+          seniority: data.seniority ?? '—',
+          keywordDepth: data.keywordDepth ?? 0,
+          strengthScore: data.strengthScore ?? 0,
+          overallScore: data.overallScore ?? 0,
+          resumeRating: data.resumeRating ?? '',
+          insightsGeneratedAt: data.insightsGeneratedAt ?? null,
+        });
+        if (data.insightsGeneratedAt) {
+          setProfileMetadata((m) => ({ ...m, insightsGeneratedAt: data.insightsGeneratedAt }));
+        }
+        addToast('AI Insights updated.', 'success');
+      } else {
+        addToast('Could not update AI Insights.', 'error');
+      }
+    } catch {
+      addToast('AI Insights request failed.', 'error');
+    } finally {
+      setLoadingInsights(false);
+    }
+  }, [addToast]);
 
   const handleAnalyzeExperience = async (expIdx: number) => {
     setAnalyzingExpIdx(expIdx);
@@ -1079,14 +1306,223 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading) return <p>Loading profile…</p>;
+  if (loading) {
+    return (
+      <div className="page-head">
+        <h1>Profile</h1>
+        <p style={{ color: 'var(--muted)' }}>Loading profile…</p>
+      </div>
+    );
+  }
 
   const complete = isProfileComplete(form, resume);
   const hasParsedData = parsedData.parsed && parsedData.data;
   const showProfileSections = (hasParsedData || resume.hasResume) && !isEditing;
 
+  const profileLastUpdated = (() => {
+    const dates = [
+      profileMetadata.resumeUploadedAt,
+      profileMetadata.resumeParsedAt,
+      profileMetadata.insightsGeneratedAt,
+      profileMetadata.profileUpdatedAt,
+    ].filter(Boolean) as string[];
+    if (dates.length === 0) return null;
+    return new Date(dates.reduce((a, b) => (a > b ? a : b)));
+  })();
+
   return (
     <div style={{ maxWidth: '64rem', margin: '0 auto' }}>
+      <div className="page-head" style={{ marginBottom: '1.5rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>Profile</h1>
+            {complete && (
+              <>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.2rem 0.5rem',
+                    background: 'rgba(34, 197, 94, 0.2)',
+                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                    borderRadius: 4,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: '#22c55e',
+                  }}
+                >
+                  ✓ Complete
+                </span>
+                {profileLastUpdated && (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    Last updated at {profileLastUpdated.toLocaleString()}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDeleteProfileConfirm(true)}
+            style={{
+              ...smallButtonStyle,
+              color: '#ef4444',
+              borderColor: 'rgba(239, 68, 68, 0.5)',
+            }}
+          >
+            Delete Profile
+          </button>
+        </div>
+        <p style={{ margin: '0.35rem 0 0 0', color: 'var(--muted)', fontSize: '0.9375rem' }}>
+          When your profile is complete we automatically analyze your resume and show AI insights.
+          Your resume and basics: AI parses experience, skills, and education.
+        </p>
+      </div>
+
+      {/* AI Insights — overall profile metrics (years, seniority, scores, rating) */}
+      {complete && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '1.5rem',
+            borderLeft: '3px solid var(--accent)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.5rem',
+              marginBottom: '0.25rem',
+            }}
+          >
+            <h2
+              className="section-title"
+              style={{
+                color: 'var(--accent)',
+                textTransform: 'none',
+                letterSpacing: '0',
+                margin: 0,
+              }}
+            >
+              AI Insights
+              {(profileInsights?.insightsGeneratedAt ?? profileMetadata.insightsGeneratedAt) && (
+                <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '0.85rem' }}>
+                  {' '}
+                  (Last updated{' '}
+                  {new Date(
+                    profileInsights?.insightsGeneratedAt ??
+                      profileMetadata.insightsGeneratedAt ??
+                      '',
+                  ).toLocaleString()}
+                  )
+                </span>
+              )}
+            </h2>
+            <button
+              type="button"
+              onClick={refreshProfileInsights}
+              disabled={loadingInsights}
+              style={{
+                ...iconButtonStyle,
+                color: loadingInsights ? 'var(--muted)' : 'var(--accent)',
+              }}
+              title="Run AI Insights again"
+            >
+              {loadingInsights ? (
+                <span style={{ fontSize: '12px' }}>...</span>
+              ) : (
+                <AnalyzeIcon size={18} />
+              )}
+            </button>
+          </div>
+          {loadingInsights && (
+            <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.9rem' }}>
+              Analyzing your profile…
+            </p>
+          )}
+          {!loadingInsights && profileInsights && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                  gap: '0.75rem',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                    Experience
+                  </div>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {formatExperience(
+                      profileInsights.totalMonthsExperience ??
+                        profileInsights.totalYearsExperience * 12,
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                    Seniority
+                  </div>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {profileInsights.seniority}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                    Keyword depth
+                  </div>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {profileInsights.keywordDepth}/100
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                    Strength
+                  </div>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {profileInsights.strengthScore}/100
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                    Overall score
+                  </div>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {profileInsights.overallScore}/100
+                  </div>
+                </div>
+              </div>
+              {profileInsights.resumeRating && (
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: '0.9rem',
+                    color: 'var(--text-secondary)',
+                    lineHeight: 1.5,
+                    borderTop: '1px solid var(--border)',
+                    paddingTop: '0.75rem',
+                  }}
+                >
+                  {profileInsights.resumeRating}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add modals (popup on top) */}
       {addModal && (
         <div
@@ -1505,6 +1941,73 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {/* Resume PDF viewer modal */}
+      {resumeModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+          }}
+          onClick={() => setResumeModalOpen(false)}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 8,
+              overflow: 'hidden',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                padding: '0.5rem 0.5rem 0 0',
+                background: 'var(--surface)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setResumeModalOpen(false)}
+                style={{
+                  background: 'var(--border)',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '0.35rem 0.6rem',
+                  fontSize: '0.85rem',
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+            <iframe
+              src="/api/profile/resume/file"
+              title="Resume"
+              style={{
+                width: '100%',
+                height: '80vh',
+                minHeight: 400,
+                border: 'none',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Per-card delete confirmation modal */}
       {deleteConfirm && (
         <div
@@ -1564,29 +2067,6 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Header with Delete Profile */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1.5rem',
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Profile</h1>
-        <button
-          type="button"
-          onClick={() => setShowDeleteProfileConfirm(true)}
-          style={{
-            ...smallButtonStyle,
-            color: '#ef4444',
-            borderColor: 'rgba(239, 68, 68, 0.5)',
-          }}
-        >
-          Delete Profile
-        </button>
-      </div>
-
       {/* Delete Profile confirmation modal */}
       {showDeleteProfileConfirm && (
         <div
@@ -1640,26 +2120,6 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Completion Status */}
-      <div
-        style={{
-          padding: '1rem',
-          marginBottom: '1.5rem',
-          borderRadius: 8,
-          background: complete ? 'rgba(34, 197, 94, 0.1)' : 'rgba(234, 179, 8, 0.1)',
-          border: `1px solid ${complete ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`,
-        }}
-      >
-        <strong style={{ color: complete ? '#22c55e' : '#eab308' }}>
-          {complete ? 'Profile Complete' : 'Profile Incomplete'}
-        </strong>
-        <p style={{ margin: '0.5rem 0 0 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
-          {complete
-            ? "You're all set! Your profile and resume are ready."
-            : 'Please fill in your name, location, work authorization, and upload your resume.'}
-        </p>
-      </div>
-
       {/* Resume Upload Section */}
       <section style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Resume</h2>
@@ -1680,24 +2140,53 @@ export default function ProfilePage() {
               }}
             >
               <div>
-                <strong style={{ color: '#22c55e' }}>Resume uploaded</strong>
+                <strong style={{ color: '#22c55e' }}>
+                  {parsedData.parsed ? 'Resume parsed' : 'Resume uploaded'}
+                </strong>
                 <p style={{ margin: '0.25rem 0 0 0', color: 'var(--muted)', fontSize: '0.85rem' }}>
-                  {resume.filename}
-                  {parsedData.parsed && parsedData.parsedAt && !showTerminal && (
-                    <> · Parsed {new Date(parsedData.parsedAt).toLocaleDateString()}</>
-                  )}
+                  {parsedData.parsed &&
+                    (() => {
+                      const lastParsed =
+                        profileMetadata.resumeParsedAt ?? parsedData.parsedAt ?? null;
+                      return lastParsed ? (
+                        <>
+                          Last parsed {new Date(lastParsed).toLocaleString()}
+                          {' · '}
+                        </>
+                      ) : null;
+                    })()}
+                  <button
+                    type="button"
+                    onClick={() => setResumeModalOpen(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--accent)',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      font: 'inherit',
+                    }}
+                  >
+                    {resume.filename}
+                  </button>
+                  {' · '}
+                  Last uploaded{' '}
+                  {(profileMetadata.resumeUploadedAt
+                    ? new Date(profileMetadata.resumeUploadedAt)
+                    : new Date()
+                  ).toLocaleString()}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {!showTerminal && (
-                  <button
-                    type="button"
-                    onClick={handleParseResume}
-                    style={{ ...smallButtonStyle, background: 'var(--accent)', color: 'white' }}
-                  >
-                    {parsedData.parsed ? 'Re-parse' : 'Parse'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleParseResume}
+                  style={{ ...smallButtonStyle, background: 'var(--accent)', color: '#212529' }}
+                  disabled={showTerminal}
+                >
+                  {parsedData.parsed ? 'Re-parse' : 'Parse'}
+                </button>
                 <button
                   type="button"
                   onClick={handleDeleteResume}
@@ -1708,7 +2197,12 @@ export default function ProfilePage() {
                 </button>
               </div>
             </div>
-            <ParsingTerminal isActive={showTerminal} onComplete={handleParsingComplete} />
+            <ParsingTerminal
+              isActive={showTerminal}
+              startJob={shouldStartJob}
+              onComplete={handleParsingComplete}
+              onDismiss={() => setShowTerminal(false)}
+            />
             {analyzingAllBullets && (
               <p
                 style={{
@@ -3211,7 +3705,7 @@ const inputStyle: React.CSSProperties = {
 const buttonStyle: React.CSSProperties = {
   padding: '0.6rem 1rem',
   background: 'var(--accent)',
-  color: 'white',
+  color: '#212529',
   border: 'none',
   borderRadius: 6,
   fontWeight: 600,

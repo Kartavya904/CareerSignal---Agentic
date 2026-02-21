@@ -55,13 +55,9 @@ export function scoreJobWithRules(
   score += skillsOverlap * weights.skills;
   score += experienceFit * weights.experience;
 
-  // Check strict filter
-  const passesStrictFilter = checkStrictFilter(
-    visaMatch,
-    locationMatch,
-    seniorityMatch,
-    preferences.strictMode,
-  );
+  // Check strict filter (strictFilterLevel; fallback to strictMode for backward compat)
+  const level = preferences.strictFilterLevel ?? (preferences.strictMode ? 'STRICT' : 'OFF');
+  const passesStrictFilter = checkStrictFilter(visaMatch, locationMatch, seniorityMatch, level);
 
   const breakdown: ScoreBreakdown = {
     ruleScore: Math.round(score * 100) / 100,
@@ -111,13 +107,29 @@ function checkVisaMatch(job: NormalizedJob, prefs: UserPreferences): DimensionMa
 }
 
 function checkLocationMatch(job: NormalizedJob, prefs: UserPreferences): DimensionMatch {
-  if (!prefs.targetLocations.length) return 'MATCH'; // No preference = any location
+  if (!prefs.targetLocations?.length) return 'MATCH'; // No preference = any location
   if (!job.location) return 'UNKNOWN';
 
   const jobLocationLower = job.location.toLowerCase();
 
   for (const targetLoc of prefs.targetLocations) {
-    if (jobLocationLower.includes(targetLoc.toLowerCase())) {
+    // Structured: { country, state?, city? }
+    const country =
+      typeof targetLoc === 'string'
+        ? targetLoc
+        : (targetLoc as { country: string; state?: string; city?: string }).country;
+    const state =
+      typeof targetLoc === 'object' && targetLoc !== null && 'state' in targetLoc
+        ? (targetLoc as { state?: string }).state
+        : undefined;
+    const city =
+      typeof targetLoc === 'object' && targetLoc !== null && 'city' in targetLoc
+        ? (targetLoc as { city?: string }).city
+        : undefined;
+
+    if (jobLocationLower.includes(country.toLowerCase())) {
+      if (state && !jobLocationLower.includes(state.toLowerCase())) continue;
+      if (city && !jobLocationLower.includes(city.toLowerCase())) continue;
       return 'MATCH';
     }
   }
@@ -138,9 +150,10 @@ function checkSeniorityMatch(job: NormalizedJob, prefs: UserPreferences): Dimens
     return 'MATCH';
   }
 
-  // Adjacent seniority levels are partial match
+  // Adjacent seniority levels are partial match (include ENTRY per plan)
   const levels = [
     'INTERN',
+    'ENTRY',
     'JUNIOR',
     'MID',
     'SENIOR',
@@ -200,18 +213,24 @@ function calculateSkillsOverlap(job: NormalizedJob, prefs: UserPreferences): num
   return prefs.skills.length > 0 ? matchCount / prefs.skills.length : 0.5;
 }
 
+type StrictFilterLevel = 'STRICT' | 'SEMI_STRICT' | 'OFF';
+
 function checkStrictFilter(
   visa: DimensionMatch,
   location: DimensionMatch,
   seniority: DimensionMatch,
-  strictMode: boolean,
+  level: StrictFilterLevel,
 ): boolean {
-  if (!strictMode) return true;
+  if (level === 'OFF') return true;
 
-  // In strict mode, mandatory dimensions must not be MISMATCH
-  if (visa === 'MISMATCH') return false;
-  if (location === 'MISMATCH') return false;
-  if (seniority === 'MISMATCH') return false;
+  const visaFail = visa === 'MISMATCH';
+  const locationFail = location === 'MISMATCH';
+  const seniorityFail = seniority === 'MISMATCH';
+  const failCount = (visaFail ? 1 : 0) + (locationFail ? 1 : 0) + (seniorityFail ? 1 : 0);
 
-  return true;
+  if (level === 'STRICT') {
+    return failCount === 0;
+  }
+  // SEMI_STRICT: exclude only when two or more fail
+  return failCount < 2;
 }

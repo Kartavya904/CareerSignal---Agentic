@@ -16,172 +16,236 @@ interface StepInfo {
   name: string;
 }
 
-interface ParsingTerminalProps {
-  isActive: boolean;
-  onComplete: () => void;
+interface ProgressEntry {
+  id: number;
+  event: 'log' | 'step' | 'complete' | 'error';
+  data: Record<string, unknown>;
 }
 
-export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) {
+interface ParsingTerminalProps {
+  /** Whether the terminal is visible */
+  isActive: boolean;
+  /** true = POST to /start then poll; false = just poll an existing job */
+  startJob?: boolean;
+  onComplete: () => void;
+  onDismiss?: () => void;
+}
+
+const POLL_INTERVAL = 350;
+
+export function ParsingTerminal({
+  isActive,
+  startJob = true,
+  onComplete,
+  onDismiss,
+}: ParsingTerminalProps) {
   const { addToast } = useToast();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentStep, setCurrentStep] = useState<StepInfo | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [showWaitingMessage, setShowWaitingMessage] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const logIdRef = useRef(0);
   const hasStartedRef = useRef(false);
+  const announcedStartRef = useRef(false);
+
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
 
   useEffect(() => {
     if (!isActive || hasStartedRef.current) return;
     hasStartedRef.current = true;
+    announcedStartRef.current = false;
 
-    // Reset state
     setLogs([]);
     setCurrentStep(null);
     setIsComplete(false);
     setHasError(false);
-    setShowWaitingMessage(false);
 
-    const eventSource = new EventSource('/api/profile/parse-resume/stream');
+    let stopped = false;
+    let lastId = -1;
 
-    // If no logs after 2.5s, show "Waiting for server response..." so user knows connection is alive
-    const waitingTimer = setTimeout(() => setShowWaitingMessage(true), 2500);
-
-    eventSource.addEventListener('log', (event) => {
-      setShowWaitingMessage(false);
-      const data = JSON.parse(event.data);
-      setLogs((prev) => {
-        if (prev.length === 0) {
-          addToast('Resume parser agent has started.', 'success');
-        }
-        return [
-          ...prev,
-          {
-            id: ++logIdRef.current,
-            type: data.type,
-            message: data.message,
-            timestamp: new Date(),
-          },
-        ];
-      });
-    });
-
-    eventSource.addEventListener('step', (event) => {
-      const data = JSON.parse(event.data);
-      setCurrentStep(data);
-    });
-
-    eventSource.addEventListener('complete', (event) => {
-      const data = JSON.parse(event.data);
-      addToast('Resume parser agent has finished.', 'success');
-      setIsComplete(true);
-      setLogs((prev) => [
-        ...prev,
-        {
-          id: ++logIdRef.current,
-          type: 'success',
-          message: '─'.repeat(40),
-          timestamp: new Date(),
-        },
-        {
-          id: ++logIdRef.current,
-          type: 'success',
-          message: `✓ Parsing complete!`,
-          timestamp: new Date(),
-        },
-        {
-          id: ++logIdRef.current,
-          type: 'info',
-          message: `  Name: ${data.summary.name}`,
-          timestamp: new Date(),
-        },
-        {
-          id: ++logIdRef.current,
-          type: 'info',
-          message: `  Education: ${data.summary.educationCount} entries`,
-          timestamp: new Date(),
-        },
-        {
-          id: ++logIdRef.current,
-          type: 'info',
-          message: `  Experience: ${data.summary.experienceCount} entries`,
-          timestamp: new Date(),
-        },
-        {
-          id: ++logIdRef.current,
-          type: 'info',
-          message: `  Projects: ${data.summary.projectsCount} entries`,
-          timestamp: new Date(),
-        },
-        {
-          id: ++logIdRef.current,
-          type: 'info',
-          message: `  Skills: ${data.summary.skillsCount} items`,
-          timestamp: new Date(),
-        },
-      ]);
-      eventSource.close();
-      // Call onComplete after a brief delay to let user see the result
-      setTimeout(() => onComplete(), 2000);
-    });
-
-    eventSource.addEventListener('error', (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data);
-        addToast(data?.message ?? 'Resume parser failed.', 'error');
-        setHasError(true);
+    function handleEntry(entry: ProgressEntry) {
+      if (entry.event === 'log') {
+        const d = entry.data as { type: string; message: string };
+        setLogs((prev) => {
+          if (!announcedStartRef.current) {
+            announcedStartRef.current = true;
+            addToastRef.current('Resume parser agent has started.', 'success');
+          }
+          return [
+            ...prev,
+            {
+              id: ++logIdRef.current,
+              type: d.type as LogEntry['type'],
+              message: d.message,
+              timestamp: new Date(),
+            },
+          ];
+        });
+      } else if (entry.event === 'step') {
+        setCurrentStep(entry.data as unknown as StepInfo);
+      } else if (entry.event === 'complete') {
+        const d = entry.data as { summary?: Record<string, unknown> };
+        addToastRef.current('Resume parser agent has finished.', 'success');
+        setIsComplete(true);
         setLogs((prev) => [
           ...prev,
           {
             id: ++logIdRef.current,
-            type: 'error',
-            message: `Error: ${data.message}`,
+            type: 'success',
+            message: '─'.repeat(40),
+            timestamp: new Date(),
+          },
+          {
+            id: ++logIdRef.current,
+            type: 'success',
+            message: '✓ Parsing complete!',
+            timestamp: new Date(),
+          },
+          {
+            id: ++logIdRef.current,
+            type: 'info',
+            message: `  Name: ${(d.summary?.name as string) ?? '—'}`,
+            timestamp: new Date(),
+          },
+          {
+            id: ++logIdRef.current,
+            type: 'info',
+            message: `  Education: ${(d.summary?.educationCount as number) ?? 0} entries`,
+            timestamp: new Date(),
+          },
+          {
+            id: ++logIdRef.current,
+            type: 'info',
+            message: `  Experience: ${(d.summary?.experienceCount as number) ?? 0} entries`,
+            timestamp: new Date(),
+          },
+          {
+            id: ++logIdRef.current,
+            type: 'info',
+            message: `  Projects: ${(d.summary?.projectsCount as number) ?? 0} entries`,
+            timestamp: new Date(),
+          },
+          {
+            id: ++logIdRef.current,
+            type: 'info',
+            message: `  Skills: ${(d.summary?.skillsCount as number) ?? 0} items`,
             timestamp: new Date(),
           },
         ]);
-      } catch {
-        addToast('Resume parser failed.', 'error');
+        setTimeout(() => onCompleteRef.current(), 2000);
+      } else if (entry.event === 'error') {
+        const d = entry.data as { message?: string };
+        addToastRef.current(d?.message ?? 'Resume parser failed.', 'error');
         setHasError(true);
         setLogs((prev) => [
           ...prev,
           {
             id: ++logIdRef.current,
             type: 'error',
-            message: 'Connection error. Please try again.',
+            message: d?.message ?? 'Unknown error',
             timestamp: new Date(),
           },
         ]);
       }
-      eventSource.close();
-    });
+    }
 
-    eventSource.onerror = () => {
-      eventSource.close();
+    const run = async () => {
+      if (startJob) {
+        try {
+          const startRes = await fetch('/api/profile/parse-resume/start', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (!startRes.ok) {
+            addToastRef.current('Failed to start resume parser.', 'error');
+            setHasError(true);
+            setLogs([
+              {
+                id: ++logIdRef.current,
+                type: 'error',
+                message: `HTTP ${startRes.status}`,
+                timestamp: new Date(),
+              },
+            ]);
+            return;
+          }
+        } catch {
+          addToastRef.current('Failed to start resume parser.', 'error');
+          setHasError(true);
+          return;
+        }
+      }
+
+      let missedPolls = 0;
+      while (!stopped) {
+        try {
+          const res = await fetch(`/api/profile/parse-resume/progress?after=${lastId}`, {
+            credentials: 'include',
+          });
+          if (!res.ok) break;
+
+          const body = (await res.json()) as {
+            entries: ProgressEntry[];
+            done: boolean;
+            exists: boolean;
+          };
+
+          if (!body.exists) {
+            missedPolls++;
+            if (missedPolls > 80) {
+              setHasError(true);
+              setLogs((prev) => [
+                ...prev,
+                {
+                  id: ++logIdRef.current,
+                  type: 'error',
+                  message: 'Job timed out. Please try again.',
+                  timestamp: new Date(),
+                },
+              ]);
+              break;
+            }
+          } else {
+            missedPolls = 0;
+          }
+
+          for (const entry of body.entries) {
+            handleEntry(entry);
+            if (entry.id > lastId) lastId = entry.id;
+          }
+
+          if (body.done) break;
+        } catch {
+          break;
+        }
+
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+      }
     };
+
+    run();
 
     return () => {
-      clearTimeout(waitingTimer);
-      eventSource.close();
+      stopped = true;
     };
-  }, [isActive, onComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, startJob]);
 
-  // Reset when isActive becomes false
   useEffect(() => {
-    if (!isActive) {
-      hasStartedRef.current = false;
-      setShowWaitingMessage(false);
-    }
+    if (!isActive) hasStartedRef.current = false;
   }, [isActive]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
+    if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
   }, [logs]);
 
   if (!isActive && logs.length === 0) return null;
+
+  const isRunning = !isComplete && !hasError;
 
   const getLogColor = (type: LogEntry['type']) => {
     switch (type) {
@@ -213,6 +277,8 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
     }
   };
 
+  const dotColor = hasError ? '#ef4444' : isComplete ? '#22c55e' : '#eab308';
+
   return (
     <div
       style={{
@@ -223,7 +289,6 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
         border: '1px solid #30363d',
       }}
     >
-      {/* Terminal Header */}
       <div
         style={{
           padding: '8px 12px',
@@ -236,19 +301,41 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ display: 'flex', gap: '6px' }}>
-            <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: hasError ? '#ef4444' : isComplete ? '#22c55e' : '#eab308',
-                boxShadow: hasError
-                  ? '0 0 6px #ef4444'
-                  : isComplete
-                    ? '0 0 6px #22c55e'
-                    : '0 0 6px #eab308',
-              }}
-            />
+            {!isRunning && onDismiss ? (
+              <button
+                onClick={onDismiss}
+                title="Close terminal"
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: hasError ? '#ef4444' : '#22c55e',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '8px',
+                  color: '#0d1117',
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            ) : (
+              <div
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: dotColor,
+                  boxShadow: `0 0 6px ${dotColor}`,
+                  animation: isRunning ? 'pulse 1.5s ease-in-out infinite' : undefined,
+                }}
+              />
+            )}
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#30363d' }} />
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#30363d' }} />
           </div>
@@ -270,7 +357,6 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
         )}
       </div>
 
-      {/* Progress Bar */}
       <div style={{ height: 2, background: '#30363d' }}>
         <div
           style={{
@@ -286,7 +372,6 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
         />
       </div>
 
-      {/* Terminal Body */}
       <div
         ref={terminalRef}
         style={{
@@ -300,18 +385,9 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
         }}
       >
         {logs.length === 0 && (
-          <div style={{ color: '#8b949e' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>
-                ◐
-              </span>
-              <span>Initializing parser...</span>
-            </div>
-            {showWaitingMessage && (
-              <div style={{ marginTop: '6px', fontSize: '11px', opacity: 0.9 }}>
-                Waiting for server response...
-              </div>
-            )}
+          <div style={{ color: '#8b949e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>◐</span>
+            <span>Initializing parser...</span>
           </div>
         )}
         {logs.map((log) => (
@@ -336,7 +412,7 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
             </span>
           </div>
         ))}
-        {!isComplete && !hasError && logs.length > 0 && (
+        {isRunning && logs.length > 0 && (
           <div style={{ color: '#6b7280', display: 'flex', gap: '8px', marginTop: '2px' }}>
             <span style={{ animation: 'blink 1s step-end infinite' }}>▋</span>
           </div>
@@ -344,21 +420,10 @@ export function ParsingTerminal({ isActive, onComplete }: ParsingTerminalProps) 
       </div>
 
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(2px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes blink {
-          50% { opacity: 0; }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );

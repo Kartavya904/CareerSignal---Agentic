@@ -50,10 +50,10 @@ export async function buildPreferencesFromProfile(
   const workAuth = mapWorkAuthorization(profile.workAuthorization);
   if (workAuth) confidence += 0.1;
 
-  // Extract target locations from current location
-  const targetLocations: string[] = [];
+  // Extract target locations from current location (structured: country required)
+  const targetLocations: { country: string; state?: string; city?: string }[] = [];
   if (profile.location) {
-    targetLocations.push(profile.location);
+    targetLocations.push({ country: profile.location });
     suggestions.push(
       `Added "${profile.location}" as target location based on your current location`,
     );
@@ -87,7 +87,7 @@ export async function buildPreferencesFromProfile(
     targetSeniority,
     skills,
     remotePreference: 'ANY',
-    strictMode: workAuth === 'H1B' || workAuth === 'OPT', // Strict mode if needs sponsorship
+    strictFilterLevel: workAuth === 'H1B' || workAuth === 'OPT' ? 'STRICT' : 'OFF',
   };
 
   return {
