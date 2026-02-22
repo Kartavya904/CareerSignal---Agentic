@@ -23,6 +23,7 @@
     "@careersignal/llm": "*",
     "@careersignal/schemas": "*",
     "pdf-parse": "^1.1.1",
+    "playwright": "^1.58.2",
     "zod": "^3.22.0"
   },
   "devDependencies": {

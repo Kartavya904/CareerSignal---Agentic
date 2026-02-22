@@ -45,13 +45,70 @@ const FIELD_SELECTORS = {
   date: ['.date', '.posted', '[class*="date"]', 'time'],
 };
 
+/** Base URL for Wellfound job links */
+const WELLFOUND_BASE = 'https://wellfound.com';
+
+/**
+ * Site-specific extraction for Wellfound (AngelList)
+ */
+function extractFromWellfound(html: string, sourceUrl: string): RawJobListing[] {
+  const listings: RawJobListing[] = [];
+  // Wellfound uses links like /company/.../jobs/... or /startups/.../jobs
+  const jobLinkRegex = /href="(\/company\/[^"]+\/jobs\/[^"]+|\/startups\/[^"]+\/jobs[^"]*)"/g;
+  const titleRegex = /<[^>]+class="[^"]*[Tt]itle[^"]*"[^>]*>([^<]+)<\/[^>]+>/g;
+  const companyRegex = /<[^>]+class="[^"]*[Cc]ompany[^"]*"[^>]*>([^<]+)<\/[^>]+>/g;
+
+  // Extract job links and dedupe
+  const links = new Set<string>();
+  let m;
+  while ((m = jobLinkRegex.exec(html)) !== null) {
+    const href = m[1];
+    const fullUrl = href.startsWith('http') ? href : `${WELLFOUND_BASE}${href}`;
+    if (fullUrl.includes('/jobs')) links.add(fullUrl);
+  }
+
+  // For each unique link, try to find title/company nearby - simplified: use link text
+  const linkAndTextRegex =
+    /<a[^>]+href="(\/(?:company|startups)\/[^"]+\/jobs[^"]*)"[^>]*>([^<]*?)<\/a>/gi;
+  while ((m = linkAndTextRegex.exec(html)) !== null) {
+    const href = m[1];
+    const linkText = (m[2] || '').trim();
+    const fullUrl = href.startsWith('http') ? href : `${WELLFOUND_BASE}${href}`;
+    if (!linkText || linkText.length < 2) continue;
+    // Split "Company · Title" or "Title at Company" patterns
+    const parts = linkText.split(/[\s·\-–—]+\s*|\s+at\s+/i);
+    const title = parts[0]?.trim() || linkText;
+    const company = parts[1]?.trim() || '';
+    listings.push({
+      title: title.substring(0, 512),
+      company: company || 'Unknown',
+      url: fullUrl,
+      extractedFrom: sourceUrl,
+      confidence: 0.7,
+    });
+  }
+
+  return [...new Map(listings.map((l) => [l.url, l])).values()];
+}
+
 /**
  * Extract job listings from HTML using multiple strategies
  */
 export async function extractJobsFromHtml(
   html: string,
   sourceUrl: string,
+  options?: { slug?: string },
 ): Promise<ExtractionResult> {
+  const slug = options?.slug?.toLowerCase();
+
+  // Strategy 0: Site-specific (Wellfound)
+  if (slug === 'wellfound') {
+    const jobs = extractFromWellfound(html, sourceUrl);
+    if (jobs.length > 0) {
+      return { listings: jobs, strategy: 'site_specific', confidence: 0.75 };
+    }
+  }
+
   // Strategy 1: Try JSON-LD structured data
   const jsonLdJobs = extractFromJsonLd(html, sourceUrl);
   if (jsonLdJobs.length > 0) {

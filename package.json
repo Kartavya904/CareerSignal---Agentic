@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "db:migrate": "npm run db:push --workspace=@careersignal/db",
-    "db:seed": "echo 'Seed runs on first API request'"
+    "db:seed": "echo 'Seed runs on first API request'",
+    "scrape": "node scripts/scrape-blessed-sources.mjs"
   },
   "devDependencies": {
     "drizzle-orm": "^0.29.0"

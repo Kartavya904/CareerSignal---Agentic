@@ -11,16 +11,27 @@ type Source = {
   enabled: boolean;
   isBlessed: boolean;
   status: string;
+  blessedSourceId?: string | null;
+};
+
+type JobListing = {
+  id: string;
+  title: string;
+  companyName: string;
+  sourceUrl: string;
+  location?: string | null;
 };
 
 function SourceRow({
   source: s,
   onToggle,
   onDelete,
+  onClick,
 }: {
   source: Source;
   onToggle: (enabled: boolean) => void;
   onDelete: () => void;
+  onClick?: () => void;
 }) {
   const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -95,7 +106,23 @@ function SourceRow({
           flexWrap: 'wrap',
         }}
       >
-        <strong style={{ color: 'var(--text)', fontSize: '1rem' }}>{s.name}</strong>
+        <button
+          type="button"
+          onClick={onClick}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: s.blessedSourceId ? 'pointer' : 'default',
+            font: 'inherit',
+            color: 'var(--text)',
+            fontWeight: 600,
+            fontSize: '1rem',
+            textAlign: 'left',
+          }}
+        >
+          {s.name}
+        </button>
         {s.isBlessed && (
           <span className="badge badge-muted" style={{ fontSize: '0.7rem' }}>
             default
@@ -169,7 +196,14 @@ function SourceRow({
   );
 }
 
-type DefaultSource = { name: string; url: string; type: string };
+type DefaultSource = {
+  id?: string;
+  name: string;
+  url: string;
+  type: string;
+  slug?: string;
+  job_count?: number;
+};
 
 export default function SourcesPage() {
   const reportAction = useReportAction();
@@ -180,6 +214,10 @@ export default function SourcesPage() {
   const [addingDefault, setAddingDefault] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalSource, setModalSource] = useState<Source | null>(null);
+  const [modalJobs, setModalJobs] = useState<JobListing[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
 
   const load = () => {
     fetch('/api/sources')
@@ -198,6 +236,19 @@ export default function SourcesPage() {
       .then(setDefaults)
       .catch(() => setDefaults([]));
   }, []);
+
+  const handleSourceClick = (source: Source) => {
+    if (!source.blessedSourceId) return;
+    setModalSource(source);
+    setModalOpen(true);
+    setModalLoading(true);
+    setModalJobs([]);
+    fetch(`/api/sources/${source.id}/jobs`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setModalJobs)
+      .catch(() => setModalJobs([]))
+      .finally(() => setModalLoading(false));
+  };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,6 +386,7 @@ export default function SourcesPage() {
                         url: d.url,
                         type: d.type,
                         is_blessed: true,
+                        blessed_source_id: d.id,
                       }),
                     })
                       .then((r) => r.json())
@@ -361,7 +413,9 @@ export default function SourcesPage() {
                   }}
                 >
                   <span>{alreadyAdded ? 'Added' : isAdding ? 'Adding…' : d.name}</span>
-                  <span style={{ fontSize: '0.75rem', color: '#22c55e' }}>0 jobs</span>
+                  <span style={{ fontSize: '0.75rem', color: '#22c55e' }}>
+                    {d.job_count ?? 0} jobs
+                  </span>
                 </button>
               );
             })}
@@ -398,9 +452,108 @@ export default function SourcesPage() {
                 setSources((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled } : x)));
               }}
               onDelete={() => setSources((prev) => prev.filter((x) => x.id !== s.id))}
+              onClick={() => handleSourceClick(s)}
             />
           ))}
         </ul>
+      )}
+
+      {modalOpen && modalSource && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="jobs-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.6)',
+          }}
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 560,
+              maxHeight: '80vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '1rem',
+              }}
+            >
+              <h2 id="jobs-modal-title" style={{ margin: 0, fontSize: '1.25rem' }}>
+                {modalSource.name} — scraped jobs
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: 'var(--muted)',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            {modalLoading ? (
+              <p style={{ color: 'var(--muted)' }}>Loading…</p>
+            ) : modalJobs.length === 0 ? (
+              <p style={{ color: 'var(--muted)' }}>No jobs cached yet. Run the scraper.</p>
+            ) : (
+              <ul
+                style={{
+                  listStyle: 'none',
+                  padding: 0,
+                  margin: 0,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                }}
+              >
+                {modalJobs.map((j) => (
+                  <li
+                    key={j.id}
+                    style={{
+                      padding: '0.75rem',
+                      background: 'var(--surface-elevated)',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    <a
+                      href={j.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--accent)', fontWeight: 600 }}
+                    >
+                      {j.title}
+                    </a>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+                      {j.companyName}
+                      {j.location && ` · ${j.location}`}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

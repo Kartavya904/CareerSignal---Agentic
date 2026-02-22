@@ -7,8 +7,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate:pg",
+    "db:migrate": "drizzle-kit up:pg",
     "db:push": "drizzle-kit push:pg",
     "db:studio": "drizzle-kit studio"
   },

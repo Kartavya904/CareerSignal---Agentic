@@ -4,6 +4,7 @@ import { sourceTypeEnum, sourceStatusEnum } from './enums';
 export const sourceSchema = z.object({
   id: z.string().uuid().optional(),
   user_id: z.string().uuid().optional(),
+  blessed_source_id: z.string().uuid().optional(),
   name: z.string(),
   url: z.string().url(),
   type: sourceTypeEnum.default('CUSTOM'),

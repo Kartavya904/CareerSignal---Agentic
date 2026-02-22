@@ -15,6 +15,13 @@
       "when": 1771662907568,
       "tag": "0001_yielding_adam_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1771707245836,
+      "tag": "0002_foamy_jane_foster",
+      "breakpoints": true
     }
   ]
 }

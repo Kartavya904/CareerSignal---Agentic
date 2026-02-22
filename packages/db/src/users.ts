@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from './client';
 import { users } from './schema';
+import { seedBlessedSources } from './seed';
 
 export interface CreateUserInput {
   email: string;

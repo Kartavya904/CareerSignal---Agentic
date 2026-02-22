@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       url: parsed.data.url,
       type: parsed.data.type,
       isBlessed: parsed.data.is_blessed,
+      blessedSourceId: parsed.data.blessed_source_id ?? undefined,
     });
     return NextResponse.json(source);
   } catch (e) {

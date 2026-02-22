@@ -18,7 +18,13 @@ export async function setSourceEnabled(db: Db, userId: string, sourceId: string,
 export async function addSource(
   db: Db,
   userId: string,
-  data: { name: string; url: string; type?: string; isBlessed?: boolean },
+  data: {
+    name: string;
+    url: string;
+    type?: string;
+    isBlessed?: boolean;
+    blessedSourceId?: string;
+  },
 ) {
   const [source] = await db
     .insert(sourcesTable)
@@ -28,6 +34,7 @@ export async function addSource(
       url: data.url,
       type: (data.type as 'COMPANY' | 'AGGREGATOR' | 'COMMUNITY' | 'CUSTOM') ?? 'CUSTOM',
       isBlessed: data.isBlessed ?? false,
+      blessedSourceId: data.blessedSourceId ?? null,
     })
     .returning();
   return source;

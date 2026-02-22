@@ -28,6 +28,70 @@ export interface NormalizationResult {
   confidence: number;
 }
 
+/** Row shape for job_listings_cache (no runId/sourceId). */
+export interface JobCacheRow {
+  blessedSourceId: string;
+  title: string;
+  companyName: string;
+  sourceUrl: string;
+  location?: string | null;
+  remoteType?: string | null;
+  seniority?: string | null;
+  employmentType?: string | null;
+  visaSponsorship?: string | null;
+  description?: string | null;
+  requirements?: string[] | null;
+  postedDate?: string | null;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryCurrency?: string | null;
+  department?: string | null;
+  team?: string | null;
+  applyUrl?: string | null;
+  rawExtract?: Record<string, unknown> | null;
+  evidenceRefs?: string[] | null;
+  confidence?: number | null;
+  dedupeKey: string;
+}
+
+/**
+ * Normalize a raw job listing for job_listings_cache (synchronous, no LLM).
+ * Produces a row compatible with job_listings_cache schema.
+ */
+export function normalizeJobForCache(raw: RawJobListing, blessedSourceId: string): JobCacheRow {
+  const title = canonicalizeTitle(raw.title);
+  const companyName = raw.company?.trim() || 'Unknown Company';
+  const sourceUrl = raw.url || raw.extractedFrom || '';
+  const dedupeKey = generateDedupeKey(title, companyName);
+  const location = raw.location ? canonicalizeLocation(raw.location) : undefined;
+  const salary = parseSalary(raw.salary);
+
+  return {
+    blessedSourceId,
+    title: title.substring(0, 512),
+    companyName: companyName.substring(0, 255),
+    sourceUrl: sourceUrl.substring(0, 2048) || sourceUrl,
+    location: location?.substring(0, 255) ?? null,
+    remoteType: null,
+    seniority: null,
+    employmentType: null,
+    visaSponsorship: null,
+    description: raw.description?.substring(0, 10000) ?? null,
+    requirements: null,
+    postedDate: raw.postedDate ?? null,
+    salaryMin: salary.min ?? null,
+    salaryMax: salary.max ?? null,
+    salaryCurrency: salary.currency ?? null,
+    department: null,
+    team: null,
+    applyUrl: raw.url ?? null,
+    rawExtract: raw as unknown as Record<string, unknown>,
+    evidenceRefs: [],
+    confidence: raw.confidence,
+    dedupeKey,
+  };
+}
+
 /**
  * Normalize a raw job listing to canonical schema
  */

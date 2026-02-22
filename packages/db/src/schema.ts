@@ -10,6 +10,8 @@ import {
   date,
   pgEnum,
   integer,
+  uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
 
 // Enums (storage)
@@ -72,6 +74,7 @@ export const runStatusEnum = pgEnum('run_status', [
   'CANCELLED',
   'PAUSED',
 ]);
+export const scrapeStatusEnum = pgEnum('last_scrape_status', ['SUCCESS', 'FAILED', 'PARTIAL']);
 
 // Single-user V1: one row per account (email + password for sign up / sign in)
 export const users = pgTable('users', {
@@ -184,6 +187,67 @@ export const userProfileInsights = pgTable('user_profile_insights', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/** Backend-owned sources we scrape on a schedule; cache is shared. Not tied to any user. */
+export const blessedSources = pgTable('blessed_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  url: text('url').notNull(),
+  type: sourceTypeEnum('type').notNull(),
+  slug: varchar('slug', { length: 64 }),
+  enabledForScraping: boolean('enabled_for_scraping').default(true).notNull(),
+  scrapeIntervalMinutes: integer('scrape_interval_minutes'),
+  lastScrapedAt: timestamp('last_scraped_at'),
+  lastScrapeStatus: scrapeStatusEnum('last_scrape_status'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** Shared cache of job listings per blessed source; one stable row per listing (upsert by dedupe_key). */
+export const jobListingsCache = pgTable(
+  'job_listings_cache',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    blessedSourceId: uuid('blessed_source_id')
+      .notNull()
+      .references(() => blessedSources.id, { onDelete: 'cascade' }),
+    title: varchar('title', { length: 512 }).notNull(),
+    companyName: varchar('company_name', { length: 255 }).notNull(),
+    sourceUrl: text('source_url').notNull(),
+    location: varchar('location', { length: 255 }),
+    remoteType: varchar('remote_type', { length: 32 }),
+    seniority: seniorityEnum('seniority'),
+    employmentType: employmentTypeEnum('employment_type'),
+    visaSponsorship: varchar('visa_sponsorship', { length: 16 }),
+    description: text('description'),
+    requirements: jsonb('requirements').$type<string[]>(),
+    postedDate: date('posted_date'),
+    salaryMin: decimal('salary_min', { precision: 12, scale: 2 }),
+    salaryMax: decimal('salary_max', { precision: 12, scale: 2 }),
+    salaryCurrency: varchar('salary_currency', { length: 8 }),
+    department: varchar('department', { length: 255 }),
+    team: varchar('team', { length: 255 }),
+    applyUrl: text('apply_url'),
+    rawExtract: jsonb('raw_extract').$type<Record<string, unknown>>(),
+    evidenceRefs: jsonb('evidence_refs').$type<string[]>(),
+    confidence: decimal('confidence', { precision: 3, scale: 2 }),
+    dedupeKey: varchar('dedupe_key', { length: 256 }).notNull(),
+    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+    lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    jobListingsCacheBlessedDedupeIdx: uniqueIndex('job_listings_cache_blessed_dedupe_idx').on(
+      table.blessedSourceId,
+      table.dedupeKey,
+    ),
+    jobListingsCacheBlessedLastSeenIdx: index('job_listings_cache_blessed_last_seen_idx').on(
+      table.blessedSourceId,
+      table.lastSeenAt,
+    ),
+  }),
+);
+
 export const sources = pgTable('sources', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
@@ -194,6 +258,9 @@ export const sources = pgTable('sources', {
   type: sourceTypeEnum('type').notNull().default('CUSTOM'),
   enabled: boolean('enabled').default(true).notNull(),
   isBlessed: boolean('is_blessed').default(false).notNull(),
+  blessedSourceId: uuid('blessed_source_id').references(() => blessedSources.id, {
+    onDelete: 'set null',
+  }),
   metadata: jsonb('metadata').$type<Record<string, unknown>>(),
   lastScannedAt: timestamp('last_scanned_at'),
   lastValidatedAt: timestamp('last_validated_at'),
@@ -226,6 +293,9 @@ export const jobs = pgTable('jobs', {
     .notNull()
     .references(() => runs.id, { onDelete: 'cascade' }),
   sourceId: uuid('source_id').references(() => sources.id, { onDelete: 'set null' }),
+  jobListingCacheId: uuid('job_listing_cache_id').references(() => jobListingsCache.id, {
+    onDelete: 'set null',
+  }),
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
