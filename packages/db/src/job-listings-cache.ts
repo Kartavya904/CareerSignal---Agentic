@@ -32,7 +32,7 @@ export async function upsertJobListingCache(db: Db, row: JobCacheInsert): Promis
   const now = new Date();
   const postedDate = row.postedDate
     ? typeof row.postedDate === 'string'
-      ? row.postedDate
+      ? safeParseDate(row.postedDate)
       : row.postedDate.toISOString().slice(0, 10)
     : null;
   const base = {
@@ -74,6 +74,58 @@ export async function upsertJobListingCache(db: Db, row: JobCacheInsert): Promis
   } else {
     await db.insert(jobListingsCache).values(base);
   }
+}
+
+/**
+ * Safety net: convert any date string (including relative like "2 days ago") to
+ * YYYY-MM-DD for PostgreSQL's date column. Returns null for unparseable input.
+ */
+function safeParseDate(raw: string): string | null {
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  const now = new Date();
+
+  if (s === 'today' || s === 'just now' || s === 'just posted') {
+    return fmt(now);
+  }
+  if (s === 'yesterday') {
+    now.setDate(now.getDate() - 1);
+    return fmt(now);
+  }
+
+  const rel = s.match(/^(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/);
+  if (rel && rel[1] && rel[2]) {
+    const n = parseInt(rel[1], 10);
+    switch (rel[2]) {
+      case 'day':
+        now.setDate(now.getDate() - n);
+        break;
+      case 'week':
+        now.setDate(now.getDate() - n * 7);
+        break;
+      case 'month':
+        now.setMonth(now.getMonth() - n);
+        break;
+      case 'year':
+        now.setFullYear(now.getFullYear() - n);
+        break;
+      default:
+        break;
+    }
+    return fmt(now);
+  }
+
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return fmt(parsed);
+
+  return null;
+}
+
+function fmt(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /** List job listings from cache for a blessed source, ordered by last_seen_at desc. */

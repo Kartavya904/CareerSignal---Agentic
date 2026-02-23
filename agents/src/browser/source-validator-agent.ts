@@ -38,12 +38,25 @@ const JOB_INDICATORS = [
   'vacancies',
 ];
 
-// Patterns that indicate blockers
+// Patterns that indicate blockers. Avoid false positives: many sites include
+// "recaptcha" in script tags on normal pages — only flag clear challenge prompts.
 const BLOCKER_PATTERNS = {
-  captcha: ['captcha', 'recaptcha', 'hcaptcha', 'challenge'],
+  captcha: [
+    'complete the captcha',
+    'verify you are human',
+    'solve the captcha',
+    'captcha challenge',
+    'please complete the captcha',
+  ],
   loginRequired: ['sign in', 'log in', 'login required', 'please sign in'],
-  accessDenied: ['access denied', '403', 'forbidden', 'blocked'],
-  notFound: ['404', 'not found', 'page not found', 'no longer available'],
+  accessDenied: ['access denied', '403 forbidden', 'blocked by', '403 ', 'forbidden'],
+  notFound: [
+    '404 - page not found',
+    '404 page',
+    'page not found',
+    'this page does not exist',
+    'no longer available',
+  ],
 };
 
 /**
@@ -114,7 +127,8 @@ export async function validateSource(
 }
 
 /**
- * Detect if page has blocker (CAPTCHA, login, etc.)
+ * Detect if page has blocker. "recaptcha" alone is NOT flagged — many sites
+ * include it in scripts on normal pages.
  */
 function detectBlocker(html: string): string | null {
   const lowerHtml = html.toLowerCase();

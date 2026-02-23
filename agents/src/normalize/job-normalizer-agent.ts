@@ -78,7 +78,7 @@ export function normalizeJobForCache(raw: RawJobListing, blessedSourceId: string
     visaSponsorship: null,
     description: raw.description?.substring(0, 10000) ?? null,
     requirements: null,
-    postedDate: raw.postedDate ?? null,
+    postedDate: parsePostedDate(raw.postedDate) ?? null,
     salaryMin: salary.min ?? null,
     salaryMax: salary.max ?? null,
     salaryCurrency: salary.currency ?? null,
@@ -90,6 +90,63 @@ export function normalizeJobForCache(raw: RawJobListing, blessedSourceId: string
     confidence: raw.confidence,
     dedupeKey,
   };
+}
+
+/**
+ * Convert relative date strings ("2 days ago", "today", "yesterday") and
+ * other human-readable formats into ISO date strings (YYYY-MM-DD) safe for
+ * PostgreSQL's date column. Returns null if unparseable.
+ */
+function parsePostedDate(raw?: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+
+  const now = new Date();
+
+  if (s === 'today' || s === 'just now' || s === 'just posted') {
+    return toIsoDate(now);
+  }
+  if (s === 'yesterday') {
+    now.setDate(now.getDate() - 1);
+    return toIsoDate(now);
+  }
+
+  const relMatch = s.match(/^(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/);
+  if (relMatch) {
+    const n = parseInt(relMatch[1], 10);
+    const unit = relMatch[2];
+    switch (unit) {
+      case 'second':
+      case 'minute':
+      case 'hour':
+        break;
+      case 'day':
+        now.setDate(now.getDate() - n);
+        break;
+      case 'week':
+        now.setDate(now.getDate() - n * 7);
+        break;
+      case 'month':
+        now.setMonth(now.getMonth() - n);
+        break;
+      case 'year':
+        now.setFullYear(now.getFullYear() - n);
+        break;
+    }
+    return toIsoDate(now);
+  }
+
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return toIsoDate(parsed);
+  }
+
+  return null;
+}
+
+function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /**

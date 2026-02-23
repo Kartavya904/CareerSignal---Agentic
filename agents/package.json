@@ -22,6 +22,7 @@
   "dependencies": {
     "@careersignal/llm": "*",
     "@careersignal/schemas": "*",
+    "node-html-parser": "^7.0.2",
     "pdf-parse": "^1.1.1",
     "playwright": "^1.58.2",
     "zod": "^3.22.0"

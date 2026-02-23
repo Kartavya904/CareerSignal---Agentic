@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getRequiredUserId } from '@/lib/auth';
-import { getDb, getAdminAgentLogs } from '@careersignal/db';
+import { getDb, getAdminBrainLogs } from '@careersignal/db';
 
-/** Admin: get recent agent logs (poll for terminal). Reads from DB so logs persist after refresh. */
+/** Admin: get recent brain logs (poll for Brain Terminal). Reads from DB so logs persist after refresh. */
 export async function GET(req: Request) {
   try {
     await getRequiredUserId();
     const { searchParams } = new URL(req.url);
     const afterId = searchParams.get('after') ?? undefined;
     const db = getDb();
-    const logs = await getAdminAgentLogs(db, afterId);
+    const logs = await getAdminBrainLogs(db, afterId);
     return NextResponse.json({ logs });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.json({ error: 'Failed to get logs' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to get brain logs' }, { status: 500 });
   }
 }

@@ -10,6 +10,7 @@ import {
   date,
   pgEnum,
   integer,
+  serial,
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
@@ -247,6 +248,55 @@ export const jobListingsCache = pgTable(
     ),
   }),
 );
+
+/** URLs already visited by the scraper per blessed source. Persists across server restarts. */
+export const scrapeVisitedUrls = pgTable(
+  'scrape_visited_urls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    blessedSourceId: uuid('blessed_source_id')
+      .notNull()
+      .references(() => blessedSources.id, { onDelete: 'cascade' }),
+    normalizedUrl: text('normalized_url').notNull(),
+    firstVisitedAt: timestamp('first_visited_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    scrapeVisitedUrlsBlessedUrlIdx: uniqueIndex('scrape_visited_urls_blessed_url_idx').on(
+      table.blessedSourceId,
+      table.normalizedUrl,
+    ),
+    scrapeVisitedUrlsBlessedIdx: index('scrape_visited_urls_blessed_idx').on(table.blessedSourceId),
+  }),
+);
+
+/** Single row: whether the admin continuous scrape loop is running. Persists across page refresh. */
+export const scrapeState = pgTable('scrape_state', {
+  id: integer('id').primaryKey().default(1),
+  isRunning: boolean('is_running').notNull().default(false),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+});
+
+/** Admin agent (terminal) logs for the current scrape run. Cleared when a new scrape starts. */
+export const adminAgentLogs = pgTable('admin_agent_logs', {
+  id: serial('id').primaryKey(),
+  ts: timestamp('ts', { withTimezone: true }).notNull(),
+  agent: varchar('agent', { length: 128 }).notNull(),
+  level: varchar('level', { length: 16 }).notNull(),
+  message: text('message').notNull(),
+  detail: text('detail'),
+});
+
+/** Admin brain logs for the current scrape run. Cleared when a new scrape starts. */
+export const adminBrainLogs = pgTable('admin_brain_logs', {
+  id: serial('id').primaryKey(),
+  ts: timestamp('ts', { withTimezone: true }).notNull(),
+  level: varchar('level', { length: 16 }).notNull(),
+  message: text('message').notNull(),
+  reasoning: text('reasoning'),
+  recommendation: text('recommendation'),
+  suggestedUrl: text('suggested_url'),
+  cycleDelaySeconds: integer('cycle_delay_seconds'),
+});
 
 export const sources = pgTable('sources', {
   id: uuid('id').primaryKey().defaultRandom(),

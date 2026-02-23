@@ -10,3 +10,5 @@ export * from './profile-insights';
 export * from './user-metadata';
 export * from './blessed-sources';
 export * from './job-listings-cache';
+export * from './scrape-visited-urls';
+export * from './admin-scrape-logs';

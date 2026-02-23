@@ -37,6 +37,12 @@ data_user/
 !data_user/.gitkeep
 
 # ============================================================
+# Source Data (captured HTML from scraping — local storage)
+# ============================================================
+data_sources/
+!data_sources/.gitkeep
+
+# ============================================================
 # Database
 # ============================================================
 *.sql.bak
@@ -97,3 +103,4 @@ coverage/
 .cache/
 tmp/
 temp/
+.cursor/

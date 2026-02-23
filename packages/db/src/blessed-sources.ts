@@ -20,6 +20,15 @@ export async function getBlessedSourceById(db: Db, id: string) {
   return row ?? null;
 }
 
+export async function updateBlessedSourceUrl(db: Db, id: string, url: string) {
+  const [updated] = await db
+    .update(blessedSources)
+    .set({ url, updatedAt: new Date() })
+    .where(eq(blessedSources.id, id))
+    .returning();
+  return updated ?? null;
+}
+
 export async function setBlessedSourceScraped(
   db: Db,
   id: string,

@@ -23,7 +23,8 @@
     "scrape": "node scripts/scrape-blessed-sources.mjs"
   },
   "devDependencies": {
-    "drizzle-orm": "^0.29.0"
+    "drizzle-orm": "^0.29.0",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=20.0.0",

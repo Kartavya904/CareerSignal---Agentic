@@ -7,6 +7,7 @@ import {
   getProfileByUserId,
   updateProfileResume,
   updateUserMetadata,
+  upsertProfile,
 } from '@careersignal/db';
 import { getRequiredUserId } from '@/lib/auth';
 import { getUserDataDir, getResumeFilePath, getResumeFilename } from '@/lib/user-data';
