@@ -59,6 +59,12 @@ import { registerLoginWait } from '@/lib/login-wall-state';
 
 const DEFAULT_CYCLE_DELAY_MS = 10 * 1000;
 
+/** Once a single source reaches this many jobs extracted, we stop that source and move on. */
+const MAX_JOBS_PER_SOURCE = 5000;
+
+/** Max number of sources to scrape in parallel when multiple are enabled. */
+const MAX_PARALLEL_SOURCES = 3;
+
 const STEALTH_ARGS = [
   '--disable-blink-features=AutomationControlled',
   '--disable-dev-shm-usage',
@@ -465,6 +471,23 @@ async function scrapeOneSourceWithPlanner(
     while (true) {
       iterations++;
 
+      if (totalJobsExtracted >= MAX_JOBS_PER_SOURCE) {
+        brainOrchestrate(
+          `${source.name}: job cap reached (${MAX_JOBS_PER_SOURCE}). Moving to next source.`,
+        );
+        agentLog(
+          'Scraper',
+          `${source.name}: extracted ${totalJobsExtracted} jobs (cap ${MAX_JOBS_PER_SOURCE}). Done.`,
+          { level: 'success' },
+        );
+        await setBlessedSourceScraped(db, source.id, 'SUCCESS');
+        if (!useShared && browser) {
+          await browser.close();
+          browser = null;
+        }
+        return { jobsExtracted: totalJobsExtracted };
+      }
+
       const { stopRequested } = getScraperStatus();
       if (stopRequested) {
         state.stopRequested = true;
@@ -685,6 +708,18 @@ async function scrapeOneSourceWithPlanner(
             agentLog('Brain', 'Skipping this URL and continuing with next in frontier.', {
               level: 'info',
             });
+            const skippedNormalized = normalizeUrl(url);
+            state.urlSeen.add(skippedNormalized);
+            const before = state.frontier.length;
+            state.frontier = state.frontier.filter(
+              (f) => normalizeUrl(f.url) !== skippedNormalized,
+            );
+            const removed = before - state.frontier.length;
+            if (removed > 0) {
+              agentLog('Brain', `Removed ${removed} duplicate(s) of this URL from frontier.`, {
+                level: 'info',
+              });
+            }
             state.lastResult = {
               captureId: '',
               pageType: null,
@@ -773,6 +808,18 @@ async function scrapeOneSourceWithPlanner(
             agentLog('Brain', 'Skipping this URL and continuing with next in frontier.', {
               level: 'info',
             });
+            const skippedNormalized = normalizeUrl(url);
+            state.urlSeen.add(skippedNormalized);
+            const before = state.frontier.length;
+            state.frontier = state.frontier.filter(
+              (f) => normalizeUrl(f.url) !== skippedNormalized,
+            );
+            const removed = before - state.frontier.length;
+            if (removed > 0) {
+              agentLog('Brain', `Removed ${removed} duplicate(s) of this URL from frontier.`, {
+                level: 'info',
+              });
+            }
             state.lastResult = {
               captureId: '',
               pageType: null,
@@ -907,7 +954,8 @@ export async function runScrapeLoop(): Promise<void> {
       brainOrchestrate('No enabled sources. Will wait and retry next cycle.');
       agentLog('Scraper', 'No enabled sources. Waiting for next cycle.', { level: 'warn' });
     } else {
-      if (visibleMode && !sharedBrowser) {
+      const runParallel = sources.length > 1;
+      if (visibleMode && !sharedBrowser && !runParallel) {
         agentLog('Navigator', 'Visible mode: launching browser (stays open).', { level: 'info' });
         sharedBrowser = await chromium.launch({ headless: false, args: STEALTH_ARGS });
         sharedPage = await sharedBrowser.newPage();
@@ -915,20 +963,46 @@ export async function runScrapeLoop(): Promise<void> {
         await sharedPage.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
       }
 
-      for (const source of sources) {
-        const { stopRequested: sr } = getScraperStatus();
-        if (sr) break;
+      if (runParallel) {
+        for (let i = 0; i < sources.length; i += MAX_PARALLEL_SOURCES) {
+          const { stopRequested: sr } = getScraperStatus();
+          if (sr) break;
+          const chunk = sources.slice(i, i + MAX_PARALLEL_SOURCES);
+          brainOrchestrate(
+            `Running ${chunk.length} source(s) in parallel: ${chunk.map((s) => s.name).join(', ')}`,
+          );
+          agentLog(
+            'Scraper',
+            `Parallel scrape: ${chunk.map((s) => s.name).join(', ')} (${chunk.length} of ${sources.length} sources)`,
+            { level: 'info' },
+          );
+          await Promise.all(
+            chunk.map((source) =>
+              scrapeOneSourceWithPlanner(db, source, {
+                visible: visibleMode,
+                sharedBrowser: null,
+                sharedPage: null,
+                cycle,
+              }),
+            ),
+          );
+        }
+      } else {
+        for (const source of sources) {
+          const { stopRequested: sr } = getScraperStatus();
+          if (sr) break;
 
-        brainOrchestrate(
-          `Orchestrating: ${source.name}. Planner → Brain loop with aggressive frontier crawl.`,
-        );
+          brainOrchestrate(
+            `Orchestrating: ${source.name}. Planner → Brain loop with aggressive frontier crawl.`,
+          );
 
-        await scrapeOneSourceWithPlanner(db, source, {
-          visible: visibleMode,
-          sharedBrowser: visibleMode ? sharedBrowser : null,
-          sharedPage: visibleMode ? sharedPage : null,
-          cycle,
-        });
+          await scrapeOneSourceWithPlanner(db, source, {
+            visible: visibleMode,
+            sharedBrowser: visibleMode ? sharedBrowser : null,
+            sharedPage: visibleMode ? sharedPage : null,
+            cycle,
+          });
+        }
       }
     }
 

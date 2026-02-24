@@ -40,6 +40,8 @@ const JOB_INDICATORS = [
 
 // Patterns that indicate blockers. Avoid false positives: many sites include
 // "recaptcha" in script tags on normal pages — only flag clear challenge prompts.
+// For login: avoid matching nav links ("sign in", "log in") — require phrases that
+// indicate the page itself is blocking content (e.g. "sign in to view", "log in to access").
 const BLOCKER_PATTERNS = {
   captcha: [
     'complete the captcha',
@@ -48,7 +50,18 @@ const BLOCKER_PATTERNS = {
     'captcha challenge',
     'please complete the captcha',
   ],
-  loginRequired: ['sign in', 'log in', 'login required', 'please sign in'],
+  loginRequired: [
+    'login required',
+    'please sign in to view',
+    'sign in to view',
+    'log in to view',
+    'sign in to access',
+    'log in to access',
+    'you must be logged in',
+    'please log in to continue',
+    'sign in to continue',
+    'log in to continue',
+  ],
   accessDenied: ['access denied', '403 forbidden', 'blocked by', '403 ', 'forbidden'],
   notFound: [
     '404 - page not found',

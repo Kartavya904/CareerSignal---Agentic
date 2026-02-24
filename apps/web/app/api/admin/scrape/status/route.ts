@@ -14,7 +14,7 @@ export async function GET() {
     const waitingForCaptchaSolve = isWaitingForCaptchaSolve();
     const waitingForLogin = isWaitingForLoginSolve();
     return NextResponse.json({
-      running: mem.running || dbState.isRunning,
+      running: mem.running && dbState.isRunning,
       stopRequested: mem.stopRequested,
       visibleMode: mem.visibleMode,
       waitingForCaptchaSolve,

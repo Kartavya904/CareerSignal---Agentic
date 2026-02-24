@@ -106,11 +106,11 @@ describe('scrape-planner', () => {
       expect(state.urlSeen.has('https://wellfound.com/jobs')).toBe(true);
     });
 
-    it('handles LOGIN_WALL_HUMAN adaptation', () => {
+    it('handles LOGIN_WALL_HUMAN adaptation when page type is login_wall', () => {
       const state = makeState({ frontier: [] });
       state.lastResult = {
         captureId: 'cap-1',
-        pageType: null,
+        pageType: 'login_wall',
         jobsCount: 0,
         adaptation: 'LOGIN_WALL_HUMAN',
         visitedUrl: 'https://wellfound.com/jobs',
@@ -123,11 +123,25 @@ describe('scrape-planner', () => {
       }
     });
 
-    it('handles CAPTCHA_HUMAN_SOLVE adaptation', () => {
+    it('does not trigger login when adaptation is LOGIN_WALL_HUMAN but page type is listing', () => {
       const state = makeState({ frontier: [] });
       state.lastResult = {
         captureId: 'cap-1',
-        pageType: null,
+        pageType: 'listing',
+        jobsCount: 0,
+        adaptation: 'LOGIN_WALL_HUMAN',
+        visitedUrl: 'https://builtin.com/jobs',
+        visitedDepth: 0,
+      };
+      const action = planNextAction(state);
+      expect(action.type).toBe('CYCLE_DONE');
+    });
+
+    it('handles CAPTCHA_HUMAN_SOLVE adaptation when page type is captcha_challenge', () => {
+      const state = makeState({ frontier: [] });
+      state.lastResult = {
+        captureId: 'cap-1',
+        pageType: 'captcha_challenge',
         jobsCount: 0,
         adaptation: 'CAPTCHA_HUMAN_SOLVE',
         visitedUrl: 'https://wellfound.com/jobs',

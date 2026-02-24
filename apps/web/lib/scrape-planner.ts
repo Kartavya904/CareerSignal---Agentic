@@ -8,7 +8,7 @@
  * separate Planner steps). The Planner only decides WHAT to visit or do next.
  */
 
-import type { PageType } from '@careersignal/agents';
+import { type PageType, normalizeUrl } from '@careersignal/agents';
 
 // ── Actions the Planner can output ──────────────────────────────────────────
 
@@ -105,20 +105,26 @@ export function planNextAction(state: PlannerState): PlannerAction {
     return { type: 'CYCLE_DONE', reason: 'Stop requested' };
   }
 
-  // Handle Brain adaptations first
+  // Handle Brain adaptations first. Only trigger login/captcha when the Page Classifier actually classified the page as such — avoid false positives from validator (e.g. "sign in" in nav on a normal listing page).
   if (state.lastResult?.adaptation) {
     const adapt = state.lastResult.adaptation;
 
     if (adapt === 'LOGIN_WALL_HUMAN') {
-      const url = state.lastResult.visitedUrl ?? state.source.url;
+      if (state.lastResult.pageType === 'login_wall') {
+        const url = state.lastResult.visitedUrl ?? state.source.url;
+        state.lastResult.adaptation = null;
+        return { type: 'TRIGGER_LOGIN_WALL', url };
+      }
       state.lastResult.adaptation = null;
-      return { type: 'TRIGGER_LOGIN_WALL', url };
     }
 
     if (adapt === 'CAPTCHA_HUMAN_SOLVE') {
-      const url = state.lastResult.visitedUrl ?? state.source.url;
+      if (state.lastResult.pageType === 'captcha_challenge') {
+        const url = state.lastResult.visitedUrl ?? state.source.url;
+        state.lastResult.adaptation = null;
+        return { type: 'TRIGGER_CAPTCHA', url };
+      }
       state.lastResult.adaptation = null;
-      return { type: 'TRIGGER_CAPTCHA', url };
     }
 
     if (adapt === 'TRY_NEW_URL') {
@@ -178,14 +184,15 @@ export function planNextAction(state: PlannerState): PlannerAction {
     }
   }
 
-  // Pop next URL from frontier, preferring higher-priority items
+  // Pop next URL from frontier, preferring higher-priority items. Use normalized URL for urlSeen so we don't revisit the same page under different query strings.
   while (state.frontier.length > 0) {
     const nextIdx = pickHighestPriority(state.frontier);
     const next = state.frontier.splice(nextIdx, 1)[0]!;
-    if (state.urlSeen.has(next.url)) {
+    const norm = normalizeUrl(next.url);
+    if (state.urlSeen.has(norm)) {
       continue;
     }
-    state.urlSeen.add(next.url);
+    state.urlSeen.add(norm);
     state.retryCount = 0;
     return { type: 'VISIT_URL', url: next.url, depth: next.depth };
   }

@@ -248,8 +248,11 @@ export default function AdminPage() {
     setStopping(true);
     fetch('/api/admin/scrape/stop', { method: 'POST' })
       .then((r) => r.json())
-      .then(() => {
-        setScrapingRunning(false);
+      .then((data) => {
+        if (data?.ok) {
+          setScrapingRunning(false);
+          clearLogs();
+        }
       })
       .catch(() => {})
       .finally(() => setStopping(false));

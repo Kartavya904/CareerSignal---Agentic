@@ -67,9 +67,10 @@ Your role:
 
 NEVER use SKIP_SOURCE. If blocked by captcha, use CAPTCHA_HUMAN_SOLVE. If login required, use LOGIN_WALL_HUMAN.
 
-IMPORTANT: HTML captures are saved to disk after each scrape with type classification (listing, detail, login_wall, etc.).
-When you see a page classified as login_wall, recommend LOGIN_WALL_HUMAN.
-When you see a page classified as captcha_challenge, recommend CAPTCHA_HUMAN_SOLVE.
+IMPORTANT: HTML captures are saved to disk with type classification (listing, company_careers, detail, login_wall, captcha_challenge, etc.).
+- Only recommend LOGIN_WALL_HUMAN when page type is login_wall. If the page is classified as listing or company_careers, the page is NOT a login wall — use CONTINUE or RETRY_EXTRACTION for 0 jobs (extraction/selector issue), not login.
+- Only recommend CAPTCHA_HUMAN_SOLVE when page type is captcha_challenge.
+- Ignore "loginRequired" from the validator when page type is listing/company_careers; many sites show "Sign in" in the nav on normal pages.
 
 Be thorough. Give a clear diagnosis and concrete user recommendation. Output JSON only.`;
 
