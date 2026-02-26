@@ -95,11 +95,29 @@ export async function classifyPage(
   };
 }
 
+const KNOWN_NON_JOB_DOMAINS = [
+  'google.com',
+  'youtube.com',
+  'wikipedia.org',
+  'openai.com',
+  'github.com',
+];
+
 function runHeuristics(html: string, url: string, statusCode?: number): HeuristicScore[] {
   const lower = html.toLowerCase();
   const urlLower = url.toLowerCase();
   const htmlLen = html.length;
   const scores: HeuristicScore[] = [];
+
+  // --- Irrelevant (known non-job domains) — check first so they never score as listing/detail ---
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    if (KNOWN_NON_JOB_DOMAINS.some((d) => host === d || host.endsWith('.' + d))) {
+      scores.push({ type: 'irrelevant', score: 0.95, signals: ['known_non_job_domain'] });
+    }
+  } catch {
+    // invalid URL
+  }
 
   // --- Error ---
   {
@@ -204,10 +222,18 @@ function runHeuristics(html: string, url: string, statusCode?: number): Heuristi
   {
     const signals: string[] = [];
     let score = 0;
+    // Wellfound-style and generic job/application URL patterns
     if (
       /\/jobs\/\d+-/.test(urlLower) ||
       /\/job\/\d+/.test(urlLower) ||
-      /\/jobs\/view\/\d+/.test(urlLower)
+      /\/jobs\/view\/\d+/.test(urlLower) ||
+      /\/careers?\/details?\//.test(urlLower) ||
+      /\/career\/[^/]+/.test(urlLower) ||
+      /\/position\/[^/]+/.test(urlLower) ||
+      /\/opening\/[^/]+/.test(urlLower) ||
+      /\/vacancy\/[^/]+/.test(urlLower) ||
+      /\/job\/[^/]+/.test(urlLower) ||
+      /\/jobs\/[^/?#]+/.test(urlLower)
     ) {
       score += 0.5;
       signals.push('detail_url_pattern');
@@ -217,17 +243,42 @@ function runHeuristics(html: string, url: string, statusCode?: number): Heuristi
       score += 0.15;
       signals.push('single_h1');
     }
-    if (lower.includes('apply now') || lower.includes('apply for this')) {
+    if (
+      lower.includes('apply now') ||
+      lower.includes('apply for this') ||
+      lower.includes('start application') ||
+      lower.includes('submit application')
+    ) {
       score += 0.2;
       signals.push('apply_button');
     }
     if (
+      lower.includes('attach') &&
+      (lower.includes('resume') || lower.includes('cv') || lower.includes('curriculum'))
+    ) {
+      score += 0.25;
+      signals.push('attach_resume');
+    }
+    if (
       lower.includes('job description') ||
       lower.includes('responsibilities') ||
-      lower.includes('requirements')
+      lower.includes('requirements') ||
+      lower.includes('your objectives') ||
+      lower.includes('skills & talents')
     ) {
       score += 0.15;
       signals.push('jd_keywords');
+    }
+    // Salary/compensation often on real job pages
+    if (
+      lower.includes('salary') ||
+      lower.includes('compensation') ||
+      lower.includes('per week') ||
+      lower.includes('base salary range') ||
+      /\$[\d,]+(\s*to|-)\s*\$[\d,]+/.test(lower)
+    ) {
+      score += 0.2;
+      signals.push('salary_mentioned');
     }
     const jobLinkCount = (lower.match(/\/jobs\/\d+-/g) || []).length;
     if (jobLinkCount <= 3) {

@@ -22,4 +22,5 @@ export * from './html-cleanup-agent.js';
 export * from './page-classifier-agent.js';
 export * from './link-filter-agent.js';
 export * from './url-resolver-agent.js';
+export * from './job-detail-extractor-agent.js';
 export * from './types.js';

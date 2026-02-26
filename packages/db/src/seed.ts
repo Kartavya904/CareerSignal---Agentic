@@ -2,16 +2,33 @@ import { getDb } from './client';
 import { users, blessedSources } from './schema';
 import { addSource } from './sources';
 
+/**
+ * Default blessed sources for admin scraping. Chosen for:
+ * - Minimal login/captcha walls (scraper-friendly)
+ * - Same-domain listing → detail crawl (Planner + Brain)
+ * - Good job volume where possible
+ *
+ * Replaces previous set (LinkedIn, Indeed, Glassdoor, etc.) that routinely hit
+ * login/captcha or bot blocking. Seed is used when blessed_sources table is empty.
+ */
 export const BLESSED_SOURCES = [
-  { name: 'LinkedIn Jobs', url: 'https://www.linkedin.com/jobs/', type: 'AGGREGATOR' as const },
-  { name: 'Indeed', url: 'https://www.indeed.com/jobs', type: 'AGGREGATOR' as const },
+  { name: 'We Work Remotely', url: 'https://weworkremotely.com/', type: 'AGGREGATOR' as const },
+  { name: 'Remote OK', url: 'https://remoteok.com/', type: 'AGGREGATOR' as const },
+  {
+    name: 'Stack Overflow Jobs',
+    url: 'https://stackoverflow.com/jobs',
+    type: 'AGGREGATOR' as const,
+  },
   { name: 'Wellfound (AngelList)', url: 'https://wellfound.com/jobs', type: 'AGGREGATOR' as const },
-  { name: 'Glassdoor', url: 'https://www.glassdoor.com/Job/', type: 'AGGREGATOR' as const },
-  { name: 'Dice', url: 'https://www.dice.com/jobs', type: 'AGGREGATOR' as const },
-  { name: 'ZipRecruiter', url: 'https://www.ziprecruiter.com/jobs/', type: 'AGGREGATOR' as const },
-  { name: 'SimplyHired', url: 'https://www.simplyhired.com/search', type: 'AGGREGATOR' as const },
-  { name: 'Built In', url: 'https://builtin.com/jobs', type: 'AGGREGATOR' as const },
-  { name: 'Levels.fyi Jobs', url: 'https://www.levels.fyi/jobs', type: 'AGGREGATOR' as const },
+  { name: 'Jobicy', url: 'https://jobicy.com/', type: 'AGGREGATOR' as const },
+  { name: 'Authentic Jobs', url: 'https://authenticjobs.com/', type: 'AGGREGATOR' as const },
+  { name: 'JustRemote', url: 'https://justremote.co/remote-jobs', type: 'AGGREGATOR' as const },
+  {
+    name: 'Work at a Startup (YC)',
+    url: 'https://www.workatastartup.com/jobs',
+    type: 'AGGREGATOR' as const,
+  },
+  { name: 'The Muse', url: 'https://www.themuse.com/jobs', type: 'AGGREGATOR' as const },
   {
     name: "Hacker News Who's Hiring",
     url: 'https://news.ycombinator.com',
@@ -20,15 +37,15 @@ export const BLESSED_SOURCES = [
 ];
 
 const BLESSED_SOURCE_SLUGS: Record<string, string> = {
-  'LinkedIn Jobs': 'linkedin_jobs',
-  Indeed: 'indeed',
+  'We Work Remotely': 'weworkremotely',
+  'Remote OK': 'remoteok',
+  'Stack Overflow Jobs': 'stackoverflow_jobs',
   'Wellfound (AngelList)': 'wellfound',
-  Glassdoor: 'glassdoor',
-  Dice: 'dice',
-  ZipRecruiter: 'ziprecruiter',
-  SimplyHired: 'simplyhired',
-  'Built In': 'builtin',
-  'Levels.fyi Jobs': 'levels_fyi',
+  Jobicy: 'jobicy',
+  'Authentic Jobs': 'authentic_jobs',
+  JustRemote: 'justremote',
+  'Work at a Startup (YC)': 'workatastartup',
+  'The Muse': 'themuse',
   "Hacker News Who's Hiring": 'hn_who_is_hiring',
 };
 

@@ -83,6 +83,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).unique(),
   passwordHash: text('password_hash'),
   name: varchar('name', { length: 255 }),
+  admin: boolean('admin').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -308,9 +309,6 @@ export const sources = pgTable('sources', {
   type: sourceTypeEnum('type').notNull().default('CUSTOM'),
   enabled: boolean('enabled').default(true).notNull(),
   isBlessed: boolean('is_blessed').default(false).notNull(),
-  blessedSourceId: uuid('blessed_source_id').references(() => blessedSources.id, {
-    onDelete: 'set null',
-  }),
   metadata: jsonb('metadata').$type<Record<string, unknown>>(),
   lastScannedAt: timestamp('last_scanned_at'),
   lastValidatedAt: timestamp('last_validated_at'),
@@ -334,6 +332,48 @@ export const runs = pgTable('runs', {
   planSnapshot: jsonb('plan_snapshot').$type<unknown>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** Per-user analysis from Application Assistant: job summary, match, resume tips, cover letters, etc. */
+export const applicationAssistantAnalyses = pgTable('application_assistant_analyses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  jobSummary: jsonb('job_summary').$type<Record<string, unknown>>(),
+  matchScore: integer('match_score'),
+  matchGrade: varchar('match_grade', { length: 8 }),
+  matchBreakdown: jsonb('match_breakdown').$type<Record<string, unknown>>(),
+  resumeSuggestions: jsonb('resume_suggestions').$type<Record<string, unknown>>(),
+  coverLetters: jsonb('cover_letters').$type<Record<string, string>>(),
+  contacts: jsonb('contacts').$type<Record<string, unknown>>(),
+  keywordsToAdd: jsonb('keywords_to_add').$type<string[]>(),
+  salaryLevelCheck: text('salary_level_check'),
+  applicationChecklist: jsonb('application_checklist').$type<Record<string, unknown>[]>(),
+  interviewPrepBullets: jsonb('interview_prep_bullets').$type<string[]>(),
+  companyResearch: text('company_research'),
+  runFolderName: varchar('run_folder_name', { length: 256 }),
+  runStatus: varchar('run_status', { length: 16 }),
+  currentStep: varchar('current_step', { length: 32 }),
+  waitingForLogin: boolean('waiting_for_login').default(false),
+  waitingForCaptcha: boolean('waiting_for_captcha').default(false),
+  runUpdatedAt: timestamp('run_updated_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** Log lines for an Application Assistant run (persisted for live view and history). */
+export const applicationAssistantAnalysisLogs = pgTable('application_assistant_analysis_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  analysisId: uuid('analysis_id')
+    .notNull()
+    .references(() => applicationAssistantAnalyses.id, { onDelete: 'cascade' }),
+  ts: timestamp('ts').notNull(),
+  agent: varchar('agent', { length: 64 }).notNull(),
+  level: varchar('level', { length: 16 }).notNull(),
+  message: text('message').notNull(),
+  detail: text('detail'),
 });
 
 // Jobs table for when extraction is implemented

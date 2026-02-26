@@ -28,6 +28,8 @@ build/
 # Artifacts (large, generated — store locally, not in git)
 # ============================================================
 artifacts/runs/
+tests/application-assistant/live-url-results-*.json
+tests/application-assistant/live-url-results-*.md
 !artifacts/runs/.gitkeep
 
 # ============================================================
@@ -41,6 +43,10 @@ data_user/
 # ============================================================
 data_sources/
 !data_sources/.gitkeep
+
+# Application Assistant per-run captures (HTML, metadata)
+data_application_assistant/
+!data_application_assistant/.gitkeep
 
 # ============================================================
 # Database

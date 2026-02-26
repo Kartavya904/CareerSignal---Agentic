@@ -221,7 +221,8 @@ function pickHighestPriority(frontier: FrontierItem[]): number {
   let bestPriority = frontier[0]?.priority ?? estimateUrlPriority(frontier[0]?.url ?? '');
 
   for (let i = 1; i < frontier.length; i++) {
-    const p = frontier[i].priority ?? estimateUrlPriority(frontier[i].url);
+    const item = frontier[i]!;
+    const p = item.priority ?? estimateUrlPriority(item.url);
     if (p > bestPriority) {
       bestPriority = p;
       bestIdx = i;

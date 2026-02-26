@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { getSessionUser } from '@/lib/auth';
 import { getDb } from '@careersignal/db';
 import { getProfileByUserId, getPreferencesByUserId } from '@careersignal/db';
-import { listSources, listRuns } from '@careersignal/db';
+import { listAnalysesByUser } from '@careersignal/db';
 import { ParsingStatusBadge } from '../components/ParsingStatusBadge';
+import { ApplicationAssistantStatusBadge } from '../components/ApplicationAssistantStatusBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,19 +23,15 @@ export default async function DashboardPage() {
   }
 
   const db = getDb();
-  const [profile, preferences, sources, runs] = await Promise.all([
+  const [profile, preferences, analyses] = await Promise.all([
     getProfileByUserId(db, user.id),
     getPreferencesByUserId(db, user.id),
-    listSources(db, user.id),
-    listRuns(db, user.id),
+    listAnalysesByUser(db, user.id),
   ]);
 
   const hasProfile = !!profile?.name && !!profile?.resumeRawText;
   const hasPreferences = !!preferences;
-  const totalSources = sources?.length ?? 0;
-  const enabledSources = sources?.filter((s) => s.enabled).length ?? 0;
-  const lastRun = runs?.[0];
-  const completedRuns = runs?.filter((r) => r.status === 'COMPLETED').length ?? 0;
+  const analysesCount = analyses?.length ?? 0;
 
   const cards = [
     {
@@ -54,23 +51,14 @@ export default async function DashboardPage() {
       done: hasPreferences,
     },
     {
-      title: 'Sources',
+      title: 'Application Assistant',
       description:
-        totalSources > 0
-          ? `${enabledSources} out of ${totalSources} enabled`
-          : 'Add or enable job sources',
-      href: '/sources',
-      stat: totalSources > 0 ? `${enabledSources}/${totalSources} enabled` : 'Setup',
-      done: enabledSources > 0,
-    },
-    {
-      title: 'Results',
-      description: lastRun
-        ? `Last scan: ${lastRun.status.toLowerCase()} — ${new Date(lastRun.createdAt).toLocaleDateString()}`
-        : 'Start a scan to fetch and rank jobs',
-      href: '/runs',
-      stat: completedRuns > 0 ? `${completedRuns} completed` : 'No scans yet',
-      done: completedRuns > 0,
+        analysesCount > 0
+          ? `Analyze job pages and get match, cover letters, and prep`
+          : 'Paste a job URL — get analysis, match, and cover letter drafts',
+      href: '/application-assistant',
+      stat: analysesCount > 0 ? `${analysesCount} analysis` : 'Ready',
+      done: analysesCount > 0,
     },
   ];
 
@@ -84,6 +72,7 @@ export default async function DashboardPage() {
       </div>
 
       <ParsingStatusBadge />
+      <ApplicationAssistantStatusBadge />
 
       <div
         style={{
@@ -107,7 +96,7 @@ export default async function DashboardPage() {
             fontSize: '0.9375rem',
           }}
         >
-          {completedCount} of 4 complete
+          {completedCount} of 3 complete
         </span>
       </div>
 

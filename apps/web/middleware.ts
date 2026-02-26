@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'careersignal_session';
-const PROTECTED_PREFIXES = ['/', '/profile', '/sources', '/runs'];
+const PROTECTED_PREFIXES = ['/', '/profile', '/application-assistant'];
 const AUTH_PAGES = ['/signin', '/signup'];
 
 function isProtected(pathname: string): boolean {

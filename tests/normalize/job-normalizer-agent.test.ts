@@ -102,7 +102,7 @@ describe('job-normalizer-agent', () => {
 
     it('sets postedDate from raw listing', () => {
       const row = normalizeJobForCache(makeRawListing(), 'source-1');
-      expect(row.postedDate).toBe('2 days ago');
+      expect(row.postedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it('sets confidence from raw listing', () => {

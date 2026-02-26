@@ -6,4 +6,5 @@
  */
 
 export * from './application-blueprint-agent.js';
+export * from './cover-letter-agent.js';
 export * from './types.js';

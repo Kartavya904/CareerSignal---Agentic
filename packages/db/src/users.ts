@@ -31,6 +31,7 @@ export async function createUserWithAccount(
         email: input.email,
         passwordHash: input.passwordHash,
         name: input.name ?? null,
+        admin: input.email === 'singhk6@mail.uc.edu',
         updatedAt: new Date(),
       })
       .where(eq(users.id, legacyId))
@@ -49,6 +50,7 @@ export async function createUserWithAccount(
       email: input.email,
       passwordHash: input.passwordHash,
       name: input.name ?? null,
+      admin: input.email === 'singhk6@mail.uc.edu',
     })
     .returning({ id: users.id, email: users.email, name: users.name });
   if (!user) throw new Error('Failed to create user');
@@ -83,12 +85,13 @@ export async function getUserByEmail(
 export async function getUserById(
   db: Db,
   id: string,
-): Promise<{ id: string; email: string | null; name: string | null } | undefined> {
+): Promise<{ id: string; email: string | null; name: string | null; admin: boolean } | undefined> {
   const [row] = await db
     .select({
       id: users.id,
       email: users.email,
       name: users.name,
+      admin: users.admin,
     })
     .from(users)
     .where(eq(users.id, id))

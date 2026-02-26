@@ -15,11 +15,12 @@ export async function getSessionUserId(): Promise<string | null> {
   return verifySessionToken(token);
 }
 
-/** Get the current session user (id, email, name) or null. */
+/** Get the current session user (id, email, name, admin) or null. */
 export async function getSessionUser(): Promise<{
   id: string;
   email: string | null;
   name: string | null;
+  admin: boolean;
 } | null> {
   const userId = await getSessionUserId();
   if (!userId) return null;

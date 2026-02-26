@@ -15,6 +15,8 @@
  */
 
 import { agentLog, getRecentLogsSnippet } from '@/lib/agent-logs';
+import { clearAgentLogs } from '@/lib/agent-logs';
+import { clearBrainLogs } from '@/lib/brain-logs';
 import { runBrainAnalysis, brainOrchestrate, type BrainDecision } from '@/lib/brain-agent';
 import { getScraperStatus, setScraperActive, setStopRequested } from '@/lib/scraper-state';
 import {
@@ -33,6 +35,7 @@ import {
   readCleanedCaptureHtml,
 } from '@/lib/source-data';
 import {
+  clearAdminLogs,
   getDb,
   listBlessedSources,
   setScrapeRunning,
@@ -58,6 +61,36 @@ import { registerCaptchaSolve } from '@/lib/captcha-state';
 import { registerLoginWait } from '@/lib/login-wall-state';
 
 const DEFAULT_CYCLE_DELAY_MS = 10 * 1000;
+
+/** Throw this from visitAndProcess or wait flows when stop is requested so the loop exits quickly. */
+const STOP_REQUESTED_MSG = 'STOP_REQUESTED';
+
+function isStopRequested(): boolean {
+  return getScraperStatus().stopRequested;
+}
+
+/** Promise that rejects when stop is requested (poll every 800ms). Use in Promise.race() to abort long waits. */
+function createStopRacePromise(): Promise<never> {
+  return new Promise((_, rej) => {
+    const id = setInterval(() => {
+      if (getScraperStatus().stopRequested) {
+        clearInterval(id);
+        rej(new Error(STOP_REQUESTED_MSG));
+      }
+    }, 800);
+  });
+}
+
+/** Sleep in chunks so we can abort when stop is requested. */
+async function sleepWithStopCheck(ms: number): Promise<void> {
+  const chunk = 1500;
+  let remaining = ms;
+  while (remaining > 0 && !isStopRequested()) {
+    await new Promise((r) => setTimeout(r, Math.min(chunk, remaining)));
+    remaining -= chunk;
+  }
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
+}
 
 /** Once a single source reaches this many jobs extracted, we stop that source and move on. */
 const MAX_JOBS_PER_SOURCE = 5000;
@@ -209,14 +242,19 @@ async function visitAndProcess(
   state: ReturnType<typeof createPlannerState>,
   db: ReturnType<typeof getDb>,
 ): Promise<VisitResult> {
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
+
   // 1. Navigate
   await new Promise((r) => setTimeout(r, jitter(500, 500)));
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
   await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
   const contentWaitMs = getContentWaitMs();
   agentLog('Navigator', `Waiting for content (${(contentWaitMs / 1000).toFixed(1)}s)…`, {
     level: 'info',
   });
   await waitForContent(page, sourceSlugRaw, contentWaitMs);
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
   const rawHtml = await page.content();
   agentLog('Navigator', `Captured raw HTML (${rawHtml.length} chars)`, { level: 'info' });
 
@@ -230,6 +268,8 @@ async function visitAndProcess(
     { level: 'success' },
   );
 
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
+
   // 3. Save raw capture
   const capture = await saveSourceCapture(sourceSlug, url, rawHtml, {
     jobsExtracted: 0,
@@ -241,6 +281,7 @@ async function visitAndProcess(
   // 4. Save cleaned capture
   await saveCleanedCapture(sourceSlug, capture.id, cleanedHtml);
   agentLog('Navigator', `Saved raw + cleaned capture ${capture.id}`, { level: 'info' });
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
 
   // 5. Extract jobs from CLEANED HTML
   brainOrchestrate(`Extracting jobs from cleaned HTML → DOM Extractor`, { phase: 'Extract' });
@@ -288,6 +329,8 @@ async function visitAndProcess(
       }
     }
   }
+
+  if (isStopRequested()) throw new Error(STOP_REQUESTED_MSG);
 
   // 6. Classify page from cleaned HTML
   brainOrchestrate(`Classifying page → Page Classifier`, { phase: 'Classify' });
@@ -527,17 +570,26 @@ async function scrapeOneSourceWithPlanner(
             }
 
             // Full visit pipeline: navigate → clean → extract → classify → discover
-            const visitResult = await visitAndProcess(
-              page,
-              url,
-              depth,
-              sourceSlug,
-              source.slug,
-              source.id,
-              sourceDomain,
-              state,
-              db,
-            );
+            let visitResult: VisitResult;
+            try {
+              visitResult = await visitAndProcess(
+                page,
+                url,
+                depth,
+                sourceSlug,
+                source.slug,
+                source.id,
+                sourceDomain,
+                state,
+                db,
+              );
+            } catch (visitErr) {
+              if (visitErr instanceof Error && visitErr.message === STOP_REQUESTED_MSG) {
+                state.stopRequested = true;
+                break;
+              }
+              throw visitErr;
+            }
 
             totalJobsExtracted += visitResult.jobsExtracted;
 
@@ -652,6 +704,7 @@ async function scrapeOneSourceWithPlanner(
               new Promise<string>((_, rej) =>
                 setTimeout(() => rej(new Error('Login wait timeout (5 min)')), timeoutMs),
               ),
+              createStopRacePromise(),
             ]);
 
             brainOrchestrate('User logged in. Processing page.');
@@ -703,6 +756,11 @@ async function scrapeOneSourceWithPlanner(
               visitedDepth: 0,
             };
           } catch (err) {
+            if (err instanceof Error && err.message === STOP_REQUESTED_MSG) {
+              state.stopRequested = true;
+              await loginBrowser.close();
+              break;
+            }
             const msg = err instanceof Error ? err.message : String(err);
             agentLog('Brain', `Login wait failed: ${msg}`, { level: 'warn' });
             agentLog('Brain', 'Skipping this URL and continuing with next in frontier.', {
@@ -752,6 +810,7 @@ async function scrapeOneSourceWithPlanner(
               new Promise<string>((_, rej) =>
                 setTimeout(() => rej(new Error('Captcha solve timeout (5 min)')), timeoutMs),
               ),
+              createStopRacePromise(),
             ]);
 
             brainOrchestrate('Captcha solved. Processing page.');
@@ -803,6 +862,11 @@ async function scrapeOneSourceWithPlanner(
               visitedDepth: 0,
             };
           } catch (err) {
+            if (err instanceof Error && err.message === STOP_REQUESTED_MSG) {
+              state.stopRequested = true;
+              await captchaBrowser.close();
+              break;
+            }
             const msg = err instanceof Error ? err.message : String(err);
             agentLog('Brain', `Captcha solve failed: ${msg}`, { level: 'warn' });
             agentLog('Brain', 'Skipping this URL and continuing with next in frontier.', {
@@ -877,7 +941,15 @@ async function scrapeOneSourceWithPlanner(
           const { waitMs, reason, retryUrl, retryDepth } = action;
           brainOrchestrate(`Waiting ${waitMs / 1000}s (${reason})`);
           agentLog('Brain', `Retrying in ${waitMs / 1000}s`, { level: 'info' });
-          await new Promise((r) => setTimeout(r, waitMs));
+          try {
+            await sleepWithStopCheck(waitMs);
+          } catch (e) {
+            if (e instanceof Error && e.message === STOP_REQUESTED_MSG) {
+              state.stopRequested = true;
+              break;
+            }
+            throw e;
+          }
 
           // Re-add the URL to the front of the frontier for retry
           state.frontier.unshift({ url: retryUrl, depth: retryDepth });
@@ -1022,13 +1094,19 @@ export async function runScrapeLoop(): Promise<void> {
     sharedBrowser = null;
     sharedPage = null;
   }
+
+  // Always update state and DB when loop exits (stop or finish)
   setScraperActive(false);
   setStopRequested(false);
   try {
-    await setScrapeRunning(getDb(), false);
-  } catch {
-    // ignore
+    await setScrapeRunning(db, false);
+    await clearAdminLogs(db);
+  } catch (e) {
+    // ignore DB errors on teardown
   }
+  clearAgentLogs();
+  clearBrainLogs();
+
   brainOrchestrate('Loop stopped.');
   agentLog('Scraper', 'Loop stopped.', { level: 'success' });
 }

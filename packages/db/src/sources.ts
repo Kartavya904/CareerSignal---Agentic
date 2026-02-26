@@ -23,7 +23,6 @@ export async function addSource(
     url: string;
     type?: string;
     isBlessed?: boolean;
-    blessedSourceId?: string;
   },
 ) {
   const [source] = await db
@@ -34,7 +33,6 @@ export async function addSource(
       url: data.url,
       type: (data.type as 'COMPANY' | 'AGGREGATOR' | 'COMMUNITY' | 'CUSTOM') ?? 'CUSTOM',
       isBlessed: data.isBlessed ?? false,
-      blessedSourceId: data.blessedSourceId ?? null,
     })
     .returning();
   return source;

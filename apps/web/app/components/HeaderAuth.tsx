@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRef, useEffect, useState } from 'react';
 import { useReportAction } from './UserActivityProvider';
 
-type User = { id: string; email: string | null; name: string | null };
+type User = { id: string; email: string | null; name: string | null; admin?: boolean | null };
 
 const navLinkClass =
   'text-[var(--text-secondary)] hover:text-[var(--accent)] text-sm font-medium transition-colors';
@@ -111,6 +111,28 @@ export function HeaderAuth({ user }: { user: User | null }) {
           }}
         >
           <Link
+            href="/dashboard"
+            className={navLinkClass}
+            style={{
+              display: 'block',
+              padding: '0.625rem 1.25rem',
+              textDecoration: 'none',
+              color: 'var(--text)',
+              fontSize: '0.875rem',
+              transition: 'background 0.12s ease, color 0.12s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.color = 'var(--accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'none';
+              e.currentTarget.style.color = 'var(--text)';
+            }}
+          >
+            Dashboard
+          </Link>
+          <Link
             href="/profile"
             className={navLinkClass}
             style={{
@@ -154,6 +176,30 @@ export function HeaderAuth({ user }: { user: User | null }) {
           >
             Preferences
           </Link>
+          {user.admin && (
+            <Link
+              href="/admin"
+              className={navLinkClass}
+              style={{
+                display: 'block',
+                padding: '0.625rem 1.25rem',
+                textDecoration: 'none',
+                color: 'var(--text)',
+                fontSize: '0.875rem',
+                transition: 'background 0.12s ease, color 0.12s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                e.currentTarget.style.color = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'none';
+                e.currentTarget.style.color = 'var(--text)';
+              }}
+            >
+              Admin
+            </Link>
+          )}
           <div
             style={{
               height: 1,

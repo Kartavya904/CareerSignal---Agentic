@@ -23,3 +23,4 @@ export * from './rank/index.js';
 export * from './contacts/index.js';
 export * from './outreach/index.js';
 export * from './apply/index.js';
+export * from './match/index.js';

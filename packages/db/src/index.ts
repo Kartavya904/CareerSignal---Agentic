@@ -12,3 +12,5 @@ export * from './blessed-sources';
 export * from './job-listings-cache';
 export * from './scrape-visited-urls';
 export * from './admin-scrape-logs';
+export * from './application-assistant-analyses';
+export * from './application-assistant-analysis-logs';
