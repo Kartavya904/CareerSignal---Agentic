@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getDb, listSources, listJobListingsByBlessedSource } from '@careersignal/db';
+import { getDb, listSources } from '@careersignal/db';
 import { getRequiredUserId } from '@/lib/auth';
 
-/** Returns job listings from cache for a source that has blessed_source_id. */
+/** Returns job listings for a source. Canonical job cache will be wired in Phase 8+; for now returns empty. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const userId = await getRequiredUserId();
@@ -15,13 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Source not found' }, { status: 404 });
     }
 
-    const blessedSourceId = source.blessedSourceId;
-    if (!blessedSourceId) {
-      return NextResponse.json([]);
-    }
-
-    const jobs = await listJobListingsByBlessedSource(db, blessedSourceId, 200);
-    return NextResponse.json(jobs);
+    return NextResponse.json([]);
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

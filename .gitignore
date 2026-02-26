@@ -48,6 +48,9 @@ data_sources/
 data_application_assistant/
 !data_application_assistant/.gitkeep
 
+# Pipeline evidence (Greenhouse/Lever raw API responses)
+data/evidence/
+
 # ============================================================
 # Database
 # ============================================================
@@ -110,3 +113,5 @@ coverage/
 tmp/
 temp/
 .cursor/
+miscellaneous/sources
+data

@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@careersignal/agents': path.resolve(__dirname, 'agents/src'),
+      '@careersignal/core': path.resolve(__dirname, 'packages/core/src'),
       '@careersignal/db': path.resolve(__dirname, 'packages/db/src'),
       '@careersignal/llm': path.resolve(__dirname, 'packages/llm/src'),
       '@careersignal/schemas': path.resolve(__dirname, 'packages/schemas/src'),

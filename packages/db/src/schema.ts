@@ -10,7 +10,6 @@ import {
   date,
   pgEnum,
   integer,
-  serial,
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
@@ -75,8 +74,6 @@ export const runStatusEnum = pgEnum('run_status', [
   'CANCELLED',
   'PAUSED',
 ]);
-export const scrapeStatusEnum = pgEnum('last_scrape_status', ['SUCCESS', 'FAILED', 'PARTIAL']);
-
 // Single-user V1: one row per account (email + password for sign up / sign in)
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -189,116 +186,6 @@ export const userProfileInsights = pgTable('user_profile_insights', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-/** Backend-owned sources we scrape on a schedule; cache is shared. Not tied to any user. */
-export const blessedSources = pgTable('blessed_sources', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 255 }).notNull(),
-  url: text('url').notNull(),
-  type: sourceTypeEnum('type').notNull(),
-  slug: varchar('slug', { length: 64 }),
-  enabledForScraping: boolean('enabled_for_scraping').default(true).notNull(),
-  scrapeIntervalMinutes: integer('scrape_interval_minutes'),
-  lastScrapedAt: timestamp('last_scraped_at'),
-  lastScrapeStatus: scrapeStatusEnum('last_scrape_status'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-/** Shared cache of job listings per blessed source; one stable row per listing (upsert by dedupe_key). */
-export const jobListingsCache = pgTable(
-  'job_listings_cache',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    blessedSourceId: uuid('blessed_source_id')
-      .notNull()
-      .references(() => blessedSources.id, { onDelete: 'cascade' }),
-    title: varchar('title', { length: 512 }).notNull(),
-    companyName: varchar('company_name', { length: 255 }).notNull(),
-    sourceUrl: text('source_url').notNull(),
-    location: varchar('location', { length: 255 }),
-    remoteType: varchar('remote_type', { length: 32 }),
-    seniority: seniorityEnum('seniority'),
-    employmentType: employmentTypeEnum('employment_type'),
-    visaSponsorship: varchar('visa_sponsorship', { length: 16 }),
-    description: text('description'),
-    requirements: jsonb('requirements').$type<string[]>(),
-    postedDate: date('posted_date'),
-    salaryMin: decimal('salary_min', { precision: 12, scale: 2 }),
-    salaryMax: decimal('salary_max', { precision: 12, scale: 2 }),
-    salaryCurrency: varchar('salary_currency', { length: 8 }),
-    department: varchar('department', { length: 255 }),
-    team: varchar('team', { length: 255 }),
-    applyUrl: text('apply_url'),
-    rawExtract: jsonb('raw_extract').$type<Record<string, unknown>>(),
-    evidenceRefs: jsonb('evidence_refs').$type<string[]>(),
-    confidence: decimal('confidence', { precision: 3, scale: 2 }),
-    dedupeKey: varchar('dedupe_key', { length: 256 }).notNull(),
-    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
-    lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    jobListingsCacheBlessedDedupeIdx: uniqueIndex('job_listings_cache_blessed_dedupe_idx').on(
-      table.blessedSourceId,
-      table.dedupeKey,
-    ),
-    jobListingsCacheBlessedLastSeenIdx: index('job_listings_cache_blessed_last_seen_idx').on(
-      table.blessedSourceId,
-      table.lastSeenAt,
-    ),
-  }),
-);
-
-/** URLs already visited by the scraper per blessed source. Persists across server restarts. */
-export const scrapeVisitedUrls = pgTable(
-  'scrape_visited_urls',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    blessedSourceId: uuid('blessed_source_id')
-      .notNull()
-      .references(() => blessedSources.id, { onDelete: 'cascade' }),
-    normalizedUrl: text('normalized_url').notNull(),
-    firstVisitedAt: timestamp('first_visited_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    scrapeVisitedUrlsBlessedUrlIdx: uniqueIndex('scrape_visited_urls_blessed_url_idx').on(
-      table.blessedSourceId,
-      table.normalizedUrl,
-    ),
-    scrapeVisitedUrlsBlessedIdx: index('scrape_visited_urls_blessed_idx').on(table.blessedSourceId),
-  }),
-);
-
-/** Single row: whether the admin continuous scrape loop is running. Persists across page refresh. */
-export const scrapeState = pgTable('scrape_state', {
-  id: integer('id').primaryKey().default(1),
-  isRunning: boolean('is_running').notNull().default(false),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-});
-
-/** Admin agent (terminal) logs for the current scrape run. Cleared when a new scrape starts. */
-export const adminAgentLogs = pgTable('admin_agent_logs', {
-  id: serial('id').primaryKey(),
-  ts: timestamp('ts', { withTimezone: true }).notNull(),
-  agent: varchar('agent', { length: 128 }).notNull(),
-  level: varchar('level', { length: 16 }).notNull(),
-  message: text('message').notNull(),
-  detail: text('detail'),
-});
-
-/** Admin brain logs for the current scrape run. Cleared when a new scrape starts. */
-export const adminBrainLogs = pgTable('admin_brain_logs', {
-  id: serial('id').primaryKey(),
-  ts: timestamp('ts', { withTimezone: true }).notNull(),
-  level: varchar('level', { length: 16 }).notNull(),
-  message: text('message').notNull(),
-  reasoning: text('reasoning'),
-  recommendation: text('recommendation'),
-  suggestedUrl: text('suggested_url'),
-  cycleDelaySeconds: integer('cycle_delay_seconds'),
-});
-
 export const sources = pgTable('sources', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
@@ -383,9 +270,6 @@ export const jobs = pgTable('jobs', {
     .notNull()
     .references(() => runs.id, { onDelete: 'cascade' }),
   sourceId: uuid('source_id').references(() => sources.id, { onDelete: 'set null' }),
-  jobListingCacheId: uuid('job_listing_cache_id').references(() => jobListingsCache.id, {
-    onDelete: 'set null',
-  }),
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -417,3 +301,165 @@ export const jobs = pgTable('jobs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// API/ATS-first scraping: companies (entities) + canonical job_listings + job_observations
+// ---------------------------------------------------------------------------
+
+export const entityTypeEnum = pgEnum('entity_type', [
+  'COMPANY',
+  'SOURCE',
+  'CONNECTOR_TEMPLATE',
+  'RESOURCE',
+]);
+export const atsTypeEnum = pgEnum('ats_type', [
+  'GREENHOUSE',
+  'LEVER',
+  'ASHBY',
+  'SMARTRECRUITERS',
+  'RECRUITEE',
+  'PERSONIO',
+  'WORKDAY',
+  'UNKNOWN',
+]);
+export const scrapeStrategyEnum = pgEnum('scrape_strategy', [
+  'AUTO',
+  'API_JSON',
+  'API_XML',
+  'BROWSER_FALLBACK',
+]);
+export const scrapeStatusEnum = pgEnum('scrape_status', [
+  'OK',
+  'ERROR',
+  'BLOCKED',
+  'CAPTCHA',
+  'LOGIN_WALL',
+  'EMPTY',
+  'SKIPPED',
+]);
+export const enrichmentStatusEnum = pgEnum('enrichment_status', [
+  'PENDING',
+  'RUNNING',
+  'DONE',
+  'ERROR',
+]);
+export const jobRemoteTypeEnum = pgEnum('job_remote_type', [
+  'REMOTE',
+  'HYBRID',
+  'ONSITE',
+  'UNKNOWN',
+]);
+export const jobStatusEnum = pgEnum('job_status', ['OPEN', 'CLOSED', 'UNKNOWN']);
+
+/** Single table for companies, sources, connector templates, and resources. Type discriminator + optional parent_company_id. */
+export const companies = pgTable(
+  'companies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    type: entityTypeEnum('type').notNull(),
+    name: text('name').notNull(),
+    normalizedName: text('normalized_name').notNull(),
+    url: text('url').notNull(),
+    origin: text('origin'),
+    kind: text('kind'),
+    isPriorityTarget: boolean('is_priority_target').default(false).notNull(),
+    enabledForScraping: boolean('enabled_for_scraping').default(false).notNull(),
+    parentCompanyId: uuid('parent_company_id'), // self-FK added in migration (companies.id)
+    atsType: atsTypeEnum('ats_type').default('UNKNOWN'),
+    scrapeStrategy: scrapeStrategyEnum('scrape_strategy').default('AUTO'),
+    connectorConfig: jsonb('connector_config').$type<Record<string, unknown>>(),
+    lastFingerprintedAt: timestamp('last_fingerprinted_at'),
+    lastScrapedAt: timestamp('last_scraped_at'),
+    lastStatus: scrapeStatusEnum('last_status'),
+    lastError: text('last_error'),
+    scrapeIntervalMinutes: integer('scrape_interval_minutes'),
+    schedulerEnabled: boolean('scheduler_enabled').default(false).notNull(),
+    testBudget: jsonb('test_budget').$type<{
+      max_pages?: number;
+      max_jobs?: number;
+      timeout_ms?: number;
+    }>(),
+    descriptionText: text('description_text'),
+    enrichmentSources: jsonb('enrichment_sources').$type<{ urls?: string[]; paths?: string[] }>(),
+    enrichmentStatus: enrichmentStatusEnum('enrichment_status').default('PENDING'),
+    lastEnrichedAt: timestamp('last_enriched_at'),
+    industries: jsonb('industries').$type<string[]>(),
+    hqLocation: text('hq_location'),
+    sizeRange: text('size_range'),
+    foundedYear: integer('founded_year'),
+    fundingStage: text('funding_stage'),
+    publicCompany: boolean('public_company'),
+    ticker: text('ticker'),
+    remotePolicy: text('remote_policy'),
+    sponsorshipSignals: jsonb('sponsorship_signals').$type<Record<string, unknown>>(),
+    hiringLocations: jsonb('hiring_locations').$type<string[]>(),
+    techStackHints: jsonb('tech_stack_hints').$type<string[]>(),
+    websiteDomain: text('website_domain'),
+    jobCountTotal: integer('job_count_total').default(0).notNull(),
+    jobCountOpen: integer('job_count_open').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    companiesTypeIdx: index('companies_type_idx').on(table.type),
+    companiesPriorityIdx: index('companies_is_priority_target_idx').on(table.isPriorityTarget),
+    companiesAtsTypeIdx: index('companies_ats_type_idx').on(table.atsType),
+  }),
+);
+
+/** Canonical job cache: one row per real job posting, deduped by dedupe_key (normalized apply_url). */
+export const jobListings = pgTable(
+  'job_listings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    location: text('location'),
+    remoteType: jobRemoteTypeEnum('remote_type').default('UNKNOWN'),
+    employmentType: text('employment_type'),
+    level: text('level'),
+    jobUrl: text('job_url'),
+    applyUrl: text('apply_url'),
+    externalId: text('external_id'),
+    descriptionText: text('description_text'),
+    descriptionHtml: text('description_html'),
+    postedAt: timestamp('posted_at'),
+    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+    lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+    status: jobStatusEnum('status').default('OPEN'),
+    dedupeKey: text('dedupe_key').notNull().unique(),
+    rawExtract: jsonb('raw_extract').$type<Record<string, unknown>>(),
+    evidencePaths: jsonb('evidence_paths').$type<string[]>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    jobListingsCompanyStatusIdx: index('job_listings_company_status_idx').on(
+      table.companyId,
+      table.status,
+    ),
+    jobListingsLastSeenIdx: index('job_listings_last_seen_idx').on(table.lastSeenAt),
+  }),
+);
+
+/** Tracks which source(s) each job was observed from (multi-source provenance). */
+export const jobObservations = pgTable(
+  'job_observations',
+  {
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobListings.id, { onDelete: 'cascade' }),
+    sourceId: uuid('source_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    observedUrl: text('observed_url'),
+    observedAt: timestamp('observed_at').defaultNow().notNull(),
+    contentHash: text('content_hash'),
+  },
+  (table) => ({
+    jobObservationsJobSourceUnique: uniqueIndex('job_observations_job_source_unique').on(
+      table.jobId,
+      table.sourceId,
+    ),
+  }),
+);

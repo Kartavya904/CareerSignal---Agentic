@@ -21,7 +21,7 @@
     "test:live-urls": "cross-env RUN_LIVE_URL_TESTS=1 vitest run tests/application-assistant/live-url-smoke --bail=1",
     "db:migrate": "npm run db:push --workspace=@careersignal/db",
     "db:seed": "echo 'Seed runs on first API request'",
-    "scrape": "node scripts/scrape-blessed-sources.mjs"
+    "sources:import": "npx tsx scripts/import-sources-from-csv.ts"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",

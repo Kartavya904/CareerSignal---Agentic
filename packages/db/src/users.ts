@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from './client';
 import { users } from './schema';
-import { seedBlessedSources } from './seed';
 
 export interface CreateUserInput {
   email: string;
@@ -37,7 +36,6 @@ export async function createUserWithAccount(
       .where(eq(users.id, legacyId))
       .returning({ id: users.id, email: users.email, name: users.name });
     if (!updated) throw new Error('Failed to update legacy user');
-    await seedBlessedSources(updated.id);
     return {
       id: updated.id,
       email: updated.email ?? input.email,

@@ -1,3 +1,5 @@
+@import 'tailwindcss';
+
 /* CareerSignal theme: Dark grey (#212529), Greyish white (#edeeef), Yellow (#fcbd14) */
 :root {
   --bg: #212529;
@@ -19,6 +21,30 @@
   --radius-sm: 6px;
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   --transition: 0.15s ease;
+
+  /* shadcn/ui semantic tokens (aligned with CareerSignal dark theme) */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: #212529;
+  --secondary: var(--surface-elevated);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-elevated);
+  --muted-foreground: #9ca3af;
+  --accent-foreground: #212529;
+  --destructive: var(--error);
+  --destructive-foreground: var(--text);
+  --input: var(--border);
+  --ring: var(--accent);
+  --chart-1: var(--accent);
+  --chart-2: var(--success);
+  --chart-3: #3b82f6;
+  --chart-4: #a855f7;
+  --chart-5: #ec4899;
 }
 
 * {
@@ -95,7 +121,7 @@ textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--muted);
+  color: var(--muted-foreground);
   margin: 0 0 0.75rem 0;
 }
 
@@ -214,7 +240,7 @@ textarea {
 }
 .badge-muted {
   background: var(--surface-elevated);
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 /* Page headers */
