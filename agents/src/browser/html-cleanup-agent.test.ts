@@ -74,4 +74,82 @@ describe('html-cleanup-agent', () => {
     expect(html).not.toMatch(/<link[^>]+rel="[^"]*icon/i);
     expect(html).not.toMatch(/apple-touch-icon/i);
   });
+
+  it('handles CSS-heavy single-page app markup while preserving job content', () => {
+    const raw = `
+      <html>
+        <head>
+          <style>.foo { color: red; }</style>
+          <link rel="stylesheet" href="/app.css" />
+          <title>Senior ML Engineer - Acme</title>
+        </head>
+        <body>
+          <div id="__next">
+            <header class="nav" style="position:fixed">
+              <button onclick="open()">Menu</button>
+              <span>Acme Careers</span>
+            </header>
+            <main>
+              <h1 class="job-title">Senior Machine Learning Engineer</h1>
+              <div class="company" style="font-weight:bold">Acme Corp</div>
+              <section>
+                <h2>Responsibilities</h2>
+                <ul>
+                  <li>Build models</li>
+                  <li>Ship features</li>
+                </ul>
+              </section>
+              <section>
+                <h2>Requirements</h2>
+                <p>5+ years experience, Python, ML.</p>
+              </section>
+            </main>
+            <footer>
+              <a href="/privacy">Privacy</a>
+            </footer>
+          </div>
+          <script src="/bundle.js"></script>
+        </body>
+      </html>
+    `;
+    const { html } = cleanHtml(raw);
+    expect(html).not.toMatch(/<script[\s>]/i);
+    expect(html).not.toMatch(/<style[\s>]/i);
+    expect(html).not.toMatch(/rel="[^"]*stylesheet/i);
+    expect(html).toContain('Senior Machine Learning Engineer');
+    expect(html).toContain('Acme Corp');
+    expect(html).toContain('Responsibilities');
+    expect(html).toContain('Requirements');
+    expect(html).toContain('Build models');
+    expect(html).toContain('5+ years experience');
+  });
+
+  it('handles weird nested spans and inline styles without losing text order', () => {
+    const raw = `
+      <html>
+        <body>
+          <div style="background:red">
+            <span style="font-size:32px">
+              Software <span style="color:blue">Engineer</span>
+            </span>
+            <p>
+              <span>Location:</span>
+              <span style="font-weight:bold">Remote</span>
+            </p>
+            <p>
+              <span>About the job:</span>
+              <span>Work on deeply nested layouts.</span>
+            </p>
+          </div>
+        </body>
+      </html>
+    `;
+    const { html } = cleanHtml(raw);
+    expect(html).not.toMatch(/\sclass="[^"]+"/);
+    expect(html).not.toMatch(/\sstyle="[^"]+"/);
+    expect(html).toContain('Software Engineer');
+    expect(html).toMatch(/Location:\s*Remote/);
+    expect(html).toContain('About the job:');
+    expect(html).toContain('Work on deeply nested layouts.');
+  });
 });

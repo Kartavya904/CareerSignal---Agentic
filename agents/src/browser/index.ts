@@ -19,6 +19,7 @@ export * from './deep-scraper-agent.js';
 export * from './pagination-agent.js';
 export * from './source-validator-agent.js';
 export * from './html-cleanup-agent.js';
+export * from './cleaning-verifier-agent.js';
 export * from './page-classifier-agent.js';
 export * from './link-filter-agent.js';
 export * from './url-resolver-agent.js';

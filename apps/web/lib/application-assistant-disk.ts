@@ -3,11 +3,15 @@
  * Root folder: data_application_assistant/
  * Per run: <userSlug>_<YYYY-MM-DD_HH-mm-ss>/
  *   raw.html, cleaned.html, metadata.json, plus optional artifacts.
+ *
+ * Phase 6 adds content hashing: we maintain content_hashes.json per run folder so
+ * that major artifacts have stable, comparable identities for re-analysis.
  */
 
-import { mkdir, writeFile, rm } from 'fs/promises';
+import { mkdir, writeFile, rm, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 
 const ROOT = path.join(process.cwd(), '..', '..', 'data_application_assistant');
 
@@ -40,6 +44,46 @@ export function getRunFolderName(userName: string | null, userId: string): strin
 /** Resolve absolute path to a run folder (does not create it). */
 export function getRunFolderPath(folderName: string): string {
   return path.join(ROOT, folderName);
+}
+
+async function computeFileHash(filePath: string): Promise<string | null> {
+  if (!existsSync(filePath)) return null;
+  const buf = await readFile(filePath);
+  const hash = createHash('sha256').update(buf).digest('hex');
+  return hash;
+}
+
+/**
+ * Update content_hashes.json for a set of filenames within a run folder.
+ * Safe to call repeatedly; merges into existing hashes.
+ */
+export async function updateContentHashes(folderName: string, filenames: string[]): Promise<void> {
+  const dir = getRunFolderPath(folderName);
+  if (!existsSync(ROOT)) {
+    await mkdir(ROOT, { recursive: true });
+  }
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true });
+  }
+
+  const hashesPath = path.join(dir, 'content_hashes.json');
+  let hashes: Record<string, string> = {};
+  if (existsSync(hashesPath)) {
+    try {
+      const raw = await readFile(hashesPath, 'utf-8');
+      hashes = JSON.parse(raw) as Record<string, string>;
+    } catch {
+      hashes = {};
+    }
+  }
+
+  for (const name of filenames) {
+    const full = path.join(dir, name);
+    const h = await computeFileHash(full);
+    if (h) hashes[name] = h;
+  }
+
+  await writeFile(hashesPath, JSON.stringify(hashes, null, 2), 'utf-8');
 }
 
 export interface RunMetadata {
@@ -76,6 +120,8 @@ export async function saveApplicationAssistantRun(
   await writeFile(path.join(dir, 'cleaned.html'), cleanedHtml, 'utf-8');
   await writeFile(path.join(dir, 'metadata.json'), JSON.stringify(metadata, null, 2), 'utf-8');
 
+  await updateContentHashes(folderName, ['raw.html', 'cleaned.html', 'metadata.json']);
+
   return dir;
 }
 
@@ -95,9 +141,14 @@ export async function saveHtmlVariant(
   }
   await mkdir(dir, { recursive: true });
   const safeLabel = label.replace(/[^a-z0-9\-_.]/gi, '_');
-  await writeFile(path.join(dir, `${safeLabel}.raw.html`), rawHtml, 'utf-8');
+  const rawPath = `${safeLabel}.raw.html`;
+  await writeFile(path.join(dir, rawPath), rawHtml, 'utf-8');
   if (cleanedHtml !== undefined) {
-    await writeFile(path.join(dir, `${safeLabel}.cleaned.html`), cleanedHtml, 'utf-8');
+    const cleanedPath = `${safeLabel}.cleaned.html`;
+    await writeFile(path.join(dir, cleanedPath), cleanedHtml, 'utf-8');
+    await updateContentHashes(folderName, [rawPath, cleanedPath]);
+  } else {
+    await updateContentHashes(folderName, [rawPath]);
   }
 }
 
@@ -115,6 +166,7 @@ export async function saveJsonArtifact(
   }
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, filename), JSON.stringify(data, null, 2), 'utf-8');
+  await updateContentHashes(folderName, [filename]);
 }
 
 /**

@@ -9,7 +9,7 @@ import { embedBatch, complete } from '@careersignal/llm';
 import { writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { getRunFolderPath } from '@/lib/application-assistant-disk';
+import { getRunFolderPath, updateContentHashes } from '@/lib/application-assistant-disk';
 
 export interface ChunkRecord {
   id: string;
@@ -479,6 +479,7 @@ export async function runRagPipeline(
 
     await writeFile(path.join(dir, 'chunks.json'), JSON.stringify(chunks, null, 2), 'utf-8');
     onLog?.(`RAG: ${chunks.length} chunks saved.`);
+    await updateContentHashes(folderName, ['chunks.json']);
 
     onLog?.('RAG: Embedding chunks (local model)...');
     const embeddings = await embedBatch(
@@ -507,6 +508,7 @@ export async function runRagPipeline(
       ),
       'utf-8',
     );
+    await updateContentHashes(folderName, ['embeddings.json']);
 
     // Embedding-based scores are used as a cheap pre-filter for the LLM ranker.
     onLog?.('RAG: Scoring chunks with embeddings (pre-filter)...');
@@ -557,6 +559,7 @@ export async function runRagPipeline(
     const focusedHtml = buildFocusedContent(withScores);
     await writeFile(path.join(dir, 'focused_content.html'), focusedHtml, 'utf-8');
     onLog?.('RAG: Focused content saved.');
+    await updateContentHashes(folderName, ['chunk_scores.json', 'focused_content.html']);
 
     return { focusedHtml, chunksCount: chunks.length, keptCount };
   } catch (err) {

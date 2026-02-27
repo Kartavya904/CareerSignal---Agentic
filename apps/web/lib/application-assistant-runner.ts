@@ -18,6 +18,8 @@ import {
   generateInterviewPrep,
   researchCompanyFromHtml,
   normalizeUrl,
+  verifyCleaning,
+  resolveCompanyIdentity,
   type ProfileSnapshot,
 } from '@careersignal/agents';
 import {
@@ -248,6 +250,26 @@ export async function runApplicationAssistantPipeline(
           level: 'info',
         },
       );
+      try {
+        const verification = verifyCleaning(html, cleanResult.html);
+        const confidencePct = Math.round(verification.coverageRatio * 100);
+        await dbLog(
+          db,
+          analysisId,
+          'CleanerVerifier',
+          `Cleaning confidence: ${confidencePct}%` +
+            (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
+          { level: verification.manualReviewRequired ? 'warn' : 'info' },
+        );
+      } catch {
+        await dbLog(
+          db,
+          analysisId,
+          'CleanerVerifier',
+          'Cleaning verification failed (non-fatal).',
+          { level: 'warn' },
+        );
+      }
 
       // 3b. Persist run to disk for debugging and re-analysis
       const runFolderName = getRunFolderName(userName, userId);
@@ -302,6 +324,26 @@ export async function runApplicationAssistantPipeline(
         html = loginHtml;
         const reclean = cleanHtml(html);
         classification = await classifyPage(reclean.html, finalUrl);
+        try {
+          const verification = verifyCleaning(loginHtml, reclean.html);
+          const confidencePct = Math.round(verification.coverageRatio * 100);
+          await dbLog(
+            db,
+            analysisId,
+            'CleanerVerifier',
+            `Post-login cleaning confidence: ${confidencePct}%` +
+              (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
+            { level: verification.manualReviewRequired ? 'warn' : 'info' },
+          );
+        } catch {
+          await dbLog(
+            db,
+            analysisId,
+            'CleanerVerifier',
+            'Post-login cleaning verification failed (non-fatal).',
+            { level: 'warn' },
+          );
+        }
         await dbLog(db, analysisId, 'Classifier', `Post-login type: ${classification.type}`, {
           level: 'info',
         });
@@ -337,6 +379,26 @@ export async function runApplicationAssistantPipeline(
         html = captchaHtml;
         const reclean = cleanHtml(html);
         classification = await classifyPage(reclean.html, finalUrl);
+        try {
+          const verification = verifyCleaning(captchaHtml, reclean.html);
+          const confidencePct = Math.round(verification.coverageRatio * 100);
+          await dbLog(
+            db,
+            analysisId,
+            'CleanerVerifier',
+            `Post-captcha cleaning confidence: ${confidencePct}%` +
+              (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
+            { level: verification.manualReviewRequired ? 'warn' : 'info' },
+          );
+        } catch {
+          await dbLog(
+            db,
+            analysisId,
+            'CleanerVerifier',
+            'Post-captcha cleaning verification failed (non-fatal).',
+            { level: 'warn' },
+          );
+        }
         try {
           await saveHtmlVariant(runFolderName, 'post-captcha', captchaHtml, reclean.html);
           const screenshotPath = path.join(
@@ -405,6 +467,7 @@ export async function runApplicationAssistantPipeline(
 
       const useRag = process.env.DISABLE_JOB_RAG !== '1' && process.env.DISABLE_JOB_RAG !== 'true';
       let focusedHtml: string | null = null;
+      let extractionSource: 'rag_focused' | 'cleaned_html' | 'raw_html' = 'cleaned_html';
       if (useRag) {
         const ragResult = await runRagPipeline(runFolderName, resolvedHtml, (msg) =>
           dbLog(db, analysisId, 'RAG', msg, { level: 'info' }),
@@ -434,9 +497,14 @@ export async function runApplicationAssistantPipeline(
             },
           );
           jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+          extractionSource = 'cleaned_html';
+        }
+        if (jobDetail.title !== 'Untitled' && jobDetail.company !== 'Unknown') {
+          extractionSource = 'rag_focused';
         }
       } else {
         jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+        extractionSource = 'cleaned_html';
       }
 
       if (
@@ -449,6 +517,7 @@ export async function runApplicationAssistantPipeline(
         const rawJob = await extractJobDetail(resolvedHtml, resolvedUrl);
         if (rawJob.title !== 'Untitled' || rawJob.company !== 'Unknown') {
           jobDetail = rawJob;
+          extractionSource = 'raw_html';
         }
       }
       if (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') {
@@ -470,6 +539,25 @@ export async function runApplicationAssistantPipeline(
         'Extractor',
         `Extracted: "${jobDetail.title}" at ${jobDetail.company}`,
         { level: 'success' },
+      );
+
+      // 7b. Company identity resolver (multi-signal, DB-aware at app layer)
+      const companyResolution = resolveCompanyIdentity({
+        pageUrl: resolvedUrl,
+        extractedCompany: jobDetail.company,
+        jobTitle: jobDetail.title,
+        jobDescription: jobDetail.description,
+        cleanedHtml: cleanedForExtract.html,
+      });
+      jobDetail.company = companyResolution.canonicalName;
+      await dbLog(
+        db,
+        analysisId,
+        'CompanyResolver',
+        `Resolved company: "${companyResolution.canonicalName}" (confidence ${(
+          companyResolution.confidence * 100
+        ).toFixed(0)}%)`,
+        { level: 'info' },
       );
 
       // 8. Company research — fetch about/culture page and summarize before analysis
@@ -558,6 +646,15 @@ export async function runApplicationAssistantPipeline(
           { level: 'warn' },
         );
       }
+
+      // Placeholder for Deep Company Dossier agent (Phase 12)
+      await dbLog(
+        db,
+        analysisId,
+        'DeepCompanyDossier',
+        'Deep company dossier agent placeholder — started then skipped (not yet implemented).',
+        { level: 'info' },
+      );
 
       // 9. Update analysis with job detail and company research (row was created at start)
       await updateAnalysis(db, analysisId, {
@@ -767,6 +864,14 @@ export async function runApplicationAssistantPipeline(
           )
             ? true
             : false,
+        });
+        await saveJsonArtifact(runFolderName, 'provenance.json', {
+          jobDetail: {
+            source: extractionSource,
+            ragEnabled: useRag,
+            resolvedUrl,
+            createdAt: new Date().toISOString(),
+          },
         });
       } catch {
         // ignore

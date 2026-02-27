@@ -3,6 +3,7 @@ export * from './schema';
 export * from './runs';
 export * from './profiles';
 export * from './sources';
+export * from './companies';
 export * from './seed';
 export * from './users';
 export * from './preferences';

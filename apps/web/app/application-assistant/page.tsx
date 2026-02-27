@@ -129,6 +129,9 @@ export default function ApplicationAssistantPage() {
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [autoConfirmCompanyTitle, setAutoConfirmCompanyTitle] = useState(false);
+  const [companyManuallyConfirmed, setCompanyManuallyConfirmed] = useState(false);
 
   // Poll status (from DB: running state and progress persist across refresh/tabs)
   useEffect(() => {
@@ -212,6 +215,17 @@ export default function ApplicationAssistantPage() {
   useEffect(() => {
     terminalRef.current?.scrollTo(0, terminalRef.current.scrollHeight);
   }, [logs]);
+
+  // Load auto-confirm preference from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = window.localStorage.getItem('aa_auto_confirm_company_title');
+      if (stored === '1') setAutoConfirmCompanyTitle(true);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Load history
   const loadHistory = useCallback(() => {
@@ -359,6 +373,46 @@ export default function ApplicationAssistantPage() {
   const isRunning = status?.running === true;
   const currentStep = status?.currentStep ?? 'idle';
   const currentStepIdx = stepIndex(currentStep);
+
+  const currentStepLabel =
+    currentStep === 'scraping'
+      ? 'Working: browser & page capture'
+      : currentStep === 'extracting'
+        ? 'Working: extracting job details'
+        : currentStep === 'matching'
+          ? 'Working: profile-to-job match'
+          : currentStep === 'writing'
+            ? 'Working: cover letters & prep'
+            : currentStep === 'done'
+              ? 'Pipeline finished'
+              : currentStep === 'error'
+                ? 'Pipeline failed'
+                : 'Idle';
+
+  // Derive confidences from logs (CompanyResolver + CleanerVerifier)
+  let companyConfidence = 100;
+  let cleaningConfidence = 100;
+  const resolverLog = [...logs]
+    .reverse()
+    .find((l) => l.agent === 'CompanyResolver' && l.message.includes('Resolved company'));
+  if (resolverLog) {
+    const m = resolverLog.message.match(/confidence\s+(\d+)%/i);
+    if (m) companyConfidence = parseInt(m[1]!, 10);
+  }
+  const cleanerInitialLog = [...logs]
+    .reverse()
+    .find(
+      (l) =>
+        l.agent === 'CleanerVerifier' && l.message.toLowerCase().startsWith('cleaning confidence'),
+    );
+  if (cleanerInitialLog) {
+    const m = cleanerInitialLog.message.match(/confidence:\s*(\d+)%/i);
+    if (m) cleaningConfidence = parseInt(m[1]!, 10);
+  }
+
+  const mandatoryConfirmGate = companyConfidence < 40 || cleaningConfidence < 40;
+  const canAutoSkipGate = companyConfidence >= 80 && cleaningConfidence >= 70;
+  const autoSkipConfirmGate = autoConfirmCompanyTitle && canAutoSkipGate && !mandatoryConfirmGate;
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -665,17 +719,50 @@ export default function ApplicationAssistantPage() {
               padding: '0.75rem 1rem',
             }}
           >
-            <h2
-              className="section-title"
-              style={{
-                margin: 0,
-                color: 'var(--accent)',
-                textTransform: 'none',
-                fontSize: '0.9rem',
-              }}
-            >
-              Agent Terminal
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {isRunning ? (
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    border: '2px solid var(--accent)',
+                    borderTopColor: 'transparent',
+                  }}
+                />
+              ) : currentStep === 'done' ? (
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    background: 'var(--success)',
+                  }}
+                />
+              ) : null}
+              <div>
+                <h2
+                  className="section-title"
+                  style={{
+                    margin: 0,
+                    color: 'var(--accent)',
+                    textTransform: 'none',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  Agent Terminal
+                </h2>
+                <div
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--muted-foreground)',
+                    marginTop: 2,
+                  }}
+                >
+                  {currentStepLabel}
+                </div>
+              </div>
+            </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               {status?.waitingForLogin && (
                 <button
@@ -711,38 +798,367 @@ export default function ApplicationAssistantPage() {
                   Captcha solved — Continue
                 </button>
               )}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Automatically skip company/title confirmation when confidence is high."
+              >
+                <input
+                  type="checkbox"
+                  checked={autoConfirmCompanyTitle}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setAutoConfirmCompanyTitle(checked);
+                    setCompanyManuallyConfirmed(false);
+                    if (typeof window !== 'undefined') {
+                      try {
+                        window.localStorage.setItem(
+                          'aa_auto_confirm_company_title',
+                          checked ? '1' : '0',
+                        );
+                      } catch {
+                        // ignore
+                      }
+                    }
+                  }}
+                  style={{ transform: 'scale(0.95)' }}
+                />
+                Auto-confirm title &amp; company
+              </label>
+              <button
+                type="button"
+                onClick={() => setTerminalOpen((open) => !open)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: '0.15rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                aria-label={terminalOpen ? 'Hide agent terminal' : 'Show agent terminal'}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    transform: terminalOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.15s ease-out',
+                    fontSize: '0.75rem',
+                    color: 'var(--muted-foreground)',
+                  }}
+                >
+                  ▶
+                </span>
+              </button>
+            </div>
+          </div>
+          {terminalOpen && (
+            <div
+              ref={terminalRef}
+              style={{
+                maxHeight: 280,
+                overflow: 'auto',
+                background: '#0d1117',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
+                fontSize: '0.75rem',
+                lineHeight: 1.5,
+                padding: '0.5rem 1rem 0.75rem',
+                borderTop: '1px solid var(--border)',
+              }}
+            >
+              {logs.length === 0 ? (
+                <div style={{ color: 'var(--muted-foreground)' }}>
+                  {starting ? 'Starting pipeline…' : 'Waiting for logs…'}
+                </div>
+              ) : (
+                logs.map((l) => (
+                  <div
+                    key={l.id}
+                    style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.15rem' }}
+                  >
+                    <span style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>
+                      [{formatTime(l.ts)}]
+                    </span>
+                    <span style={{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>
+                      [{l.agent}]
+                    </span>
+                    <span style={{ color: levelColor(l.level) }}>{l.message}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quick company snapshot (Phase 11) */}
+      {analysis?.jobSummary && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.5rem',
+            }}
+          >
+            <h2 className="section-title" style={{ margin: 0 }}>
+              Company Snapshot
+            </h2>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.75rem',
+                color: 'var(--muted-foreground)',
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background:
+                    isRunning && currentStepIdx < stepIndex('matching')
+                      ? 'var(--accent)'
+                      : 'var(--success)',
+                }}
+              />
+              <span>
+                {isRunning && currentStepIdx < stepIndex('matching')
+                  ? 'Building snapshot…'
+                  : 'Snapshot ready'}
+              </span>
             </div>
           </div>
           <div
-            ref={terminalRef}
             style={{
-              maxHeight: 280,
-              overflow: 'auto',
-              background: '#0d1117',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
-              fontSize: '0.75rem',
-              lineHeight: 1.5,
-              padding: '0.5rem 1rem 0.75rem',
-              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '0.5rem',
             }}
           >
-            {logs.length === 0 ? (
-              <div style={{ color: 'var(--muted-foreground)' }}>
-                {starting ? 'Starting pipeline…' : 'Waiting for logs…'}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontSize: '0.8rem',
+                  color: 'var(--muted-foreground)',
+                  marginBottom: 2,
+                }}
+              >
+                Company
               </div>
-            ) : (
-              logs.map((l) => (
-                <div key={l.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.15rem' }}>
-                  <span style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>
-                    [{formatTime(l.ts)}]
-                  </span>
-                  <span style={{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>
-                    [{l.agent}]
-                  </span>
-                  <span style={{ color: levelColor(l.level) }}>{l.message}</span>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                }}
+              >
+                {analysis.jobSummary.company}
+              </div>
+              {analysis.jobSummary.location && (
+                <div
+                  style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--muted-foreground)',
+                    marginTop: 2,
+                  }}
+                >
+                  {analysis.jobSummary.location}
                 </div>
-              ))
-            )}
+              )}
+            </div>
+            <div style={{ minWidth: 0, flex: 2 }}>
+              <div
+                style={{
+                  fontSize: '0.8rem',
+                  color: 'var(--muted-foreground)',
+                  marginBottom: 2,
+                }}
+              >
+                Snapshot
+              </div>
+              <p
+                style={{
+                  fontSize: '0.85rem',
+                  margin: 0,
+                  maxHeight: 60,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                title={analysis.companyResearch ?? analysis.jobSummary.companyOneLiner ?? undefined}
+              >
+                {analysis.companyResearch
+                  ? analysis.companyResearch.slice(0, 220)
+                  : (analysis.jobSummary.companyOneLiner ??
+                    'We will enrich this company profile over time.')}
+              </p>
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              fontSize: '0.75rem',
+            }}
+          >
+            <div
+              style={{
+                padding: '0.35rem 0.55rem',
+                borderRadius: '999px',
+                border: '1px solid var(--border)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+              title={resolverLog?.message}
+            >
+              <span style={{ fontWeight: 500 }}>Identity</span>
+              <span>{companyConfidence}%</span>
+            </div>
+            <div
+              style={{
+                padding: '0.35rem 0.55rem',
+                borderRadius: '999px',
+                border: '1px solid var(--border)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+              title={cleanerInitialLog?.message}
+            >
+              <span style={{ fontWeight: 500 }}>Cleaning</span>
+              <span>{cleaningConfidence}%</span>
+            </div>
+            <div
+              style={{
+                padding: '0.35rem 0.55rem',
+                borderRadius: '999px',
+                border: '1px solid var(--border)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+              title="Deep company dossier will run as a background step in a future phase."
+            >
+              <span style={{ fontWeight: 500 }}>Deep dossier</span>
+              <span>Queued</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company/title confirmation gate (Phase 10) */}
+      {analysis?.jobSummary && !autoSkipConfirmGate && !companyManuallyConfirmed && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '1.5rem',
+            borderLeft: mandatoryConfirmGate
+              ? '3px solid var(--danger)'
+              : '3px solid var(--warning)',
+          }}
+        >
+          <h2 className="section-title" style={{ margin: '0 0 0.5rem 0' }}>
+            Confirm job title &amp; company
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', marginTop: 0 }}>
+            We detected the following from the job page. Please confirm before we rely on it for
+            company research and matching.
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+              gap: '0.75rem',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  color: 'var(--muted-foreground)',
+                  marginBottom: 2,
+                }}
+              >
+                Title
+              </div>
+              <div
+                style={{
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {analysis.jobSummary!.title}
+              </div>
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  color: 'var(--muted-foreground)',
+                  marginBottom: 2,
+                }}
+              >
+                Company
+              </div>
+              <div
+                style={{
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {analysis.jobSummary!.company}
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '0.75rem',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--muted-foreground)',
+              }}
+            >
+              Resolver confidence: {companyConfidence}% · Cleaning confidence: {cleaningConfidence}%{' '}
+              {mandatoryConfirmGate && (
+                <span style={{ color: 'var(--danger)', fontWeight: 500 }}>
+                  (Manual confirmation required)
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ fontSize: '0.8125rem', padding: '0.4rem 0.9rem' }}
+              onClick={() => setCompanyManuallyConfirmed(true)}
+            >
+              Looks correct — continue
+            </button>
           </div>
         </div>
       )}
