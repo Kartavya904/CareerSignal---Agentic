@@ -62,7 +62,7 @@ export default async function DashboardPage() {
     },
   ];
 
-  const completedCount = cards.filter((c) => c.done).length;
+  const accountComplete = [hasProfile, hasPreferences].filter(Boolean).length;
 
   return (
     <div>
@@ -86,24 +86,24 @@ export default async function DashboardPage() {
           gap: '0.5rem',
         }}
       >
-        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+        <span style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
           Account progress
         </span>
         <span
           style={{
             fontWeight: 600,
-            color: completedCount === 4 ? 'var(--accent)' : 'var(--text)',
+            color: accountComplete === 2 ? 'var(--accent)' : 'var(--text)',
             fontSize: '0.9375rem',
           }}
         >
-          {completedCount} of 3 complete
+          {accountComplete} of 2 complete
         </span>
       </div>
 
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
           gap: '1.25rem',
         }}
       >
@@ -135,7 +135,7 @@ export default async function DashboardPage() {
                 className="badge"
                 style={{
                   background: c.done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
-                  color: c.done ? 'var(--accent)' : 'var(--muted)',
+                  color: c.done ? 'var(--accent)' : 'var(--muted-foreground)',
                   fontSize: '0.75rem',
                   padding: '0.25rem 0.5rem',
                 }}
@@ -143,7 +143,14 @@ export default async function DashboardPage() {
                 {c.stat}
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: '0.9375rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '0.9375rem',
+                color: 'var(--muted-foreground)',
+                lineHeight: 1.5,
+              }}
+            >
               {c.description}
             </p>
             <div

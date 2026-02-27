@@ -5,7 +5,7 @@ export default async function HomePage() {
   const user = await getSessionUser();
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '0 0.5rem' }}>
       {/* Hero */}
       <section style={{ marginBottom: '3rem', paddingTop: '0.5rem' }}>
         <h1
@@ -23,14 +23,14 @@ export default async function HomePage() {
         <p
           style={{
             fontSize: '1.125rem',
-            color: 'var(--muted)',
+            color: 'var(--muted-foreground)',
             margin: '0 0 1.5rem 0',
             lineHeight: 1.65,
           }}
         >
-          CareerSignal is a semi-autonomous career intelligence platform. It scans job sources,
-          ranks roles by fit, and helps you focus on opportunities that actually match your
-          profile—without paid APIs or cloud lock-in.
+          CareerSignal is a semi-autonomous career intelligence platform. You bring job URLs; the
+          Application Assistant extracts, matches to your profile, and helps with cover letters and
+          prep—without paid APIs or cloud lock-in.
         </p>
         {user ? (
           <Link href="/dashboard" className="btn btn-primary" style={{ fontSize: '0.9375rem' }}>
@@ -43,7 +43,7 @@ export default async function HomePage() {
         )}
       </section>
 
-      {/* What it does */}
+      {/* Three things */}
       <section className="card" style={{ marginBottom: '2rem' }}>
         <h2
           className="section-title"
@@ -55,13 +55,13 @@ export default async function HomePage() {
             letterSpacing: '0',
           }}
         >
-          What it does
+          Three things
         </h2>
         <ul
           style={{
             margin: 0,
             paddingLeft: '1.25rem',
-            color: 'var(--text-secondary)',
+            color: 'var(--muted-foreground)',
             lineHeight: 1.8,
           }}
         >
@@ -74,16 +74,9 @@ export default async function HomePage() {
             locations, seniority, and strictness. One-click autofill from profile.
           </li>
           <li>
-            <strong style={{ color: 'var(--text)' }}>Sources</strong> — Add job boards and company
-            career pages. Default sources are pre-seeded.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--text)' }}>Scan & rank</strong> — Each run extracts jobs,
-            scores them with rules + LLM, and surfaces the top matches.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--text)' }}>Roadmap</strong> — Contact discovery, outreach
-            drafting, and application tracking (V1/V2).
+            <strong style={{ color: 'var(--text)' }}>Application Assistant</strong> — Paste a job
+            URL; get extraction, match score, cover letter drafts, and application prep for that job
+            only.
           </li>
         </ul>
       </section>
@@ -105,7 +98,7 @@ export default async function HomePage() {
         <p
           style={{
             margin: '0 0 1rem 0',
-            color: 'var(--text-secondary)',
+            color: 'var(--muted-foreground)',
             fontSize: '0.9375rem',
             lineHeight: 1.65,
           }}
@@ -118,15 +111,14 @@ export default async function HomePage() {
         <p
           style={{
             margin: 0,
-            color: 'var(--text-secondary)',
+            color: 'var(--muted-foreground)',
             fontSize: '0.9375rem',
             lineHeight: 1.65,
           }}
         >
-          Two-tier model strategy: fast 8B models for bulk tasks (normalization, extraction), 32B
-          for reasoning (match scoring, planning, drafting). Rule scorer is deterministic; LLM
-          ranker adds nuance. Top-15 per source, strict/semi-strict/off filter so you control how
-          picky the pipeline is.
+          Two-tier model strategy: fast 8B models for extraction and normalization, 32B for
+          reasoning (match scoring, planning, drafting). Rule scorer is deterministic; LLM ranker
+          adds nuance. Application Assistant only—you bring the job URL; no bulk scraping.
         </p>
       </section>
 
@@ -150,7 +142,7 @@ export default async function HomePage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--muted)',
+            color: 'var(--muted-foreground)',
             fontSize: '1.5rem',
             flexShrink: 0,
           }}
@@ -163,7 +155,13 @@ export default async function HomePage() {
           <p style={{ margin: 0, color: 'var(--text)', fontWeight: 600, fontSize: '1rem' }}>
             Made by Kartavya Singh
           </p>
-          <p style={{ margin: '0.25rem 0 0 0', color: 'var(--muted)', fontSize: '0.875rem' }}>
+          <p
+            style={{
+              margin: '0.25rem 0 0 0',
+              color: 'var(--muted-foreground)',
+              fontSize: '0.875rem',
+            }}
+          >
             CareerSignal is a personal project—agentic career intelligence, built and run locally.
           </p>
         </div>

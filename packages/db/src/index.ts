@@ -8,8 +8,5 @@ export * from './users';
 export * from './preferences';
 export * from './profile-insights';
 export * from './user-metadata';
-export * from './companies';
-export * from './job-listings';
-export * from './job-observations';
 export * from './application-assistant-analyses';
 export * from './application-assistant-analysis-logs';

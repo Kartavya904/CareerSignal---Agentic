@@ -34,7 +34,7 @@
   --secondary: var(--surface-elevated);
   --secondary-foreground: var(--text);
   --muted: var(--surface-elevated);
-  --muted-foreground: #9ca3af;
+  --muted-foreground: #9ca3af; /* visible muted text on dark bg */
   --accent-foreground: #212529;
   --destructive: var(--error);
   --destructive-foreground: var(--text);
@@ -114,6 +114,15 @@ textarea {
 .card-elevated {
   background: var(--surface-elevated);
   border-color: var(--border-subtle);
+}
+
+.card:hover {
+  border-color: var(--border-subtle);
+}
+
+/* Muted text: always use --muted-foreground for readable grey text on dark bg */
+.text-muted {
+  color: var(--muted-foreground);
 }
 
 .section-title {
@@ -243,6 +252,17 @@ textarea {
   color: var(--muted-foreground);
 }
 
+/* Link cards (dashboard, etc.): no underline, clear hover */
+a.card {
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+a.card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-muted);
+}
+
 /* Page headers */
 .page-head {
   margin-bottom: 1.5rem;
@@ -258,7 +278,7 @@ textarea {
 
 .page-head p {
   margin: 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.9375rem;
 }
 

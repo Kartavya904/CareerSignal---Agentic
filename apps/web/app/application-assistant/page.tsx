@@ -103,7 +103,7 @@ function levelColor(level: string) {
     case 'error':
       return '#ef4444';
     default:
-      return 'var(--muted)';
+      return 'var(--muted-foreground)';
   }
 }
 
@@ -398,7 +398,7 @@ export default function ApplicationAssistantPage() {
             )}
           </div>
         </div>
-        <p>
+        <p style={{ color: 'var(--muted-foreground)', margin: 0 }}>
           Paste a job or application page URL. We&apos;ll open it in a browser (you can log in if
           needed), then show a job summary, how you match, resume tips, and cover letter drafts.
         </p>
@@ -424,7 +424,11 @@ export default function ApplicationAssistantPage() {
               <button
                 type="button"
                 className="btn btn-ghost"
-                style={{ fontSize: '0.8125rem', padding: '0.35rem 0.75rem', color: 'var(--muted)' }}
+                style={{
+                  fontSize: '0.8125rem',
+                  padding: '0.35rem 0.75rem',
+                  color: 'var(--muted-foreground)',
+                }}
                 onClick={handleDeleteAllAnalyses}
               >
                 Delete all
@@ -432,7 +436,7 @@ export default function ApplicationAssistantPage() {
             )}
           </div>
           {history.length === 0 ? (
-            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: 0 }}>
+            <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem', margin: 0 }}>
               No past analyses yet.
             </p>
           ) : (
@@ -489,12 +493,16 @@ export default function ApplicationAssistantPage() {
                           />
                         )}
                       {(h.jobSummary as JobSummary | null)?.title || 'Untitled'}{' '}
-                      <span style={{ fontWeight: 400, color: 'var(--muted)' }}>
+                      <span style={{ fontWeight: 400, color: 'var(--muted-foreground)' }}>
                         at {(h.jobSummary as JobSummary | null)?.company || '—'}
                       </span>
                     </div>
                     <div
-                      style={{ color: 'var(--muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}
+                      style={{
+                        color: 'var(--muted-foreground)',
+                        fontSize: '0.75rem',
+                        marginTop: '0.25rem',
+                      }}
                     >
                       {new Date(h.createdAt).toLocaleString()} —{' '}
                       {(h as Analysis).runStatus === 'running'
@@ -521,7 +529,7 @@ export default function ApplicationAssistantPage() {
                       borderRadius: '50%',
                       border: '1px solid var(--border)',
                       background: 'var(--surface)',
-                      color: 'var(--muted)',
+                      color: 'var(--muted-foreground)',
                       cursor: 'pointer',
                       fontSize: '1.125rem',
                       lineHeight: 1,
@@ -608,7 +616,7 @@ export default function ApplicationAssistantPage() {
                         : isError
                           ? 'var(--error)'
                           : 'var(--surface-elevated)',
-                    color: isDone || isActive ? '#212529' : 'var(--muted)',
+                    color: isDone || isActive ? '#212529' : 'var(--muted-foreground)',
                     border: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                     flexShrink: 0,
                   }}
@@ -619,7 +627,7 @@ export default function ApplicationAssistantPage() {
                   style={{
                     fontSize: '0.75rem',
                     fontWeight: isActive ? 600 : 400,
-                    color: isActive ? 'var(--text)' : 'var(--muted)',
+                    color: isActive ? 'var(--text)' : 'var(--muted-foreground)',
                     textTransform: 'capitalize',
                     whiteSpace: 'nowrap',
                   }}
@@ -673,15 +681,11 @@ export default function ApplicationAssistantPage() {
                 <button
                   type="button"
                   onClick={handleLoginSolved}
+                  className="btn btn-primary"
                   style={{
                     fontSize: '0.8125rem',
-                    padding: '0.35rem 0.75rem',
-                    background: '#a78bfa',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontWeight: 600,
-                    cursor: 'pointer',
+                    padding: '0.4rem 0.85rem',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   Logged in — Continue
@@ -693,13 +697,15 @@ export default function ApplicationAssistantPage() {
                   onClick={handleCaptchaSolved}
                   style={{
                     fontSize: '0.8125rem',
-                    padding: '0.35rem 0.75rem',
-                    background: '#22c55e',
+                    padding: '0.4rem 0.85rem',
+                    whiteSpace: 'nowrap',
+                    background: 'var(--success)',
                     color: '#fff',
                     border: 'none',
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-sm)',
                     fontWeight: 600,
                     cursor: 'pointer',
+                    transition: 'opacity var(--transition)',
                   }}
                 >
                   Captcha solved — Continue
@@ -721,13 +727,15 @@ export default function ApplicationAssistantPage() {
             }}
           >
             {logs.length === 0 ? (
-              <div style={{ color: '#8b949e' }}>
+              <div style={{ color: 'var(--muted-foreground)' }}>
                 {starting ? 'Starting pipeline…' : 'Waiting for logs…'}
               </div>
             ) : (
               logs.map((l) => (
                 <div key={l.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.15rem' }}>
-                  <span style={{ color: '#8b949e', flexShrink: 0 }}>[{formatTime(l.ts)}]</span>
+                  <span style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>
+                    [{formatTime(l.ts)}]
+                  </span>
                   <span style={{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>
                     [{l.agent}]
                   </span>
@@ -777,7 +785,7 @@ export default function ApplicationAssistantPage() {
           className="card"
           style={{ marginBottom: '1.5rem', borderLeft: '3px solid var(--warning)' }}
         >
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.875rem' }}>
+          <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
             Add a <strong>profile</strong> and <strong>resume</strong> from your Dashboard for
             personalized match scoring, resume suggestions, and cover letter generation.
           </p>
@@ -809,7 +817,7 @@ export default function ApplicationAssistantPage() {
                   fontSize: '0.8125rem',
                   fontWeight: coverTab === style ? 600 : 400,
                   background: coverTab === style ? 'var(--accent-muted)' : 'transparent',
-                  color: coverTab === style ? 'var(--accent)' : 'var(--muted)',
+                  color: coverTab === style ? 'var(--accent)' : 'var(--muted-foreground)',
                   border: '1px solid',
                   borderColor: coverTab === style ? 'var(--accent)' : 'var(--border)',
                   borderRadius: 6,
@@ -877,7 +885,9 @@ export default function ApplicationAssistantPage() {
                 <div style={{ fontWeight: 600, fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
                   {label}
                 </div>
-                <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>Coming soon</div>
+                <div style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
+                  Coming soon
+                </div>
               </div>
             ))}
           </div>
@@ -916,7 +926,7 @@ export default function ApplicationAssistantPage() {
             <h2 className="section-title" style={{ margin: 0 }}>
               Application Checklist
             </h2>
-            <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
               {checklistOpen ? 'Collapse' : 'Expand'}
             </span>
           </button>
@@ -939,7 +949,7 @@ export default function ApplicationAssistantPage() {
                     fontSize: '0.8125rem',
                   }}
                 >
-                  <span style={{ color: item.done ? 'var(--success)' : 'var(--muted)' }}>
+                  <span style={{ color: item.done ? 'var(--success)' : 'var(--muted-foreground)' }}>
                     {item.done ? '\u2713' : '\u25CB'}
                   </span>
                   <span style={{ color: item.done ? 'var(--text-secondary)' : 'var(--text)' }}>
@@ -972,7 +982,7 @@ export default function ApplicationAssistantPage() {
             <h2 className="section-title" style={{ margin: 0 }}>
               Interview Prep
             </h2>
-            <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
               {interviewOpen ? 'Collapse' : 'Expand'}
             </span>
           </button>
@@ -1028,7 +1038,7 @@ function JobSummaryCard({ job }: { job: JobSummary }) {
         >
           {job.company}
           {job.companyOneLiner && (
-            <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
+            <span style={{ color: 'var(--muted-foreground)', fontStyle: 'italic' }}>
               {' '}
               — {job.companyOneLiner}
             </span>
@@ -1072,7 +1082,7 @@ function JobSummaryCard({ job }: { job: JobSummary }) {
             style={{
               fontSize: '0.75rem',
               fontWeight: 600,
-              color: 'var(--muted)',
+              color: 'var(--muted-foreground)',
               marginBottom: '0.35rem',
               textTransform: 'uppercase',
             }}
@@ -1114,7 +1124,7 @@ function InfoPill({ label, value }: { label: string; value: string }) {
         fontSize: '0.75rem',
       }}
     >
-      <span style={{ color: 'var(--muted)' }}>{label}:</span>
+      <span style={{ color: 'var(--muted-foreground)' }}>{label}:</span>
       <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{value}</span>
     </div>
   );
@@ -1159,11 +1169,11 @@ function MatchCard({
           }}
         >
           <span style={{ fontSize: '1.5rem', fontWeight: 700, color, lineHeight: 1 }}>{score}</span>
-          <span style={{ fontSize: '0.625rem', color: 'var(--muted)' }}>/100</span>
+          <span style={{ fontSize: '0.625rem', color: 'var(--muted-foreground)' }}>/100</span>
         </div>
         <div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700, color }}>{grade}</div>
-          <div style={{ color: 'var(--muted)', fontSize: '0.8125rem' }}>
+          <div style={{ color: 'var(--muted-foreground)', fontSize: '0.8125rem' }}>
             {score >= 75 ? 'Strong match' : score >= 50 ? 'Moderate match' : 'Weak match'}
           </div>
         </div>
@@ -1177,7 +1187,7 @@ function MatchCard({
               style={{
                 width: 80,
                 fontSize: '0.75rem',
-                color: 'var(--muted)',
+                color: 'var(--muted-foreground)',
                 textAlign: 'right',
                 flexShrink: 0,
               }}
@@ -1204,7 +1214,12 @@ function MatchCard({
               />
             </div>
             <span
-              style={{ width: 30, fontSize: '0.7rem', color: 'var(--muted)', textAlign: 'right' }}
+              style={{
+                width: 30,
+                fontSize: '0.7rem',
+                color: 'var(--muted-foreground)',
+                textAlign: 'right',
+              }}
             >
               {cat.value}
             </span>

@@ -1,8 +1,14 @@
 # revised_plan.md — Greenfield Agentic Multi‑Agent Job + Contact Hunting Platform (Semi‑Autonomous)
 
 **Project codename:** CareerSignal (Agentic)  
-**Mode:** Agentic re-implementation of existing working app (greenfield agent design; core logic ported where applicable). Contact search is the main gap.  
-**Primary objective:** A **semi‑autonomous, multi‑agent career intelligence system** that discovers jobs, ranks them with a profile‑aware AI engine, finds the best human contact per role, reverse‑engineers application flows, and prepares outreach/applications for user approval.
+**Mode:** Agentic re-implementation of existing working app (greenfield agent design; core logic ported where applicable).  
+**Primary objective:** A **semi‑autonomous, multi‑agent career intelligence system** that helps you with jobs **you bring to it** via the Application Assistant: profile‑aware matching, contact discovery, outreach drafts, and application blueprints—all for user‑initiated URLs only.
+
+---
+
+## Scope Pivot (No Bulk Scraping)
+
+**Decision:** The project does **not** perform active or bulk scraping of company career pages, job boards, or ATS endpoints. Job data enters the system **only** through the **Application Assistant**: the user provides a URL (e.g. a job posting or company careers page), and the system assists with that single context (extract, match, draft, blueprint). This avoids Computer Fraud and Abuse Act (CFAA) and terms‑of‑service risks associated with scraping large volumes of company data. All job‑related agents (browser, extractor, normalizer, ranker, contact, outreach, blueprint) operate in this **passive, user‑initiated** flow only.
 
 ---
 
@@ -11,18 +17,19 @@
 Build a “career operations center” where you:
 
 1. Create/confirm your profile + constraints (visa, location, seniority, industries, etc.)
-2. Add sources (user chooses from master list — LinkedIn, Indeed, Wellfound, etc. — or custom URLs; browser agent crawls on add, jobs populate in user DB)
-3. Launch a scan
-4. Agents **hunt**:
-   - jobs (accurately, with evidence)
-   - people (recruiters/hiring managers/teams) to contact for each job
-5. System outputs:
-   - **Top 15 roles per source/company** (configurable); lazy surfacing — when user changes status (e.g. Applied), next job from ranked list surfaces
+2. Use the **Application Assistant**: you paste or open a job URL; the system navigates, extracts the job, and assists you for **that** job only (no background crawling of sources or companies).
+3. For each job you bring in, agents **help**:
+   - extract job details (with evidence)
+   - match to your profile (score + explanation)
+   - find contacts (recruiters/hiring managers) from public signals
+   - draft outreach and application plans (not auto‑sent/submitted)
+4. System outputs (per job):
    - match score + explanation + citations/evidence
    - best contact(s) + rationale + confidence
-   - drafted outreach messages/emails (not auto‑sent)
-   - an “application plan” (not auto‑submitted unless explicitly approved)
-6. You supervise major actions: outreach send, application submit, and “connect” actions.
+   - drafted outreach messages/emails (copy‑to‑clipboard; not auto‑sent)
+   - an “application plan” (not auto‑submitted unless you approve)
+5. You supervise all major actions: outreach send, application submit, and “connect” actions.
+6. Tracker: pipeline stages and notes for jobs you’ve added via the assistant.
 
 ---
 
@@ -52,13 +59,13 @@ Agents can:
 - perform irreversible actions  
   Those require user approval gates.
 
-### 1.4 Self-healing + self-improving
+### 1.4 Self-improving (within passive scope)
 
-The system learns from failures:
+The system can improve from user feedback and failures in the assistant flow:
 
-- URL changed → discover new URL
-- scraping blocked → switch strategy (API, cached, alternate mirrors)
-- ranking wrong → collect feedback + run eval loops
+- Ranking wrong → collect feedback + run eval loops
+- Extraction failures on a user‑provided URL → log and suggest manual retry or different URL
+- No bulk “discovery” or auto‑crawling of new URLs.
 
 ### 1.5 Modular agents, composable workflows
 
@@ -74,23 +81,19 @@ Anything that sounds like “a feature” should be:
 ### v1 (MVP you can ship + demo)
 
 - Profile builder + resume parsing
-- Sources registry (company pages + boards + aggregators)
-- Browser-based job extraction (headless)
-- Normalization to a unified Job schema
-- AI match scoring + strict preference filter option
-- Top-K ranking per source/company
-- Contact discovery from public web (team pages, press releases, org charts, GitHub, conference pages, etc.)
+- **Application Assistant:** user provides a job URL → browser navigates, extracts that job, normalizes to unified Job schema (single‑URL, user‑initiated only; no bulk source crawling)
+- AI match scoring + strict preference filter for that job
+- Contact discovery from public web (team pages, GitHub, etc.) for that job
 - Outreach drafting (LinkedIn-style message + email)
-- Application flow “blueprinting” (form extraction + field mapping)
-- Tracker: pipeline stages, notes, evidence, drafts
+- Application flow “blueprinting” (form extraction + field mapping for that job)
+- Tracker: pipeline stages, notes, evidence, drafts for jobs the user has run through the assistant
 
-### v2 (seriously agentic)
+### v2 (seriously agentic, still passive)
 
-- Parallel exploration swarm (multiple browser agents with competing hypotheses)
-- “Reverse-engineer the ATS” library (Workday/Greenhouse/Lever/SmartRecruiters/etc. as learned patterns)
-- Self-healing source discovery and validation
-- Multi-step contact enrichment (email pattern inference + verification)
-- Weekly digests + reminders + scheduling suggestions (still user-controlled)
+- Richer extraction and “reverse‑engineer the ATS” patterns for **user‑provided** apply URLs (Workday/Greenhouse/Lever etc. as learned patterns for the single job flow)
+- Multi-step contact enrichment (email pattern inference + verification) for that job
+- Weekly digests + reminders + scheduling suggestions (still user-controlled) for jobs already in the user’s pipeline
+- No bulk scraping, no admin-initiated crawls, no source-registry crawling
 
 ### v3 (research-grade + startup-grade)
 
@@ -248,17 +251,16 @@ Every action has:
 9. **Persona Builder Agent** — builds “candidate narrative” used for outreach tone
 10. **Gap Analysis Agent** — identifies skill gaps per target role + learning plan
 
-### 6.3 Source Discovery + Validation
+### 6.3 URL Validation (for user-provided URLs only)
 
-11. **Source Finder Agent** — finds official career pages/ATS endpoints for a company
-12. **Source Validator Agent** — checks URL correctness, freshness, and access viability
-13. **Source Self‑Heal Agent** — when broken, finds replacement URLs and updates registry
-14. **Robots/Terms Awareness Agent** — flags risk; suggests safer alternatives (rate limits, APIs)
+11. **Source Validator Agent** — checks user‑provided URL correctness, reachability, and content type (used when user pastes a link into the Application Assistant)
+12. **Robots/Terms Awareness Agent** — flags risk for the specific URL; suggests manual alternatives if needed  
+    _(No “Source Finder” or “Source Self‑Heal” that crawl or discover company/job-board URLs at scale.)_
 
-### 6.4 Browser + Extraction Swarm
+### 6.4 Browser + Extraction (single-URL, user‑initiated)
 
-15. **Browser Navigator Agent** — Playwright driver; navigates & captures artifacts
-16. **DOM Extractor Agent** — extracts job cards, links, and metadata from HTML
+15. **Browser Navigator Agent** — Playwright driver; navigates to user‑provided URL & captures artifacts
+16. **DOM Extractor Agent** — extracts job card(s) and metadata from that page’s HTML
 17. **Structured Data Agent** — parses JSON‑LD/embedded job data
 18. **Screenshot Evidence Agent** — captures screenshot evidence for claims
 19. **Pagination/Discovery Agent** — explores next pages, filters, search boxes
@@ -297,18 +299,16 @@ Every action has:
 
 ## 7) Workflows (Temporal DAGs)
 
-### 7.1 “Scan & Rank” (core workflow)
+### 7.1 “Application Assistant” (core workflow — single URL, user‑initiated)
 
-1. Load user profile + constraints
-2. Validate sources
-3. Spawn browser swarm per source
-4. Extract raw listings + evidence artifacts
-5. Normalize + dedupe
-6. Fetch job detail pages (if needed) for full descriptions
-7. Score jobs (rule + LLM)
-8. Apply strict preference filter (optional)
-9. Select top 15 per source/company
-10. Persist results + explanations + evidence
+1. User provides a job or careers page URL (paste / open in assistant).
+2. Load user profile + constraints.
+3. Validate the URL (reachability, content type).
+4. Browser navigates to the URL; extract job(s) from that page (and optionally follow to job detail if listing page).
+5. Normalize to canonical Job schema; store with evidence.
+6. Score job(s) against profile (rule + LLM); apply strict preference filter (optional).
+7. Persist result + explanation + evidence for that job; surface to user.
+8. (Optional) Contact hunt, outreach draft, application blueprint for that job—all user‑initiated.
 
 ### 7.2 “Contact Hunt” (per job, can run in batch)
 
@@ -429,14 +429,14 @@ career-signal-agentic/
 
 ## 11) Policies & Boundaries (important)
 
+- **No bulk or proactive scraping.** Job data is obtained only when the user explicitly provides a URL in the Application Assistant. No crawling of company career pages, job boards, or ATS endpoints on a schedule or from an admin/source registry. This limits CFAA and terms‑of‑service risk.
 - The system should **not** include instructions or mechanisms to bypass security protections (e.g., CAPTCHAs) or violate a site’s terms.
-- Instead, it should:
-  - detect blockers
-  - slow down / retry with safer pacing
-  - prompt the user for manual intervention when necessary
-  - prefer official/public endpoints and user-provided sources
+- For the single URL the user provides, the system should:
+  - detect blockers and prompt the user for manual intervention when necessary
+  - use respectful pacing and retries
+  - prefer official/public endpoints and the user‑provided URL only
 
-This still allows aggressive _engineering_ (robustness, retries, alternate sources) without turning the project into an “evasion toolkit.”
+This keeps the project within a passive, user‑driven assistance model.
 
 ---
 
@@ -451,16 +451,15 @@ This still allows aggressive _engineering_ (robustness, retries, alternate sourc
 
 **Exit criteria:** can create a profile + preference set + add sources + start a run.
 
-### Phase 1 — Browser Extraction MVP (1–2 weeks)
+### Phase 1 — Application Assistant MVP (1–2 weeks)
 
-- Playwright browser agent
-- extractor + normalizer
+- Playwright browser agent for **single-URL** navigation (user‑provided)
+- extractor + normalizer for that page/job
 - evidence artifacts
-- basic ranking (rule scorer)
-- top-15 per source/company
-- tracker UI
+- basic ranking (rule scorer) for that job vs profile
+- tracker UI for jobs the user has run through the assistant
 
-**Exit criteria:** real jobs appear with evidence; dedupe works; top-15 list stable.
+**Exit criteria:** user can paste a job URL and get extracted job + match + evidence; no bulk scraping.
 
 ### Phase 2 — LLM Ranking Engine (1–2 weeks)
 
@@ -537,13 +536,13 @@ This still allows aggressive _engineering_ (robustness, retries, alternate sourc
 ## 15) What to build first (recommended “Week 1” checklist)
 
 1. Scaffold monorepo + schemas + Postgres
-2. Implement “Run” concept (Temporal later; start simple)
-3. Build Playwright Browser Navigator Agent
+2. Implement “Application Assistant run” concept: one URL in → one job (or small set) out
+3. Build Playwright Browser Navigator Agent (single-URL)
 4. Build Job Normalizer + storage
-5. Build baseline Rule Scorer + Top-K Curator
-6. Build UI: Runs + Results + Evidence viewer
+5. Build baseline Rule Scorer for profile‑vs‑job match
+6. Build UI: Assistant input (URL) + Results + Evidence viewer
 
-Once this works, everything else compounds.
+Once this works, contact hunt and outreach drafting compound on top. No source registry crawling.
 
 ---
 

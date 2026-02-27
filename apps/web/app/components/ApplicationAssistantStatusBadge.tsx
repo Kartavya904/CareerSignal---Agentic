@@ -83,7 +83,7 @@ export function ApplicationAssistantStatusBadge() {
         <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)' }}>
           Application Assistant — analysis in progress
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: 2 }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginTop: 2 }}>
           {status.waitingForLogin
             ? 'Waiting for you to log in in the browser…'
             : status.waitingForCaptcha

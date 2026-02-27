@@ -101,7 +101,7 @@ export function ParsingStatusBadge() {
         <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)' }}>
           Parsing resume...
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: 2 }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginTop: 2 }}>
           {status.step
             ? `Step ${status.step.step}/${status.step.total}: ${status.step.name}`
             : 'Starting...'}

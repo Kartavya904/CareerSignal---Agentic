@@ -4,7 +4,11 @@
 
 **Implementation Context (Agentic Rebuild):**
 
-- This is an **agentic re-implementation** of an existing working application. Most features (profile, preferences, sources, scan, extraction, ranking, top-15) are implemented or ported. The main gap is **contact search/discovery** — implementation can be ported from the previous version.
+- This is an **agentic re-implementation** of an existing working application. Core focus: **Application Assistant** (user provides a job URL → extract, match, contact hunt, drafts, blueprint) and **profile/preferences/tracker**. The main gap is **contact search/discovery** for that single-job flow; implementation can be ported from the previous version.
+
+**Scope Pivot — No Bulk Scraping:**
+
+- Job data is **passive only**. The system does **not** scrape company career pages, job boards, or ATS endpoints on a schedule or from an admin/source registry. To avoid Computer Fraud and Abuse Act (CFAA) and terms-of-service risks, **all job data enters via the Application Assistant**: the user supplies a URL, and the system assists with that job only. No ATS connector pipelines, no admin-initiated crawls, no “blessed sources” bulk crawl, no H1B/resource crawlers.
 
 **Key Constraints (Shape Everything):**
 
@@ -24,11 +28,11 @@
 
 ## Version Overview
 
-| Version | Theme                            | Target Timeline      | Core Deliverable                                                      |
-| ------- | -------------------------------- | -------------------- | --------------------------------------------------------------------- |
-| **V1**  | MVP — scan, rank, contact, draft | ~1 week (aggressive) | Profile → Sources → Scan → Rank → Top 15 → Contact → Drafts → Tracker |
-| **V2**  | Seriously agentic                | Weeks/months         | Swarms, self-healing, ATS library, enriched contacts, digests         |
-| **V3**  | Research-grade + startup-grade   | Long-term            | Multi-user, graph memory, outcome learning, marketplace, negotiation  |
+| Version | Theme                                       | Target Timeline      | Core Deliverable                                                             |
+| ------- | ------------------------------------------- | -------------------- | ---------------------------------------------------------------------------- |
+| **V1**  | MVP — Application Assistant, contact, draft | ~1 week (aggressive) | Profile → Assistant (user URL) → Extract → Rank → Contact → Drafts → Tracker |
+| **V2**  | Seriously agentic                           | Weeks/months         | Swarms, self-healing, ATS library, enriched contacts, digests                |
+| **V3**  | Research-grade + startup-grade              | Long-term            | Multi-user, graph memory, outcome learning, marketplace, negotiation         |
 
 ---
 
@@ -186,7 +190,7 @@ Job Normalizer Agent:
 
 # V1 — MVP (Ship + Demo in ~1 Week)
 
-V1 is the **full vertical slice** that delivers real value: scan sources → extract jobs → rank them → find contacts → draft outreach → track pipeline. Timeline is aggressive (~1 week) but no features are cut — quality matters.
+V1 is the **full vertical slice** that delivers real value: Application Assistant (user URL) → extract job → rank → find contacts → draft outreach → track pipeline. Timeline is aggressive (~1 week) but no features are cut — quality matters. No bulk scanning of sources.
 
 ---
 
@@ -264,120 +268,58 @@ Profile {
 
 ---
 
-## 1.2 Sources Registry
+## 1.2 Job Input: Application Assistant Only (No Source Registry Crawling)
 
 ### Decisions Locked
 
-| Decision               | Answer                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| Sources per user       | **Unlimited**                                                                              |
-| Blessed default boards | **Yes, at least 10** (pre-seeded master list in backend; user adds which to use)           |
-| Crawl timing           | **On add** — browser agent crawls a source when the user adds it; jobs populate in user DB |
-| URL correction         | **Yes** — if URL is wrong/broken, system should figure out correct URL and update          |
-| User control           | User can add/remove/disable any source (including blessed defaults)                        |
+| Decision         | Answer                                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| How jobs enter   | **User provides a URL** in the Application Assistant only. No bulk crawl of sources or boards. |
+| “Sources” / URLs | Optional: user may save/bookmark URLs for quick reuse in the assistant (no crawl on add).      |
+| URL validation   | **Yes** — when user submits a URL, validate reachability and content type before extraction.   |
+| URL correction   | **Optional** — if the single URL fails, suggest manual retry or different URL; no auto-crawl.  |
 
-**Model:** A master list of known boards (LinkedIn Jobs, Indeed, Wellfound, etc.) lives in the backend. User adds sources (e.g. Google careers page) from this list or custom URLs. When a source is added, the browser agent crawls it and extracted jobs populate in the **user’s** database. Sources are user-scoped.
+**Model:** Jobs in the system come only from (1) the Application Assistant (user pastes/opens a job or careers page URL; we extract that page only), or (2) manual entry. There is no “source registry” that the system crawls. Optional “saved URLs” or bookmarks are for user convenience only—the system does not crawl them in the background.
 
-### Blessed Default Sources (10)
+### Out of Scope (All Versions)
 
-| #   | Source                   | URL Pattern                           | Type       |
-| --- | ------------------------ | ------------------------------------- | ---------- |
-| 1   | LinkedIn Jobs            | linkedin.com/jobs/                    | Aggregator |
-| 2   | Indeed                   | indeed.com/jobs                       | Aggregator |
-| 3   | Wellfound (AngelList)    | wellfound.com/jobs                    | Aggregator |
-| 4   | Glassdoor                | glassdoor.com/Job/                    | Aggregator |
-| 5   | Dice                     | dice.com/jobs                         | Aggregator |
-| 6   | ZipRecruiter             | ziprecruiter.com/jobs/                | Aggregator |
-| 7   | SimplyHired              | simplyhired.com/search                | Aggregator |
-| 8   | Built In                 | builtin.com/jobs                      | Aggregator |
-| 9   | Levels.fyi Jobs          | levels.fyi/jobs                       | Aggregator |
-| 10  | Hacker News Who's Hiring | news.ycombinator.com (monthly thread) | Community  |
-
-**Status: CONFIRMED** — these 10 are approved as blessed defaults.
-
-### Source Schema
-
-```
-Source {
-  id: uuid
-  user_id: uuid
-  name: string
-  url: string
-  type: enum [COMPANY, AGGREGATOR, COMMUNITY, CUSTOM]
-  enabled: boolean (default true)
-  is_blessed: boolean
-  metadata: json (rate_limit, filters, notes)
-  last_scanned_at: timestamp
-  last_validated_at: timestamp
-  status: enum [ACTIVE, BROKEN, VALIDATING, DISABLED]
-  corrected_url: string (if auto-corrected)
-  created_at, updated_at: timestamp
-}
-```
-
-### URL Auto-Correction (V1 — Basic)
-
-- On add: validate URL reachability (200 OK, correct content)
-- If broken: attempt search for correct URL (company name + "careers" or "jobs")
-- Surface corrected URL to user for confirmation before updating
-
-### Out of Scope (V1)
-
-- Regex/wildcard URL patterns (deferred — user's actual need is URL correction, not regex)
-- Self-healing loop (V2)
-- Source reliability scoring (V2)
+- **Bulk scraping** of company career pages, job boards, or ATS endpoints
+- **Admin-initiated** or scheduled crawls
+- **Blessed default boards** as crawl targets (no “crawl on add”)
+- ATS connector pipelines (Greenhouse/Lever/Ashby etc.) that fetch many companies’ jobs
+- H1B/resource budgeted crawlers or any proactive job discovery
+- Source “self-healing” that discovers or crawls new URLs automatically
 
 ---
 
-## 1.3 Browser-Based Job Extraction (Headless)
+## 1.3 Browser-Based Job Extraction (Single-URL, User-Initiated Only)
 
 ### Decisions Locked
 
-| Decision             | Answer                                                                         |
-| -------------------- | ------------------------------------------------------------------------------ |
-| Results limit        | **Top 15 roles per source** (after ranking, not max pages)                     |
-| Extraction scope     | All jobs available on the page(s), then rank and show top 15                   |
-| Supported site types | **Everything** — company career pages, LinkedIn, Indeed, Glassdoor, any site   |
-| Extraction strategy  | **Both:** generic heuristics first + site-specific selectors. Planner decides. |
-| Evidence capture     | HTML snapshots + screenshots stored locally                                    |
+| Decision             | Answer                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| Trigger              | **User provides one URL** in the Application Assistant (job page or careers listing).       |
+| Extraction scope     | That page only; optionally follow to one job-detail page if the URL is a listing.           |
+| Supported site types | **Any** site the user points to (company career pages, LinkedIn, Indeed, etc.)              |
+| Extraction strategy  | Generic heuristics + site-specific selectors + JSON-LD/structured data; no bulk pagination. |
+| Evidence capture     | HTML snapshots + screenshots for that run, stored locally                                   |
 
 ### How It Works
 
-1. Browser Navigator Agent navigates to source URL
-2. Pagination/Discovery Agent explores available pages (follows "next", "load more", filters)
-3. DOM Extractor Agent extracts ALL job listings found (no page cap — extract everything available)
-4. Job Normalizer Agent normalizes to canonical schema
-5. Scoring pipeline ranks ALL extracted jobs
-6. **Top-K Curator selects top 15 per source** (or per company within aggregator source)
-7. Only top 15 shown to user; remaining stored but hidden (next one surfaces when user processes the top 15)
+1. User submits a URL in the Application Assistant.
+2. Browser Navigator Agent navigates to that URL only.
+3. DOM Extractor Agent extracts job listing(s) from that page (single page; no “crawl all pages”).
+4. If the page is a listing with links to detail pages, user or system may follow **one** job link to get full description—no automated multi-page crawl.
+5. Job Normalizer Agent normalizes to canonical schema.
+6. Scoring pipeline runs for the extracted job(s); results and evidence stored for that run.
+7. User sees match score, explanation, and evidence for the job(s) from that URL.
 
-### Extraction Strategy (Planner-Driven)
+### Out of Scope (All Versions)
 
-```
-Planner decides per-source:
-  1. Try generic heuristics (DOM patterns, common selectors)
-  2. If confidence < threshold → try site-specific recipe (if available)
-  3. If both fail → try structured data (JSON-LD, microdata)
-  4. If all fail → screenshot + log for manual recipe creation
-```
-
-### Artifact Storage (V1 — Local Filesystem)
-
-```
-artifacts/
-├── runs/{run_id}/
-│   ├── {source_id}/
-│   │   ├── raw_html/{page_num}.html
-│   │   ├── screenshots/{page_num}.png
-│   │   ├── extracted_jobs.json
-│   │   └── metadata.json
-```
-
-### Out of Scope (V1)
-
-- Multiple simultaneous browsers (single Playwright instance in V1; parallelism in V2)
-- Infinite scroll handling beyond basic "load more" click
-- Anti-bot evasion (only respectful pacing + retries)
+- **Pagination** across many pages of a job board or company site (no “next 10 pages”).
+- **Bulk extraction** from multiple sources or a source registry.
+- Multiple simultaneous browsers for parallel source scanning.
+- Any extraction not triggered by the user providing that specific URL.
 
 ---
 
@@ -467,7 +409,7 @@ Match score uses **XX.XX format** (two digits, decimal point, two digits) for gr
 | --------------------- | ----------------------------------------------------------------------------------------- |
 | Scoring approach      | **Both** Rule Scorer + LLM Ranker from day 1                                              |
 | Mandatory preferences | **Visa/work authorization** (required), **Location** (required), **Seniority** (required) |
-| Strict filter         | **Global user setting** — applied to every scan automatically                             |
+| Strict filter         | **Global user setting** — applied to every assistant run automatically                    |
 | Score precision       | **XX.XX format** (e.g., 87.43) — 4 significant digits                                     |
 | Scoring quality       | **Must be highly accurate** — this is a core differentiator                               |
 
@@ -493,7 +435,7 @@ Match score uses **XX.XX format** (two digits, decimal point, two digits) for gr
 
 ### Strict Filter (Global Setting)
 
-When enabled (global across all scans):
+When enabled (global across all assistant runs):
 
 - Jobs that **fail ANY mandatory preference** (visa, location, seniority) are **excluded** from results entirely
 - They are still stored but marked `strict_filter_pass: false`
@@ -523,39 +465,21 @@ ScoreBreakdown {
 
 ---
 
-## 1.6 Top-K Ranking per Source/Company
+## 1.6 Jobs in the System and Ranking
 
 ### Decisions Locked
 
-| Decision          | Answer                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------- |
-| Primary unit      | **Top 15 per source** if source is a single company; **Top 15 per company within source** if aggregator |
-| Global merge      | **Yes** — results mergeable across sources into a global top-N view                                     |
-| Diversity         | Deferred / nice-to-have for V1                                                                          |
-| Overflow behavior | When user processes a top-15 job (moves to next stage), next-ranked job surfaces                        |
+| Decision       | Answer                                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Job population | Jobs exist only when **user runs a URL through the Application Assistant** or adds manually. |
+| Ranking        | For each job from the assistant: score vs profile (rule + LLM), strict filter optional.      |
+| Global view    | Tracker/list of all jobs the user has brought in; sort/filter by stage, score, date.         |
 
 ### Logic
 
-```
-For each source:
-  if source.type == COMPANY:
-    show top 15 jobs from that company (by final_score DESC)
-  if source.type in [AGGREGATOR, COMMUNITY, CUSTOM]:
-    group jobs by company_name
-    show top 15 per company within that source
-
-Global view:
-  merge all top-15 lists across sources
-  sort by final_score DESC
-  display as unified ranked list (with source attribution)
-```
-
-### "Rolling Top 15" (Lazy Surfacing)
-
-- Initially show **max 15** ranked results per source/company
-- All ranked jobs are stored in the DB; only the top 15 are shown
-- When the user changes a job’s status (e.g. Discovered → Applied), the **next-ranked** job (e.g. #16) surfaces into the visible list
-- This keeps the active list at ~15 actionable items; no manual pagination — results are lazy-loaded as the user processes the list
+- No “top 15 per source” or “per company” from bulk scan—there is no bulk scan.
+- Jobs are added one (or a few) at a time per assistant run.
+- Tracker shows the user’s pipeline: jobs they’ve analyzed via the assistant, with stage, notes, and evidence.
 
 ---
 
@@ -813,27 +737,27 @@ PipelineStage {
 
 From the 35-agent taxonomy in `plan.md`, these are the **agents needed for V1**:
 
-| #   | Agent                           | Role                                                    | Priority  |
-| --- | ------------------------------- | ------------------------------------------------------- | --------- |
-| 1   | **Planner Agent**               | Orchestrates scan workflow, decides extraction strategy | Critical  |
-| 2   | **Resume Parser Agent**         | Extracts profile from PDF/DOCX                          | Critical  |
-| 3   | **Preference Builder Agent**    | Auto-populates preferences from profile                 | Critical  |
-| 4   | **Source Validator Agent**      | Checks URL reachability on source add                   | Critical  |
-| 5   | **Browser Navigator Agent**     | Drives Playwright, navigates pages                      | Critical  |
-| 6   | **DOM Extractor Agent**         | Extracts job listings from HTML                         | Critical  |
-| 7   | **Pagination Agent**            | Follows next/load-more to get all listings              | Critical  |
-| 8   | **Job Normalizer Agent**        | Raw extract → canonical Job schema                      | Critical  |
-| 9   | **Entity Resolution Agent**     | Deduplicates jobs (fuzzy title+company)                 | Critical  |
-| 10  | **Rule Scorer Agent**           | Deterministic scoring against preferences               | Critical  |
-| 11  | **LLM Ranker Agent**            | Deep preference reasoning via Ollama                    | Critical  |
-| 12  | **Top-K Curator Agent**         | Selects top 15 per source/company                       | Critical  |
-| 13  | **Contact Strategy Agent**      | Decides which contact archetype to find                 | Critical  |
-| 14  | **People Search Agent**         | Hunts contacts via public web                           | Critical  |
-| 15  | **Contact Verifier Agent**      | Validates contact relevance + confidence                | Critical  |
-| 16  | **Outreach Writer Agent**       | Generates 2–3 draft variants                            | Critical  |
-| 17  | **Personalization Agent**       | Injects job/company-specific hooks into drafts          | Critical  |
-| 18  | **Application Blueprint Agent** | Maps application form structure                         | Important |
-| 19  | **Policy/Constraint Agent**     | Enforces rate limits + budgets                          | Important |
+| #   | Agent                           | Role                                                             | Priority  |
+| --- | ------------------------------- | ---------------------------------------------------------------- | --------- |
+| 1   | **Planner Agent**               | Orchestrates assistant run workflow, decides extraction strategy | Critical  |
+| 2   | **Resume Parser Agent**         | Extracts profile from PDF/DOCX                                   | Critical  |
+| 3   | **Preference Builder Agent**    | Auto-populates preferences from profile                          | Critical  |
+| 4   | **Source Validator Agent**      | Checks URL reachability on source add                            | Critical  |
+| 5   | **Browser Navigator Agent**     | Drives Playwright, navigates pages                               | Critical  |
+| 6   | **DOM Extractor Agent**         | Extracts job listings from HTML                                  | Critical  |
+| 7   | **Pagination Agent**            | Follows next/load-more to get all listings                       | Critical  |
+| 8   | **Job Normalizer Agent**        | Raw extract → canonical Job schema                               | Critical  |
+| 9   | **Entity Resolution Agent**     | Deduplicates jobs (fuzzy title+company)                          | Critical  |
+| 10  | **Rule Scorer Agent**           | Deterministic scoring against preferences                        | Critical  |
+| 11  | **LLM Ranker Agent**            | Deep preference reasoning via Ollama                             | Critical  |
+| 12  | **Top-K Curator Agent**         | Ranks/selects top jobs from assistant run (single-URL context)   | Critical  |
+| 13  | **Contact Strategy Agent**      | Decides which contact archetype to find                          | Critical  |
+| 14  | **People Search Agent**         | Hunts contacts via public web                                    | Critical  |
+| 15  | **Contact Verifier Agent**      | Validates contact relevance + confidence                         | Critical  |
+| 16  | **Outreach Writer Agent**       | Generates 2–3 draft variants                                     | Critical  |
+| 17  | **Personalization Agent**       | Injects job/company-specific hooks into drafts                   | Critical  |
+| 18  | **Application Blueprint Agent** | Maps application form structure                                  | Important |
+| 19  | **Policy/Constraint Agent**     | Enforces rate limits + budgets                                   | Important |
 
 ### Recommended Build Order (~1 Week)
 
@@ -851,32 +775,24 @@ From the 35-agent taxonomy in `plan.md`, these are the **agents needed for V1**:
 
 # V1 — Core Workflows
 
-## Workflow 1: "Scan & Rank"
+## Workflow 1: "Application Assistant" (Single URL)
 
 ```
-1. User triggers scan (manual or on profile/source change)
-2. Load user profile + preferences + strict filter settings
-3. For each enabled source:
-   a. Source Validator checks URL is alive
-   b. Browser Navigator navigates to source
-   c. Pagination Agent discovers all available pages
-   d. DOM Extractor extracts all job listings
-   e. Job Normalizer converts to canonical schema
-   f. Entity Resolution deduplicates
-4. All normalized jobs pooled
-5. Rule Scorer scores every job
-6. LLM Ranker scores every job (via Ollama)
-7. Combined score calculated
-8. Strict filter applied (if enabled globally)
-9. Top-K Curator selects top 15 per source (or per company within aggregator)
-10. Results persisted + evidence artifacts stored
-11. UI refreshed with ranked results
+1. User submits a job or careers page URL in the Application Assistant.
+2. Load user profile + preferences + strict filter settings.
+3. Source Validator checks the URL (reachability, content type).
+4. Browser Navigator navigates to that URL only.
+5. DOM Extractor extracts job listing(s) from that page (single page).
+6. Job Normalizer converts to canonical schema; Entity Resolution for dedupe within run if needed.
+7. Rule Scorer + LLM Ranker score job(s) vs profile; combined score; strict filter if enabled.
+8. Results + evidence persisted; UI shows match score, explanation, evidence.
+9. (Optional) User triggers Contact Hunt, Outreach Draft, or Application Blueprint for that job.
 ```
 
-## Workflow 2: "Contact Hunt" (Per Job or Batch)
+## Workflow 2: "Contact Hunt" (Per Job — jobs from Assistant only)
 
 ```
-1. For each top-15 job (or user-selected jobs):
+1. For each job the user has brought in via the Application Assistant (or user-selected):
    a. Contact Strategy Agent determines archetype priority for this job
    b. People Search Agent searches public web for contacts
    c. Contact Verifier validates relevance + confidence
@@ -917,21 +833,21 @@ All V2 features build on a stable V1. No timeline pressure.
 
 ### Decisions Locked
 
-| Decision              | Answer                                                              |
-| --------------------- | ------------------------------------------------------------------- |
-| Max parallel browsers | **3–10** (auto-calculated based on system resources via testing)    |
-| Competing hypotheses  | **Both** multiple extractors AND multiple rankers                   |
-| Cost budget           | **Yes** — enforce token caps, time limits, compute budgets per scan |
+| Decision              | Answer                                                                       |
+| --------------------- | ---------------------------------------------------------------------------- |
+| Max parallel browsers | **3–10** (auto-calculated based on system resources via testing)             |
+| Competing hypotheses  | **Both** multiple extractors AND multiple rankers                            |
+| Cost budget           | **Yes** — enforce token caps, time limits, compute budgets per assistant run |
 
 ### Scope
 
 - Ray cluster for worker pool management
 - N Playwright workers (3–10, dynamically calculated based on RAM/CPU)
-- Parallel source scanning: each source gets its own browser worker
-- Competing hypotheses: 2–3 extraction strategies run in parallel per source, best result wins
+- (No parallel source scanning; jobs from assistant only. Optional: parallel extraction strategies for the single user-provided URL.)
+- Competing hypotheses: 2–3 extraction strategies for the same page, best result wins
 - Competing rankers: multiple scoring prompts, consensus reconciliation
 - Fault isolation: one source failure doesn't block others
-- Cost tracking: tokens used, time elapsed, compute cost per scan
+- Cost tracking: tokens used, time elapsed, compute cost per assistant run
 
 ### New Agents (V2)
 
@@ -946,24 +862,21 @@ All V2 features build on a stable V1. No timeline pressure.
 
 ---
 
-## 2.2 "Reverse-Engineer the ATS" Library
+## 2.2 "Reverse-Engineer the ATS" (For User-Provided Apply URLs Only)
 
 ### Decisions Locked
 
-| Decision       | Answer                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| ATS list       | **All** — Workday, Greenhouse, Lever, SmartRecruiters, BambooHR, Ashby, Taleo, iCIMS, etc. |
-| Private/custom | **Yes** — generic fallback for unknown ATS                                                 |
-| Recipe updates | **Self-learning** from successful extractions                                              |
+| Decision       | Answer                                                                                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Context        | **Application Assistant only** — when user provides an apply URL for one job, detect ATS and use the right recipe. No bulk ATS API crawling. |
+| ATS list       | Workday, Greenhouse, Lever, SmartRecruiters, Ashby, etc. as **extraction/blueprint patterns** for the single job flow.                       |
+| Private/custom | **Yes** — generic fallback for unknown ATS                                                                                                   |
+| Recipe updates | **Self-learning** from successful extractions on user-provided URLs only                                                                     |
 
 ### Scope
 
-- ATS fingerprint detection: identify ATS from URL patterns, DOM structure, API endpoints
-- Per-ATS extraction recipes: optimized selectors, known API endpoints (public)
-- Per-ATS application flow recipes: button locations, form structures, field mappings
-- Blueprint library: stored blueprints keyed by ATS type + company
-- Self-learning: when extraction succeeds → save pattern; when fails → flag for review
-- Versioning: ATS sites change; recipes are versioned with fallback to generic
+- For the **one** apply URL the user opens: ATS fingerprint, extraction recipe, application blueprint.
+- No connectors that call ATS APIs or crawl many companies; no admin scrape pipelines.
 
 ---
 
@@ -971,18 +884,17 @@ All V2 features build on a stable V1. No timeline pressure.
 
 ### Decisions Locked
 
-| Decision             | Answer                                                                     |
-| -------------------- | -------------------------------------------------------------------------- |
-| Auto-replace         | **Require user confirmation**, but persist/re-prompt if user declines      |
-| Validation frequency | **On every scan + on-demand + scheduled** (periodic background validation) |
-| "Broken" definition  | **All of:** 404, 403, CAPTCHA, timeout, redirect to non-job page           |
+| Decision             | Answer                                                                          |
+| -------------------- | ------------------------------------------------------------------------------- |
+| Auto-replace         | **Require user confirmation**; no auto-crawl to discover replacement URLs       |
+| Validation frequency | When user submits a URL in the assistant; optional check for saved URLs on open |
+| "Broken" definition  | **All of:** 404, 403, CAPTCHA, timeout, redirect to non-job page                |
 
 ### Scope
 
-- Source Self-Heal Agent: detects broken source → searches for replacement URL → proposes update
-- Persistent prompting: if user declines replacement, system re-prompts on next scan if still broken
-- Validation runs: before each scan (quick check) + daily scheduled + manual trigger
-- Robots/Terms Awareness Agent: flags if replacement strategy might violate ToS
+- For **user-submitted URL** in assistant: validate before extraction; on failure, suggest manual retry or different URL.
+- For **optional saved URLs** (bookmarks): on open, quick validation; if broken, optionally suggest user search for replacement (no automated discovery/crawl).
+- Robots/Terms Awareness Agent: flags risk for the specific URL only.
 
 ---
 
@@ -1131,10 +1043,10 @@ All V3 features are long-term. No timeline pressure.
 
 ## Policies & Boundaries
 
+- **No bulk or proactive scraping.** Job data only via Application Assistant (user-provided URL). No crawling of company/job-board sources; no CFAA-risk pipelines.
 - No CAPTCHA bypass or ToS violation.
-- Detect blockers → slow down, retry, prompt user.
-- Prefer official/public endpoints.
-- Respectful pacing: configurable rate limits per domain.
+- For the single URL the user provides: detect blockers → prompt user; respectful retries and pacing.
+- Prefer official/public endpoints and the user-provided URL only.
 
 ---
 
@@ -1177,37 +1089,36 @@ career-signal-agentic/
 
 # Data Model Summary (All Entities)
 
-| Entity               | Version | Key Fields                                                       |
-| -------------------- | ------- | ---------------------------------------------------------------- |
-| User                 | V1      | id, name, email, settings                                        |
-| Profile              | V1      | id, user_id, skills[], experience[], work_authorization          |
-| PreferenceSet        | V1      | id, user_id, strict_mode, visa, location, seniority + soft prefs |
-| Source               | V1      | id, url, type, enabled, is_blessed, status                       |
-| Job                  | V1      | id, title, company, match_score (XX.XX), strict_filter_pass      |
-| Contact              | V1      | id, job_id, name, role, archetype, confidence, platform          |
-| OutreachDraft        | V1      | id, job_id, contact_id, platform, variant, body, status          |
-| ApplicationBlueprint | V1      | id, job_id, steps[], fields[], checklist                         |
-| PipelineEntry        | V1      | id, job_id, stage, notes, evidence_refs                          |
-| WorkflowRun          | V1      | id, user_id, status, events[], artifacts[]                       |
-| Artifact             | V1      | id, run_id, type, path, hash, timestamp                          |
-| PipelineStage        | V1      | id, name, order, is_default, color                               |
-| Outcome              | V3      | id, job_id, type (interview/offer/reject), attribution           |
-| GraphNode            | V3      | id, type, properties, relationships                              |
+| Entity               | Version | Key Fields                                                          |
+| -------------------- | ------- | ------------------------------------------------------------------- |
+| User                 | V1      | id, name, email, settings                                           |
+| Profile              | V1      | id, user_id, skills[], experience[], work_authorization             |
+| PreferenceSet        | V1      | id, user_id, strict_mode, visa, location, seniority + soft prefs    |
+| Source (optional)    | V1      | id, url — optional saved URL/bookmark only; no crawl, no is_blessed |
+| Job                  | V1      | id, title, company, match_score (XX.XX), strict_filter_pass         |
+| Contact              | V1      | id, job_id, name, role, archetype, confidence, platform             |
+| OutreachDraft        | V1      | id, job_id, contact_id, platform, variant, body, status             |
+| ApplicationBlueprint | V1      | id, job_id, steps[], fields[], checklist                            |
+| PipelineEntry        | V1      | id, job_id, stage, notes, evidence_refs                             |
+| WorkflowRun          | V1      | id, user_id, status, events[], artifacts[]                          |
+| Artifact             | V1      | id, run_id, type, path, hash, timestamp                             |
+| PipelineStage        | V1      | id, name, order, is_default, color                                  |
+| Outcome              | V3      | id, job_id, type (interview/offer/reject), attribution              |
+| GraphNode            | V3      | id, type, properties, relationships                                 |
 
 ---
 
 # Success Metrics
 
-| Metric                     | Target                                       | Version |
-| -------------------------- | -------------------------------------------- | ------- |
-| Jobs extracted per scan    | All available from source pages              | V1      |
-| Top 15 relevance           | >80% of top 15 genuinely match preferences   | V1      |
-| Strict filter accuracy     | 100% of shown jobs pass mandatory prefs      | V1      |
-| Score precision            | XX.XX format, granular distinction           | V1      |
-| Contacts found per top job | At least 1 contact for 70%+ of top jobs      | V1      |
-| Draft quality              | User accepts >50% of drafts with minor edits | V1      |
-| Scan time (single source)  | < 5 minutes                                  | V1      |
-| Scan time (10 sources)     | < 10 minutes (with V2 parallelism)           | V2      |
+| Metric                     | Target                                                | Version |
+| -------------------------- | ----------------------------------------------------- | ------- |
+| Jobs per assistant run     | One page (or one job detail) per user URL             | V1      |
+| Match relevance            | >80% of assistant results genuinely match preferences | V1      |
+| Strict filter accuracy     | 100% of shown jobs pass mandatory prefs               | V1      |
+| Score precision            | XX.XX format, granular distinction                    | V1      |
+| Contacts found per top job | At least 1 contact for 70%+ of top jobs               | V1      |
+| Draft quality              | User accepts >50% of drafts with minor edits          | V1      |
+| Assistant run (single URL) | < 2 minutes                                           | V1      |
 
 ---
 
