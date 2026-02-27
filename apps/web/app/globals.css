@@ -167,8 +167,8 @@ textarea {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--border);
-  border-color: var(--muted);
+  background: var(--accent-muted);
+  border-color: var(--accent);
 }
 
 .btn-ghost {

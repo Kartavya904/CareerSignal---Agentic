@@ -230,7 +230,7 @@ export default function PreferencesPage() {
     return (
       <div className="page-head">
         <h1>Preferences</h1>
-        <p style={{ color: 'var(--muted)' }}>Loading preferences…</p>
+        <p style={{ color: 'var(--muted-foreground)' }}>Loading preferences…</p>
       </div>
     );
   }
@@ -261,7 +261,7 @@ export default function PreferencesPage() {
             >
               {autofillFromProfileLoading ? 'Loading…' : 'Auto-populate from profile'}
             </button>
-            <span style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
               Overwrites fields from your profile. Review and save.
             </span>
           </div>
@@ -574,7 +574,7 @@ export default function PreferencesPage() {
                       cursor: 'pointer',
                       padding: 0,
                       lineHeight: 1,
-                      color: 'var(--muted)',
+                      color: 'var(--muted-foreground)',
                     }}
                     aria-label="Remove"
                   >
@@ -611,7 +611,7 @@ export default function PreferencesPage() {
                       cursor: 'pointer',
                       padding: 0,
                       lineHeight: 1,
-                      color: 'var(--muted)',
+                      color: 'var(--muted-foreground)',
                     }}
                     aria-label="Remove"
                   >
@@ -648,7 +648,13 @@ export default function PreferencesPage() {
                 </option>
               ))}
             </select>
-            <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.35rem' }}>
+            <p
+              style={{
+                color: 'var(--muted-foreground)',
+                fontSize: '0.85rem',
+                marginTop: '0.35rem',
+              }}
+            >
               Strict: exclude jobs that fail visa, location, or seniority. Semi-strict: exclude only
               when two or more fail. Off: show all jobs.
             </p>

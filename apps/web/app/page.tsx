@@ -7,24 +7,45 @@ export default async function HomePage() {
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '0 0.5rem' }}>
       {/* Hero */}
-      <section style={{ marginBottom: '3rem', paddingTop: '0.5rem' }}>
-        <h1
+      <section style={{ marginBottom: '2rem', paddingTop: '0.25rem' }}>
+        <div
           style={{
-            fontSize: 'clamp(2rem, 5vw, 2.75rem)',
-            fontWeight: 700,
-            letterSpacing: '-0.03em',
-            lineHeight: 1.2,
-            margin: '0 0 1rem 0',
-            color: 'var(--text)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '0.75rem',
+            flexWrap: 'nowrap',
           }}
         >
-          Your career, <span style={{ color: 'var(--accent)' }}>signal over noise</span>
-        </h1>
+          <h1
+            style={{
+              fontSize: 'clamp(1.75rem, 4.5vw, 2.25rem)',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              lineHeight: 1.2,
+              margin: 0,
+              color: 'var(--text)',
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            Your career, <span style={{ color: 'var(--accent)' }}>tuned to signal</span>
+          </h1>
+          {user && (
+            <Link
+              href="/dashboard"
+              className="btn btn-primary"
+              style={{ fontSize: '0.9rem', paddingInline: '0.9rem', whiteSpace: 'nowrap' }}
+            >
+              Dashboard
+            </Link>
+          )}
+        </div>
         <p
           style={{
             fontSize: '1.125rem',
             color: 'var(--muted-foreground)',
-            margin: '0 0 1.5rem 0',
+            margin: '0.75rem 0 1.25rem 0',
             lineHeight: 1.65,
           }}
         >
@@ -32,94 +53,98 @@ export default async function HomePage() {
           Application Assistant extracts, matches to your profile, and helps with cover letters and
           prep—without paid APIs or cloud lock-in.
         </p>
-        {user ? (
-          <Link href="/dashboard" className="btn btn-primary" style={{ fontSize: '0.9375rem' }}>
-            Go to Dashboard →
-          </Link>
-        ) : (
+        {!user && (
           <Link href="/signin" className="btn btn-primary" style={{ fontSize: '0.9375rem' }}>
             Sign in to get started
           </Link>
         )}
       </section>
 
-      {/* Three things */}
-      <section className="card" style={{ marginBottom: '2rem' }}>
-        <h2
-          className="section-title"
-          style={{
-            marginTop: 0,
-            marginBottom: '1rem',
-            color: 'var(--accent)',
-            textTransform: 'none',
-            letterSpacing: '0',
-          }}
-        >
-          Three things
-        </h2>
-        <ul
-          style={{
-            margin: 0,
-            paddingLeft: '1.25rem',
-            color: 'var(--muted-foreground)',
-            lineHeight: 1.8,
-          }}
-        >
-          <li>
-            <strong style={{ color: 'var(--text)' }}>Profile</strong> — Upload your resume; AI
-            parses experience, skills, and preferences.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--text)' }}>Preferences</strong> — Set work auth,
-            locations, seniority, and strictness. One-click autofill from profile.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--text)' }}>Application Assistant</strong> — Paste a job
-            URL; get extraction, match score, cover letter drafts, and application prep for that job
-            only.
-          </li>
-        </ul>
-      </section>
+      {/* Three things + Built for real use */}
+      <section
+        style={{
+          marginBottom: '1.75rem',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: '1rem',
+        }}
+      >
+        <div className="card" style={{ padding: '1rem 1.25rem' }}>
+          <h2
+            className="section-title"
+            style={{
+              marginTop: 0,
+              marginBottom: '0.75rem',
+              color: 'var(--accent)',
+              textTransform: 'none',
+              letterSpacing: '0',
+              fontSize: '1rem',
+            }}
+          >
+            Three things
+          </h2>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 0,
+              color: 'var(--muted-foreground)',
+              lineHeight: 1.7,
+              fontSize: '0.9375rem',
+            }}
+          >
+            <li>
+              <strong style={{ color: 'var(--text)' }}>Profile</strong> — Upload your resume; AI
+              turns it into structured data.
+            </li>
+            <li>
+              <strong style={{ color: 'var(--text)' }}>Preferences</strong> — Tell it what roles,
+              locations, and levels you want.
+            </li>
+            <li>
+              <strong style={{ color: 'var(--text)' }}>Application Assistant</strong> — Paste a job
+              URL; get a match score and tailored drafts for that role.
+            </li>
+          </ul>
+        </div>
 
-      {/* Credibility / stack */}
-      <section className="card" style={{ marginBottom: '2rem' }}>
-        <h2
-          className="section-title"
-          style={{
-            marginTop: 0,
-            marginBottom: '1rem',
-            color: 'var(--accent)',
-            textTransform: 'none',
-            letterSpacing: '0',
-          }}
-        >
-          Built for real use
-        </h2>
-        <p
-          style={{
-            margin: '0 0 1rem 0',
-            color: 'var(--muted-foreground)',
-            fontSize: '0.9375rem',
-            lineHeight: 1.65,
-          }}
-        >
-          <strong style={{ color: 'var(--text)' }}>$0 budget.</strong> No paid APIs, no hosted
-          LLMs—Ollama-only, local models. PostgreSQL + Next.js + agentic workflows. Hybrid agents:
-          code-first logic with LLM only where it adds value (parsing, ranking nuance, outreach).
-          Single-user, local deployment. Ship fast, iterate.
-        </p>
-        <p
-          style={{
-            margin: 0,
-            color: 'var(--muted-foreground)',
-            fontSize: '0.9375rem',
-            lineHeight: 1.65,
-          }}
-        >
-          Two-tier model strategy: fast 8B models for extraction and normalization, 32B for
-          reasoning (match scoring, planning, drafting). Rule scorer is deterministic; LLM ranker
-          adds nuance. Application Assistant only—you bring the job URL; no bulk scraping.
-        </p>
+        <div className="card" style={{ padding: '1rem 1.25rem' }}>
+          <h2
+            className="section-title"
+            style={{
+              marginTop: 0,
+              marginBottom: '0.75rem',
+              color: 'var(--accent)',
+              textTransform: 'none',
+              letterSpacing: '0',
+              fontSize: '1rem',
+            }}
+          >
+            Built for real use
+          </h2>
+          <p
+            style={{
+              margin: '0 0 0.5rem 0',
+              color: 'var(--muted-foreground)',
+              fontSize: '0.9375rem',
+              lineHeight: 1.6,
+            }}
+          >
+            <strong style={{ color: 'var(--text)' }}>$0 budget.</strong> Local Ollama models only,
+            backed by PostgreSQL and Next.js. Agentic workflows, code-first logic, and no cloud
+            lock-in.
+          </p>
+          <p
+            style={{
+              margin: 0,
+              color: 'var(--muted-foreground)',
+              fontSize: '0.9375rem',
+              lineHeight: 1.6,
+            }}
+          >
+            Fast 8B models handle extraction; larger 32B models do the deeper reasoning. One job at
+            a time.
+          </p>
+        </div>
       </section>
 
       {/* Made by */}

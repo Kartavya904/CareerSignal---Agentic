@@ -1336,7 +1336,7 @@ export default function ProfilePage() {
     return (
       <div className="page-head">
         <h1>Profile</h1>
-        <p style={{ color: 'var(--muted)' }}>Loading profile…</p>
+        <p style={{ color: 'var(--muted-foreground)' }}>Loading profile…</p>
       </div>
     );
   }
@@ -1389,7 +1389,7 @@ export default function ProfilePage() {
                   ✓ Complete
                 </span>
                 {profileLastUpdated && (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
                     Last updated at {profileLastUpdated.toLocaleString()}
                   </span>
                 )}
@@ -1408,7 +1408,13 @@ export default function ProfilePage() {
             Delete Profile
           </button>
         </div>
-        <p style={{ margin: '0.35rem 0 0 0', color: 'var(--muted)', fontSize: '0.9375rem' }}>
+        <p
+          style={{
+            margin: '0.35rem 0 0 0',
+            color: 'var(--muted-foreground)',
+            fontSize: '0.9375rem',
+          }}
+        >
           When your profile is complete we automatically analyze your resume and show AI insights.
           Your resume and basics: AI parses experience, skills, and education.
         </p>
@@ -1443,7 +1449,9 @@ export default function ProfilePage() {
             >
               AI Insights
               {(profileInsights?.insightsGeneratedAt ?? profileMetadata.insightsGeneratedAt) && (
-                <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '0.85rem' }}>
+                <span
+                  style={{ fontWeight: 400, color: 'var(--muted-foreground)', fontSize: '0.85rem' }}
+                >
                   {' '}
                   (Last updated{' '}
                   {new Date(
@@ -1473,7 +1481,7 @@ export default function ProfilePage() {
             </button>
           </div>
           {loadingInsights && (
-            <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.9rem' }}>
+            <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>
               Analyzing your profile…
             </p>
           )}
@@ -1487,7 +1495,13 @@ export default function ProfilePage() {
                 }}
               >
                 <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
                     Experience
                   </div>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -1498,7 +1512,13 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
                     Seniority
                   </div>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -1506,7 +1526,13 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
                     Keyword depth
                   </div>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -1514,7 +1540,13 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
                     Strength
                   </div>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -1522,7 +1554,13 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: 2 }}>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
                     Overall score
                   </div>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -1646,7 +1684,7 @@ export default function ProfilePage() {
                         marginBottom: '0.5rem',
                       }}
                     >
-                      <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)' }}>
                         Bullet points
                       </label>
                       <button
@@ -1663,7 +1701,9 @@ export default function ProfilePage() {
                       </button>
                     </div>
                     {(draftExperience.bullets || []).length === 0 ? (
-                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted)' }}>
+                      <p
+                        style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted-foreground)' }}
+                      >
                         Click + to add a bullet point.
                       </p>
                     ) : (
@@ -2062,7 +2102,13 @@ export default function ProfilePage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.1rem' }}>Delete this entry?</h3>
-            <p style={{ margin: '0 0 1.25rem 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
+            <p
+              style={{
+                margin: '0 0 1.25rem 0',
+                color: 'var(--muted-foreground)',
+                fontSize: '0.9rem',
+              }}
+            >
               Are you sure you want to delete this{' '}
               {deleteConfirm.type === 'experience'
                 ? 'work experience'
@@ -2121,7 +2167,13 @@ export default function ProfilePage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.1rem' }}>Delete profile?</h3>
-            <p style={{ margin: '0 0 1.25rem 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
+            <p
+              style={{
+                margin: '0 0 1.25rem 0',
+                color: 'var(--muted-foreground)',
+                fontSize: '0.9rem',
+              }}
+            >
               Everything except your name and email will be removed. This cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
@@ -2166,7 +2218,7 @@ export default function ProfilePage() {
               }}
             >
               <div>
-                <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.85rem' }}>
+                <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
                   <strong style={{ color: '#22c55e' }}>
                     {parsedData.parsed ? 'Resume parsed' : 'Resume uploaded'}
                   </strong>
@@ -2182,7 +2234,13 @@ export default function ProfilePage() {
                       ) : null;
                     })()}
                 </p>
-                <p style={{ margin: '0.25rem 0 0 0', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                <p
+                  style={{
+                    margin: '0.25rem 0 0 0',
+                    color: 'var(--muted-foreground)',
+                    fontSize: '0.85rem',
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => setResumeModalOpen(true)}
@@ -2458,7 +2516,7 @@ export default function ProfilePage() {
               <div
                 style={{
                   ...cardStyle,
-                  color: 'var(--muted)',
+                  color: 'var(--muted-foreground)',
                   fontSize: '0.9rem',
                   textAlign: 'center',
                   padding: '1.5rem',
@@ -2483,7 +2541,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setEditingEduIdx(idx)}
-                          style={{ ...iconButtonStyle, color: 'var(--muted)' }}
+                          style={{ ...iconButtonStyle, color: 'var(--muted-foreground)' }}
                           title="Edit"
                         >
                           <EditIcon />
@@ -2632,7 +2690,7 @@ export default function ProfilePage() {
                               <p
                                 style={{
                                   margin: '0.25rem 0 0 0',
-                                  color: 'var(--muted)',
+                                  color: 'var(--muted-foreground)',
                                   fontSize: '0.9rem',
                                 }}
                               >
@@ -2641,7 +2699,7 @@ export default function ProfilePage() {
                             )}
                           </div>
                           {(edu.start_date || edu.end_date) && (
-                            <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
                               {edu.start_date} - {edu.end_date || 'Present'}
                             </span>
                           )}
@@ -2651,7 +2709,7 @@ export default function ProfilePage() {
                             style={{
                               marginTop: '0.5rem',
                               fontSize: '0.85rem',
-                              color: 'var(--muted)',
+                              color: 'var(--muted-foreground)',
                             }}
                           >
                             <strong>Coursework:</strong> {edu.coursework.join(', ')}
@@ -2693,7 +2751,7 @@ export default function ProfilePage() {
               <div
                 style={{
                   ...cardStyle,
-                  color: 'var(--muted)',
+                  color: 'var(--muted-foreground)',
                   fontSize: '0.9rem',
                   textAlign: 'center',
                   padding: '1.5rem',
@@ -2718,7 +2776,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setEditingExpIdx(idx)}
-                          style={{ ...iconButtonStyle, color: 'var(--muted)' }}
+                          style={{ ...iconButtonStyle, color: 'var(--muted-foreground)' }}
                           title="Edit"
                         >
                           <EditIcon />
@@ -2825,7 +2883,9 @@ export default function ProfilePage() {
                               marginBottom: '0.5rem',
                             }}
                           >
-                            <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                            <label
+                              style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)' }}
+                            >
                               Bullet points
                             </label>
                             <button
@@ -2845,7 +2905,13 @@ export default function ProfilePage() {
                             </button>
                           </div>
                           {(exp.bullets || []).length === 0 ? (
-                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted)' }}>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: '0.85rem',
+                                color: 'var(--muted-foreground)',
+                              }}
+                            >
                               Click + to add a bullet point.
                             </p>
                           ) : (
@@ -2950,14 +3016,17 @@ export default function ProfilePage() {
                             <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text)' }}>
                               {exp.company}
                               {exp.location && (
-                                <span style={{ color: 'var(--muted)' }}> · {exp.location}</span>
+                                <span style={{ color: 'var(--muted-foreground)' }}>
+                                  {' '}
+                                  · {exp.location}
+                                </span>
                               )}
                             </p>
                           </div>
                           {(exp.start_date || exp.end_date) && (
                             <span
                               style={{
-                                color: 'var(--muted)',
+                                color: 'var(--muted-foreground)',
                                 fontSize: '0.85rem',
                                 whiteSpace: 'nowrap',
                               }}
@@ -3026,7 +3095,7 @@ export default function ProfilePage() {
                                       style={{
                                         margin: '0.25rem 0 0 0',
                                         fontSize: '0.8rem',
-                                        color: 'var(--muted)',
+                                        color: 'var(--muted-foreground)',
                                         fontStyle: 'italic',
                                       }}
                                     >
@@ -3074,7 +3143,7 @@ export default function ProfilePage() {
               <div
                 style={{
                   ...cardStyle,
-                  color: 'var(--muted)',
+                  color: 'var(--muted-foreground)',
                   fontSize: '0.9rem',
                   textAlign: 'center',
                   padding: '1.5rem',
@@ -3099,7 +3168,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setEditingProjIdx(idx)}
-                          style={{ ...iconButtonStyle, color: 'var(--muted)' }}
+                          style={{ ...iconButtonStyle, color: 'var(--muted-foreground)' }}
                           title="Edit"
                         >
                           <EditIcon />
@@ -3196,7 +3265,9 @@ export default function ProfilePage() {
                               marginBottom: '0.5rem',
                             }}
                           >
-                            <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                            <label
+                              style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)' }}
+                            >
                               Bullet points
                             </label>
                             <button
@@ -3216,7 +3287,13 @@ export default function ProfilePage() {
                             </button>
                           </div>
                           {(proj.bullets || []).length === 0 ? (
-                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted)' }}>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: '0.85rem',
+                                color: 'var(--muted-foreground)',
+                              }}
+                            >
                               Click + to add a bullet point.
                             </p>
                           ) : (
@@ -3319,13 +3396,15 @@ export default function ProfilePage() {
                           <div>
                             <strong>{proj.name}</strong>
                             {proj.context && (
-                              <span style={{ color: 'var(--muted)', marginLeft: '0.5rem' }}>
+                              <span
+                                style={{ color: 'var(--muted-foreground)', marginLeft: '0.5rem' }}
+                              >
                                 ({proj.context})
                               </span>
                             )}
                           </div>
                           {proj.dates && (
-                            <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
                               {proj.dates}
                             </span>
                           )}
@@ -3340,7 +3419,7 @@ export default function ProfilePage() {
                             style={{
                               marginTop: '0.5rem',
                               fontSize: '0.85rem',
-                              color: 'var(--muted)',
+                              color: 'var(--muted-foreground)',
                             }}
                           >
                             <strong>Tech:</strong> {proj.technologies.join(', ')}
@@ -3406,7 +3485,7 @@ export default function ProfilePage() {
                                       style={{
                                         margin: '0.25rem 0 0 0',
                                         fontSize: '0.8rem',
-                                        color: 'var(--muted)',
+                                        color: 'var(--muted-foreground)',
                                         fontStyle: 'italic',
                                       }}
                                     >
@@ -3490,7 +3569,7 @@ export default function ProfilePage() {
                   style={{
                     margin: 0,
                     fontSize: '0.9rem',
-                    color: 'var(--muted)',
+                    color: 'var(--muted-foreground)',
                     textAlign: 'center',
                     padding: '0.5rem 0',
                   }}
@@ -3504,7 +3583,7 @@ export default function ProfilePage() {
                       style={{
                         margin: '0 0 0.75rem 0',
                         fontSize: '0.8rem',
-                        color: 'var(--muted)',
+                        color: 'var(--muted-foreground)',
                       }}
                     >
                       Click a skill to highlight it as a strength. Hover and click X to remove.
@@ -3593,7 +3672,7 @@ export default function ProfilePage() {
                   style={{
                     margin: '0 0 0.75rem 0',
                     fontSize: '0.9rem',
-                    color: 'var(--muted)',
+                    color: 'var(--muted-foreground)',
                     fontWeight: 600,
                   }}
                 >
@@ -3697,7 +3776,7 @@ function InfoRow({ label, value, isLink }: { label: string; value: string; isLin
   if (!value) return null;
   return (
     <div>
-      <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{label}</span>
+      <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>{label}</span>
       {isLink ? (
         <a
           href={value.startsWith('http') ? value : `https://${value}`}

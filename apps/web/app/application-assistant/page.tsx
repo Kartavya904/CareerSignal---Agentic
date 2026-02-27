@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -81,6 +82,10 @@ interface Analysis {
   runUpdatedAt?: string | null;
 }
 
+interface ApplicationAssistantPageProps {
+  initialAnalysisId?: string;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const STEPS = ['scraping', 'extracting', 'matching', 'writing', 'done'] as const;
@@ -115,7 +120,10 @@ function scoreColor(score: number) {
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export default function ApplicationAssistantPage() {
+export default function ApplicationAssistantPage({
+  initialAnalysisId,
+}: ApplicationAssistantPageProps = {}) {
+  const router = useRouter();
   const [url, setUrl] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastLogId, setLastLogId] = useState<string | null>(null);
@@ -132,6 +140,10 @@ export default function ApplicationAssistantPage() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [autoConfirmCompanyTitle, setAutoConfirmCompanyTitle] = useState(false);
   const [companyManuallyConfirmed, setCompanyManuallyConfirmed] = useState(false);
+  const [historySortBy, setHistorySortBy] = useState<'date' | 'score' | 'company'>('date');
+  const [historySortDir, setHistorySortDir] = useState<'asc' | 'desc'>('desc');
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 5;
 
   // Poll status (from DB: running state and progress persist across refresh/tabs)
   useEffect(() => {
@@ -237,7 +249,10 @@ export default function ApplicationAssistantPage() {
   const loadHistory = useCallback(() => {
     fetch('/api/application-assistant/analyses')
       .then((r) => (r.ok ? r.json() : { analyses: [] }))
-      .then((d) => setHistory(d.analyses || []))
+      .then((d) => {
+        setHistory(d.analyses || []);
+        setHistoryPage(1);
+      })
       .catch(() => {});
   }, []);
 
@@ -298,11 +313,21 @@ export default function ApplicationAssistantPage() {
     await fetch('/api/application-assistant/stop', { method: 'POST' });
   };
 
-  const loadAnalysis = (a: Analysis) => {
-    setAnalysis(a);
-    setUrl(a.url);
-    setShowHistory(false);
-  };
+  // If we land on /application-assistant/[id], hydrate that analysis once (no live run)
+  useEffect(() => {
+    if (!initialAnalysisId) return;
+    if (analysis && analysis.id === initialAnalysisId) return;
+    if (status?.running) return;
+    fetch(`/api/application-assistant/analyses/${initialAnalysisId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setAnalysis(d as Analysis);
+        setUrl(d.url);
+        setShowHistory(false);
+      })
+      .catch(() => {});
+  }, [initialAnalysisId, status?.running, analysis?.id]);
 
   const handleDeleteAnalysis = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -323,10 +348,37 @@ export default function ApplicationAssistantPage() {
       if (!res.ok) return;
       setHistory([]);
       setAnalysis(null);
+      setHistoryPage(1);
     } catch {
       // ignore
     }
   };
+
+  const sortedHistory = [...history].sort((a, b) => {
+    if (historySortBy === 'date') {
+      const at = new Date(a.createdAt).getTime();
+      const bt = new Date(b.createdAt).getTime();
+      return historySortDir === 'asc' ? at - bt : bt - at;
+    }
+    if (historySortBy === 'score') {
+      const as = a.matchScore ?? -Infinity;
+      const bs = b.matchScore ?? -Infinity;
+      return historySortDir === 'asc' ? as - bs : bs - as;
+    }
+    // company
+    const an = ((a.jobSummary as JobSummary | null)?.company || '').toLowerCase();
+    const bn = ((b.jobSummary as JobSummary | null)?.company || '').toLowerCase();
+    const cmp = an.localeCompare(bn);
+    return historySortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const historyTotalPages = Math.max(1, Math.ceil((sortedHistory.length || 0) / HISTORY_PAGE_SIZE));
+  const historyCurrentPage = Math.min(historyPage, historyTotalPages);
+  const historyStartIndex = (historyCurrentPage - 1) * HISTORY_PAGE_SIZE;
+  const historyPageItems = sortedHistory.slice(
+    historyStartIndex,
+    historyStartIndex + HISTORY_PAGE_SIZE,
+  );
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -433,6 +485,8 @@ export default function ApplicationAssistantPage() {
   const canAutoSkipGate = companyConfidence >= 80 && cleaningConfidence >= 70;
   const autoSkipConfirmGate = autoConfirmCompanyTitle && canAutoSkipGate && !mandatoryConfirmGate;
 
+  const viewingPastAnalysis = !!analysis && !isRunning;
+
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       {/* Header */}
@@ -448,9 +502,19 @@ export default function ApplicationAssistantPage() {
         >
           <h1 style={{ margin: 0 }}>Application Assistant</h1>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {viewingPastAnalysis && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8125rem', padding: '0.35rem 0.75rem' }}
+                onClick={() => router.push('/application-assistant')}
+              >
+                New analysis
+              </button>
+            )}
             <button
               type="button"
-              className="btn btn-ghost"
+              className="btn btn-secondary"
               style={{ fontSize: '0.8125rem', padding: '0.35rem 0.75rem' }}
               disabled={isRunning}
               title={
@@ -501,18 +565,79 @@ export default function ApplicationAssistantPage() {
               Past Analyses
             </h2>
             {history.length > 0 && (
-              <button
-                type="button"
-                className="btn btn-ghost"
+              <div
                 style={{
-                  fontSize: '0.8125rem',
-                  padding: '0.35rem 0.75rem',
-                  color: 'var(--muted-foreground)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                  justifyContent: 'flex-end',
                 }}
-                onClick={handleDeleteAllAnalyses}
               >
-                Delete all
-              </button>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    fontSize: '0.8rem',
+                    color: 'var(--muted-foreground)',
+                  }}
+                >
+                  <span>Sort by</span>
+                  <select
+                    value={historySortBy}
+                    onChange={(e) => {
+                      setHistorySortBy(e.target.value as 'date' | 'score' | 'company');
+                      setHistoryPage(1);
+                    }}
+                    style={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 999,
+                      padding: '0.25rem 0.5rem',
+                      color: 'var(--text)',
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    <option value="date">Date analyzed</option>
+                    <option value="score">Score</option>
+                    <option value="company">Company</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setHistorySortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: '999px',
+                      width: 24,
+                      height: 24,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'var(--surface)',
+                      color: 'var(--muted-foreground)',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      lineHeight: 1,
+                    }}
+                    title={historySortDir === 'asc' ? 'Ascending order' : 'Descending order'}
+                  >
+                    {historySortDir === 'asc' ? '↑' : '↓'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{
+                    fontSize: '0.8125rem',
+                    padding: '0.35rem 0.75rem',
+                    color: 'var(--muted-foreground)',
+                  }}
+                  onClick={handleDeleteAllAnalyses}
+                >
+                  Delete all
+                </button>
+              </div>
             )}
           </div>
           {history.length === 0 ? (
@@ -521,7 +646,7 @@ export default function ApplicationAssistantPage() {
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {history.map((h) => (
+              {historyPageItems.map((h) => (
                 <div
                   key={h.id}
                   style={{
@@ -536,7 +661,7 @@ export default function ApplicationAssistantPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => loadAnalysis(h)}
+                    onClick={() => router.push(`/application-assistant/${h.id}`)}
                     style={{
                       flex: 1,
                       textAlign: 'left',
@@ -619,6 +744,79 @@ export default function ApplicationAssistantPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+          {history.length > HISTORY_PAGE_SIZE && (
+            <div
+              style={{
+                marginTop: '0.75rem',
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '0.35rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                disabled={historyCurrentPage === 1}
+                style={{
+                  minWidth: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background:
+                    historyCurrentPage === 1 ? 'var(--surface)' : 'var(--surface-elevated)',
+                  color: 'var(--muted-foreground)',
+                  fontSize: '0.8rem',
+                  cursor: historyCurrentPage === 1 ? 'default' : 'pointer',
+                }}
+              >
+                ‹
+              </button>
+              {Array.from({ length: historyTotalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setHistoryPage(page)}
+                  style={{
+                    minWidth: 28,
+                    height: 28,
+                    borderRadius: 999,
+                    border: '1px solid var(--border)',
+                    background:
+                      page === historyCurrentPage
+                        ? 'var(--accent-muted)'
+                        : 'var(--surface-elevated)',
+                    color:
+                      page === historyCurrentPage ? 'var(--accent)' : 'var(--muted-foreground)',
+                    fontSize: '0.8rem',
+                    cursor: page === historyCurrentPage ? 'default' : 'pointer',
+                  }}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                disabled={historyCurrentPage === historyTotalPages}
+                style={{
+                  minWidth: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background:
+                    historyCurrentPage === historyTotalPages
+                      ? 'var(--surface)'
+                      : 'var(--surface-elevated)',
+                  color: 'var(--muted-foreground)',
+                  fontSize: '0.8rem',
+                  cursor: historyCurrentPage === historyTotalPages ? 'default' : 'pointer',
+                }}
+              >
+                ›
+              </button>
             </div>
           )}
         </div>

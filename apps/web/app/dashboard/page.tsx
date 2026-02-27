@@ -66,51 +66,113 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: '1.5rem' }}>
-        <h1>Dashboard</h1>
-        <p>Overview of your account and next steps.</p>
+      <div
+        className="page-head"
+        style={{ marginBottom: '1.5rem', paddingBottom: 0, borderBottom: 'none' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <h1>Dashboard</h1>
+            <p>Overview of your account and next steps.</p>
+          </div>
+          <div
+            style={{
+              padding: '0.5rem 0.75rem',
+              background: 'var(--surface-elevated)',
+              borderRadius: 999,
+              border: '1px solid var(--border)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.875rem',
+            }}
+          >
+            <span style={{ color: 'var(--muted-foreground)' }}>Account progress</span>
+            <span
+              style={{
+                fontWeight: 600,
+                color: accountComplete === 2 ? 'var(--accent)' : 'var(--text)',
+              }}
+            >
+              {accountComplete} of 2 complete
+            </span>
+          </div>
+        </div>
       </div>
 
       <ParsingStatusBadge />
       <ApplicationAssistantStatusBadge />
 
       <div
+        className="card"
         style={{
           marginBottom: '1.25rem',
-          padding: '0.75rem 1rem',
-          background: 'var(--surface-elevated)',
-          borderRadius: 10,
-          border: '1px solid var(--border)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.5rem',
+          padding: '1.25rem 1.5rem',
         }}
       >
-        <span style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
-          Account progress
-        </span>
-        <span
+        <div
           style={{
-            fontWeight: 600,
-            color: accountComplete === 2 ? 'var(--accent)' : 'var(--text)',
-            fontSize: '0.9375rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '0.75rem',
           }}
         >
-          {accountComplete} of 2 complete
-        </span>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: '1.05rem',
+              fontWeight: 600,
+              color: 'var(--text)',
+            }}
+          >
+            Job positions you might like
+          </h2>
+          <span
+            style={{
+              fontSize: '0.8rem',
+              color: 'var(--muted-foreground)',
+            }}
+          >
+            Placeholder carousel (coming soon)
+          </span>
+        </div>
+        <p
+          style={{
+            margin: 0,
+            fontSize: '0.9rem',
+            color: 'var(--muted-foreground)',
+          }}
+        >
+          Once Application Assistant saves job postings, this will surface a carousel of roles that
+          match your profile and preferences.
+        </p>
       </div>
 
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gridTemplateColumns: 'minmax(0, 1fr)',
           gap: '1.25rem',
         }}
       >
-        {cards.map((c) => (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '1.25rem',
+          }}
+        >
           <Link
-            key={c.href}
-            href={c.href}
+            href={cards[0].href}
             className="card"
             style={{
               textDecoration: 'none',
@@ -129,18 +191,18 @@ export default async function DashboardPage() {
               }}
             >
               <span style={{ fontWeight: 600, fontSize: '1.0625rem', color: 'var(--text)' }}>
-                {c.title}
+                {cards[0].title}
               </span>
               <span
                 className="badge"
                 style={{
-                  background: c.done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
-                  color: c.done ? 'var(--accent)' : 'var(--muted-foreground)',
+                  background: cards[0].done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                  color: cards[0].done ? 'var(--accent)' : 'var(--muted-foreground)',
                   fontSize: '0.75rem',
                   padding: '0.25rem 0.5rem',
                 }}
               >
-                {c.stat}
+                {cards[0].stat}
               </span>
             </div>
             <p
@@ -151,7 +213,7 @@ export default async function DashboardPage() {
                 lineHeight: 1.5,
               }}
             >
-              {c.description}
+              {cards[0].description}
             </p>
             <div
               style={{
@@ -165,7 +227,7 @@ export default async function DashboardPage() {
               <div
                 style={{
                   height: '100%',
-                  width: c.done ? '100%' : '0%',
+                  width: cards[0].done ? '100%' : '0%',
                   background: 'var(--accent)',
                   borderRadius: 2,
                   transition: 'width 0.25s ease',
@@ -173,7 +235,137 @@ export default async function DashboardPage() {
               />
             </div>
           </Link>
-        ))}
+
+          <Link
+            href={cards[1].href}
+            className="card"
+            style={{
+              textDecoration: 'none',
+              color: 'inherit',
+              display: 'block',
+              padding: '1.25rem 1.5rem',
+              transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: '1.0625rem', color: 'var(--text)' }}>
+                {cards[1].title}
+              </span>
+              <span
+                className="badge"
+                style={{
+                  background: cards[1].done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                  color: cards[1].done ? 'var(--accent)' : 'var(--muted-foreground)',
+                  fontSize: '0.75rem',
+                  padding: '0.25rem 0.5rem',
+                }}
+              >
+                {cards[1].stat}
+              </span>
+            </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '0.9375rem',
+                color: 'var(--muted-foreground)',
+                lineHeight: 1.5,
+              }}
+            >
+              {cards[1].description}
+            </p>
+            <div
+              style={{
+                marginTop: '0.875rem',
+                height: 4,
+                borderRadius: 2,
+                background: 'var(--border)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: cards[1].done ? '100%' : '0%',
+                  background: 'var(--accent)',
+                  borderRadius: 2,
+                  transition: 'width 0.25s ease',
+                }}
+              />
+            </div>
+          </Link>
+        </div>
+
+        <Link
+          href={cards[2].href}
+          className="card"
+          style={{
+            textDecoration: 'none',
+            color: 'inherit',
+            display: 'block',
+            padding: '1.25rem 1.5rem',
+            transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <span style={{ fontWeight: 600, fontSize: '1.0625rem', color: 'var(--text)' }}>
+              {cards[2].title}
+            </span>
+            <span
+              className="badge"
+              style={{
+                background: cards[2].done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                color: cards[2].done ? 'var(--accent)' : 'var(--muted-foreground)',
+                fontSize: '0.75rem',
+                padding: '0.25rem 0.5rem',
+              }}
+            >
+              {cards[2].stat}
+            </span>
+          </div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: '0.9375rem',
+              color: 'var(--muted-foreground)',
+              lineHeight: 1.5,
+            }}
+          >
+            {cards[2].description}
+          </p>
+          <div
+            style={{
+              marginTop: '0.875rem',
+              height: 4,
+              borderRadius: 2,
+              background: 'var(--border)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: cards[2].done ? '100%' : '0%',
+                background: 'var(--accent)',
+                borderRadius: 2,
+                transition: 'width 0.25s ease',
+              }}
+            />
+          </div>
+        </Link>
       </div>
     </div>
   );

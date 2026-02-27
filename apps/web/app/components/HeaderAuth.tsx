@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useRef, useEffect, useState } from 'react';
 import { useReportAction } from './UserActivityProvider';
@@ -47,28 +47,38 @@ export function HeaderAuth({ user }: { user: User | null }) {
   }
 
   const label = user.name?.trim() || user.email || 'Account';
+  const pathname = usePathname();
+  const onDashboard = pathname === '/dashboard';
+  const onAssistant = pathname?.startsWith('/application-assistant');
+  const onProfileLike =
+    pathname?.startsWith('/profile') ||
+    pathname?.startsWith('/preferences') ||
+    pathname?.startsWith('/admin');
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
       <Link
         href="/dashboard"
-        className="btn btn-primary"
+        className={navLinkClass}
         style={{
           fontSize: '0.875rem',
-          padding: '0.5rem 1rem',
+          padding: '0 0.5rem',
           whiteSpace: 'nowrap',
           textDecoration: 'none',
+          color: onDashboard ? 'var(--accent)' : 'var(--text)',
         }}
       >
         Dashboard
       </Link>
       <Link
         href="/application-assistant"
-        className="btn btn-primary"
+        className={navLinkClass}
         style={{
           fontSize: '0.875rem',
-          padding: '0.5rem 1rem',
+          padding: '0 0.5rem',
           whiteSpace: 'nowrap',
           textDecoration: 'none',
+          color: onAssistant ? 'var(--accent)' : 'var(--text)',
         }}
       >
         Application Assistant
@@ -102,7 +112,7 @@ export function HeaderAuth({ user }: { user: User | null }) {
               setOpen((v) => !v);
             }}
             style={{
-              color: open ? 'var(--accent)' : 'var(--text-secondary)',
+              color: open || onProfileLike ? 'var(--accent)' : 'var(--text)',
               fontSize: '0.875rem',
               fontWeight: 500,
               padding: '0 1rem',
