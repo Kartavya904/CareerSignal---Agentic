@@ -167,6 +167,39 @@ export class OllamaClient {
     const data = (await response.json()) as { models: Array<{ name: string }> };
     return data.models.map((m) => m.name);
   }
+
+  /**
+   * Generate embeddings for one or more texts using Ollama /api/embed.
+   * Requires an embedding model (e.g. nomic-embed-text, mxbai-embed-large).
+   */
+  async embed(
+    input: string | string[],
+    options?: { model?: string; timeout?: number },
+  ): Promise<number[][]> {
+    const model = options?.model ?? process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text';
+    const timeout = options?.timeout ?? 60000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/embed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, input }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Ollama embed failed: ${response.status} - ${error}`);
+      }
+
+      const data = (await response.json()) as { embeddings: number[][] };
+      return data.embeddings ?? [];
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 /**
@@ -223,3 +256,30 @@ export async function completeJson<T>(
 }
 
 export const defaultClient = new OllamaClient();
+
+/**
+ * Generate embeddings for one or more texts (uses default Ollama client).
+ */
+export async function embed(
+  input: string | string[],
+  options?: { model?: string; timeout?: number },
+): Promise<number[][]> {
+  return defaultClient.embed(input, options);
+}
+
+/**
+ * Embed many texts in batches to avoid overload. Returns embeddings in same order as inputs.
+ */
+export async function embedBatch(
+  texts: string[],
+  options?: { model?: string; timeout?: number; batchSize?: number },
+): Promise<number[][]> {
+  const batchSize = options?.batchSize ?? 10;
+  const results: number[][] = [];
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize);
+    const embeddings = await defaultClient.embed(batch, options);
+    results.push(...embeddings);
+  }
+  return results;
+}

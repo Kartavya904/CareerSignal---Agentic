@@ -39,6 +39,7 @@ import {
   saveHtmlVariant,
   saveJsonArtifact,
 } from '@/lib/application-assistant-disk';
+import { runRagPipeline } from '@/lib/application-assistant-rag';
 import path from 'path';
 import { transitionAssistantStep } from '@/lib/application-assistant-planner';
 
@@ -395,12 +396,49 @@ export async function runApplicationAssistantPipeline(
         }
       }
 
-      // 7. Extract job detail (try cleaned first; fallback to raw HTML for JS-heavy pages)
+      // 7. Extract job detail (RAG-focused content first when enabled, then cleaned/raw fallback)
       await transitionAssistantStep(db, analysisId, 'extracting');
       await dbLog(db, analysisId, 'Extractor', 'Extracting job details...', { level: 'info' });
       const tExtractStart = Date.now();
       const cleanedForExtract = cleanHtml(resolvedHtml);
-      let jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+      let jobDetail: Awaited<ReturnType<typeof extractJobDetail>>;
+
+      const useRag = process.env.DISABLE_JOB_RAG !== '1' && process.env.DISABLE_JOB_RAG !== 'true';
+      let focusedHtml: string | null = null;
+      if (useRag) {
+        const ragResult = await runRagPipeline(runFolderName, resolvedHtml, (msg) =>
+          dbLog(db, analysisId, 'RAG', msg, { level: 'info' }),
+        );
+        focusedHtml = ragResult.focusedHtml;
+        if (focusedHtml && ragResult.keptCount > 0) {
+          await dbLog(
+            db,
+            analysisId,
+            'RAG',
+            `Using ${ragResult.keptCount} focused chunks for extraction.`,
+            { level: 'info' },
+          );
+        }
+      }
+
+      if (focusedHtml && focusedHtml.length > 100) {
+        jobDetail = await extractJobDetail(focusedHtml, resolvedUrl);
+        if (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') {
+          await dbLog(
+            db,
+            analysisId,
+            'Extractor',
+            'RAG-focused extraction missed; trying full cleaned HTML.',
+            {
+              level: 'info',
+            },
+          );
+          jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+        }
+      } else {
+        jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+      }
+
       if (
         (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') &&
         resolvedHtml.length > 5000

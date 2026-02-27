@@ -15,6 +15,8 @@ export {
   complete,
   completeJson,
   defaultClient,
+  embed,
+  embedBatch,
   type OllamaGenerateRequest,
   type OllamaGenerateResponse,
   type OllamaChatMessage,
