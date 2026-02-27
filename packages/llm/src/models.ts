@@ -15,6 +15,8 @@ export const OllamaModels = {
 
   /** Fast model for high-volume tasks (8B params, ~2s/response) */
   FAST: process.env.OLLAMA_MODEL_FAST ?? 'llama3.1:8b-instruct-q4_K_M',
+  /** Long-context fallback model for oversized inputs (configured but not yet used) */
+  LONG_CONTEXT: process.env.OLLAMA_MODEL_LONG_CONTEXT ?? 'qwen2.5:72b-instruct-q4_K_M',
 } as const;
 
 export type OllamaModelType = keyof typeof OllamaModels;
@@ -34,24 +36,30 @@ export const defaultModelConfigs: Record<OllamaModelType, ModelConfig> = {
     model: OllamaModels.REASONING,
     temperature: 0.1,
     maxTokens: 4096,
-    timeout: 120000,
+    timeout: 300000, // 5 minutes for deep reasoning
   },
   GENERAL: {
     model: OllamaModels.GENERAL,
     temperature: 0.1,
     maxTokens: 8192,
-    timeout: 600000, // 10 minutes - no timeout pressure for complex extraction
+    timeout: 300000, // cap at 5 minutes
   },
   CODE: {
     model: OllamaModels.CODE,
     temperature: 0.1,
     maxTokens: 2048,
-    timeout: 60000,
+    timeout: 180000, // up to 3 minutes for code helpers
   },
   FAST: {
     model: OllamaModels.FAST,
     temperature: 0.2,
     maxTokens: 8192,
-    timeout: 300000, // 5 minutes - account for model loading time
+    timeout: 180000, // up to 3 minutes for fast tasks
+  },
+  LONG_CONTEXT: {
+    model: OllamaModels.LONG_CONTEXT,
+    temperature: 0.1,
+    maxTokens: 32768,
+    timeout: 300000, // up to 5 minutes for long-context fallbacks
   },
 };

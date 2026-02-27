@@ -216,6 +216,12 @@ export default function ApplicationAssistantPage() {
     terminalRef.current?.scrollTo(0, terminalRef.current.scrollHeight);
   }, [logs]);
 
+  // When opening the terminal, scroll its own viewport to the bottom (without scrolling the page)
+  useEffect(() => {
+    if (!terminalOpen) return;
+    terminalRef.current?.scrollTo(0, terminalRef.current.scrollHeight);
+  }, [terminalOpen, logs.length]);
+
   // Load auto-confirm preference from localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -371,7 +377,15 @@ export default function ApplicationAssistantPage() {
   };
 
   const isRunning = status?.running === true;
-  const currentStep = status?.currentStep ?? 'idle';
+  const effectiveStep =
+    isRunning && status?.currentStep
+      ? status.currentStep
+      : analysis?.runStatus === 'error'
+        ? 'error'
+        : analysis
+          ? 'done'
+          : 'idle';
+  const currentStep = effectiveStep;
   const currentStepIdx = stepIndex(currentStep);
 
   const currentStepLabel =
@@ -388,6 +402,11 @@ export default function ApplicationAssistantPage() {
               : currentStep === 'error'
                 ? 'Pipeline failed'
                 : 'Idle';
+
+  // Derive a more precise "currently working" label from the latest log entry
+  const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
+  const currentAgentLabel =
+    lastLog && isRunning ? `[${lastLog.agent}] ${lastLog.message}` : currentStepLabel;
 
   // Derive confidences from logs (CompanyResolver + CleanerVerifier)
   let companyConfidence = 100;
@@ -433,7 +452,14 @@ export default function ApplicationAssistantPage() {
               type="button"
               className="btn btn-ghost"
               style={{ fontSize: '0.8125rem', padding: '0.35rem 0.75rem' }}
+              disabled={isRunning}
+              title={
+                isRunning
+                  ? 'Analysis in progress — stop the analysis to access history.'
+                  : undefined
+              }
               onClick={() => {
+                if (isRunning) return;
                 setShowHistory(!showHistory);
                 if (!showHistory) loadHistory();
               }}
@@ -675,7 +701,7 @@ export default function ApplicationAssistantPage() {
                     flexShrink: 0,
                   }}
                 >
-                  {isDone ? '\u2713' : i + 1}
+                  {isError && isActive ? '\u2717' : isDone ? '\u2713' : i + 1}
                 </div>
                 <span
                   style={{
@@ -684,6 +710,8 @@ export default function ApplicationAssistantPage() {
                     color: isActive ? 'var(--text)' : 'var(--muted-foreground)',
                     textTransform: 'capitalize',
                     whiteSpace: 'nowrap',
+                    animation:
+                      isRunning && isActive ? 'pulse-opacity 1.1s ease-in-out infinite' : undefined,
                   }}
                 >
                   {step}
@@ -693,7 +721,12 @@ export default function ApplicationAssistantPage() {
                     style={{
                       width: 30,
                       height: 2,
-                      background: isDone ? 'var(--success)' : 'var(--border)',
+                      background:
+                        currentStep === 'error' && i === currentStepIdx
+                          ? 'var(--error)'
+                          : isDone
+                            ? 'var(--success)'
+                            : 'var(--border)',
                       flexShrink: 0,
                     }}
                   />
@@ -728,6 +761,7 @@ export default function ApplicationAssistantPage() {
                     borderRadius: '50%',
                     border: '2px solid var(--accent)',
                     borderTopColor: 'transparent',
+                    animation: 'spin 0.9s linear infinite',
                   }}
                 />
               ) : currentStep === 'done' ? (
@@ -757,9 +791,14 @@ export default function ApplicationAssistantPage() {
                     fontSize: '0.75rem',
                     color: 'var(--muted-foreground)',
                     marginTop: 2,
+                    animation:
+                      isRunning && currentStep !== 'idle'
+                        ? 'pulse-opacity 1.1s ease-in-out infinite'
+                        : undefined,
                   }}
                 >
-                  {currentStepLabel}
+                  {currentAgentLabel}
+                  {isRunning && currentStep !== 'idle' && '…'}
                 </div>
               </div>
             </div>
@@ -849,7 +888,7 @@ export default function ApplicationAssistantPage() {
                 <span
                   style={{
                     display: 'inline-block',
-                    transform: terminalOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transform: terminalOpen ? 'rotate(90deg)' : 'rotate(180deg)',
                     transition: 'transform 0.15s ease-out',
                     fontSize: '0.75rem',
                     color: 'var(--muted-foreground)',
@@ -879,20 +918,31 @@ export default function ApplicationAssistantPage() {
                   {starting ? 'Starting pipeline…' : 'Waiting for logs…'}
                 </div>
               ) : (
-                logs.map((l) => (
-                  <div
-                    key={l.id}
-                    style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.15rem' }}
-                  >
-                    <span style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>
-                      [{formatTime(l.ts)}]
-                    </span>
-                    <span style={{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>
-                      [{l.agent}]
-                    </span>
-                    <span style={{ color: levelColor(l.level) }}>{l.message}</span>
-                  </div>
-                ))
+                logs.map((l, idx) => {
+                  const isLast = idx === logs.length - 1;
+                  return (
+                    <div
+                      key={l.id}
+                      style={{
+                        display: 'flex',
+                        gap: '0.5rem',
+                        marginBottom: '0.15rem',
+                        animation:
+                          isRunning && isLast
+                            ? 'pulse-opacity 1.1s ease-in-out infinite'
+                            : undefined,
+                      }}
+                    >
+                      <span style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>
+                        [{formatTime(l.ts)}]
+                      </span>
+                      <span style={{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>
+                        [{l.agent}]
+                      </span>
+                      <span style={{ color: levelColor(l.level) }}>{l.message}</span>
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
@@ -1275,40 +1325,44 @@ export default function ApplicationAssistantPage() {
       )}
 
       {/* Contacts placeholder */}
-      {analysis && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-            Contacts
-          </h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            {['Email', 'LinkedIn', 'Other'].map((label) => (
-              <div
-                key={label}
-                style={{
-                  padding: '1rem',
-                  background: 'var(--bg)',
-                  border: '1px dashed var(--border)',
-                  borderRadius: 6,
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
-                  {label}
+      {analysis &&
+        analysis.contacts &&
+        ((analysis.contacts.emails && analysis.contacts.emails.length > 0) ||
+          (analysis.contacts.linkedIn && analysis.contacts.linkedIn.length > 0) ||
+          (analysis.contacts.others && analysis.contacts.others.length > 0)) && (
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
+              Contacts
+            </h2>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '0.75rem',
+              }}
+            >
+              {['Email', 'LinkedIn', 'Other'].map((label) => (
+                <div
+                  key={label}
+                  style={{
+                    padding: '1rem',
+                    background: 'var(--bg)',
+                    border: '1px dashed var(--border)',
+                    borderRadius: 6,
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
+                    {label}
+                  </div>
+                  <div style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
+                    Coming soon
+                  </div>
                 </div>
-                <div style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
-                  Coming soon
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Extras: Salary check, Checklist, Interview prep */}
       {analysis?.salaryLevelCheck && (
