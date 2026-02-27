@@ -136,6 +136,8 @@ export const userPreferences = pgTable('user_preferences', {
     .references(() => users.id, { onDelete: 'cascade' }),
   workAuthorization: workAuthorizationEnum('work_authorization').notNull(),
   targetLocations: jsonb('target_locations').$type<TargetLocationRow[]>().default([]),
+  willingToRelocate: boolean('willing_to_relocate').notNull().default(false),
+  hasCar: boolean('has_car').notNull().default(false),
   remotePreference: remotePreferenceEnum('remote_preference').notNull().default('ANY'),
   targetSeniority: jsonb('target_seniority').$type<string[]>().default([]),
   targetRoles: jsonb('target_roles').$type<string[]>().default([]),

@@ -1137,9 +1137,10 @@ function MatchCard({
 }: {
   score: number;
   grade: string;
-  breakdown: MatchBreakdown;
+  breakdown: MatchBreakdown & { strengths?: string[]; gaps?: string[] };
 }) {
   const color = scoreColor(score);
+  const strengths = Array.isArray(breakdown.strengths) ? breakdown.strengths : [];
   const categories = [
     { label: 'Skills', value: breakdown.skills },
     { label: 'Experience', value: breakdown.experience },
@@ -1176,6 +1177,18 @@ function MatchCard({
           <div style={{ color: 'var(--muted-foreground)', fontSize: '0.8125rem' }}>
             {score >= 75 ? 'Strong match' : score >= 50 ? 'Moderate match' : 'Weak match'}
           </div>
+          {strengths.length > 0 && (
+            <div
+              style={{
+                marginTop: '0.5rem',
+                fontSize: '0.8125rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>Why you’re a strong fit:</span>{' '}
+              <span>{strengths[0]}</span>
+            </div>
+          )}
         </div>
       </div>
 

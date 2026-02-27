@@ -18,6 +18,11 @@ export interface ProfileSnapshot {
   experience: { title: string; company: string; startDate?: string; endDate?: string }[];
   education: { institution: string; degree?: string; field?: string }[];
   resumeRawText: string | null;
+  // Optional preference context (V1: may be omitted)
+  willingToRelocate?: boolean | null;
+  hasCar?: boolean | null;
+  remotePreference?: string | null;
+  targetLocations?: { country: string; state?: string; city?: string }[];
 }
 
 export interface MatchBreakdown {
@@ -58,6 +63,16 @@ export async function matchProfileToJob(
     `Name: ${profile.name}`,
     profile.location ? `Location: ${profile.location}` : null,
     profile.seniority ? `Seniority: ${profile.seniority}` : null,
+    profile.willingToRelocate !== undefined
+      ? `Willing to relocate: ${profile.willingToRelocate ? 'Yes' : 'No'}`
+      : null,
+    profile.hasCar !== undefined ? `Has car for commuting: ${profile.hasCar ? 'Yes' : 'No'}` : null,
+    profile.remotePreference ? `Remote preference: ${profile.remotePreference}` : null,
+    profile.targetLocations && profile.targetLocations.length > 0
+      ? `Target locations: ${profile.targetLocations
+          .map((loc) => [loc.city, loc.state, loc.country].filter((x) => x && x.trim()).join(', '))
+          .join(' | ')}`
+      : null,
     profile.skills.length > 0 ? `Skills: ${profile.skills.join(', ')}` : null,
     profile.targetRoles.length > 0 ? `Target roles: ${profile.targetRoles.join(', ')}` : null,
     profile.experience.length > 0

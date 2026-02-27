@@ -54,6 +54,8 @@ type ApiPreferences = PreferencesPutBody & {
 const defaultForm: PreferencesPutBody = {
   work_authorization: 'OTHER',
   target_locations: [],
+  willing_to_relocate: false,
+  has_car: false,
   remote_preference: 'ANY',
   target_seniority: [],
   target_roles: [],
@@ -86,6 +88,8 @@ export default function PreferencesPage() {
           setForm({
             work_authorization: d.work_authorization ?? defaultForm.work_authorization,
             target_locations: d.target_locations ?? [],
+            willing_to_relocate: d.willing_to_relocate ?? false,
+            has_car: d.has_car ?? false,
             remote_preference: d.remote_preference ?? 'ANY',
             target_seniority: d.target_seniority ?? [],
             target_roles: d.target_roles ?? [],
@@ -201,6 +205,8 @@ export default function PreferencesPage() {
         setForm({
           work_authorization: data.work_authorization ?? form.work_authorization,
           target_locations: data.target_locations ?? [],
+          willing_to_relocate: data.willing_to_relocate ?? false,
+          has_car: data.has_car ?? false,
           remote_preference: data.remote_preference ?? 'ANY',
           target_seniority: data.target_seniority ?? [],
           target_roles: data.target_roles ?? [],
@@ -331,10 +337,59 @@ export default function PreferencesPage() {
             className="section-title"
             style={{ color: 'var(--accent)', textTransform: 'none', letterSpacing: '0' }}
           >
-            Target locations
+            Locations
           </h2>
-          <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-            Country required; state and city optional. No city without state.
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label className="label">Willing to relocate?</label>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <input
+                  type="radio"
+                  name="willing_to_relocate"
+                  checked={form.willing_to_relocate === true}
+                  onChange={() => setForm((f) => ({ ...f, willing_to_relocate: true }))}
+                />
+                <span>Yes</span>
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <input
+                  type="radio"
+                  name="willing_to_relocate"
+                  checked={form.willing_to_relocate === false}
+                  onChange={() =>
+                    setForm((f) => ({
+                      ...f,
+                      willing_to_relocate: false,
+                      has_car: false,
+                    }))
+                  }
+                />
+                <span>No</span>
+              </label>
+            </div>
+            {form.willing_to_relocate && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <label
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  className="label"
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.has_car === true}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        has_car: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>I have a car for commuting</span>
+                </label>
+              </div>
+            )}
+          </div>
+          <p style={{ color: 'var(--accent)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+            Target locations: country required; state and city optional. No city without state.
           </p>
           {form.target_locations.map((loc, i) => (
             <div

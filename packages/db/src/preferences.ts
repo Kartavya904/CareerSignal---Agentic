@@ -16,6 +16,8 @@ export interface UserPreferencesRow {
   userId: string;
   workAuthorization: string;
   targetLocations: TargetLocationRow[];
+  willingToRelocate: boolean;
+  hasCar: boolean;
   remotePreference: string;
   targetSeniority: string[];
   targetRoles: string[];
@@ -36,6 +38,8 @@ export interface UserPreferencesRow {
 export interface UpsertPreferencesInput {
   workAuthorization: string;
   targetLocations: TargetLocationRow[];
+  willingToRelocate?: boolean;
+  hasCar?: boolean;
   remotePreference?: string;
   targetSeniority?: string[];
   targetRoles?: string[];
@@ -101,6 +105,8 @@ export async function upsertPreferences(
       userId,
       workAuthorization: data.workAuthorization as WorkAuth,
       targetLocations: data.targetLocations,
+      willingToRelocate: data.willingToRelocate ?? false,
+      hasCar: data.hasCar ?? false,
       remotePreference: (data.remotePreference as RemotePref) ?? 'ANY',
       targetSeniority: data.targetSeniority ?? [],
       targetRoles: data.targetRoles ?? [],
@@ -120,6 +126,8 @@ export async function upsertPreferences(
       set: {
         workAuthorization: data.workAuthorization as WorkAuth,
         targetLocations: data.targetLocations,
+        willingToRelocate: data.willingToRelocate ?? false,
+        hasCar: data.hasCar ?? false,
         remotePreference: (data.remotePreference as RemotePref) ?? 'ANY',
         targetSeniority: data.targetSeniority ?? [],
         targetRoles: data.targetRoles ?? [],

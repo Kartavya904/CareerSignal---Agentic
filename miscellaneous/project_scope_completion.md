@@ -4,6 +4,17 @@
 
 **Last updated:** Reflecting current codebase state.
 
+## Scope Rebaseline Note (2026-02-26)
+
+The project scope has been rebaselined to a strict single-URL Application Assistant roadmap.
+
+- Continuous source-cache planning is deprecated and superseded.
+- This completion report reflects implementation status prior to the rebaseline and should be interpreted as historical baseline for the rebuild phases.
+- Forward progress should be tracked against:
+  - `miscellaneous/plan.md`
+  - `miscellaneous/project_scope.md`
+  - `.cursor/plans/application-assistant-v1-rebuild_daadf184.plan.md`
+
 ---
 
 ## Version Overview (Implementation Status)

@@ -4,6 +4,18 @@
 **Mode:** Agentic re-implementation of existing working app (greenfield agent design; core logic ported where applicable).  
 **Primary objective:** A **semi‑autonomous, multi‑agent career intelligence system** that helps you with jobs **you bring to it** via the Application Assistant: profile‑aware matching, contact discovery, outreach drafts, and application blueprints—all for user‑initiated URLs only.
 
+**Supersedes:** `miscellaneous/project_plan_next.md` (continuous source-cache direction is deprecated).
+
+## Scope Addendum (2026-02-26)
+
+The following decisions are locked for the active rebuild:
+
+- V1 supports exactly **one URL per run** in Application Assistant.
+- The non-job classifier remains a **hard stop** for V1 validation quality.
+- Company/title confirmation is a mandatory checkpoint before deep company research.
+- Contact discovery runs automatically as the **last major stage** in the pipeline.
+- Email pattern inference is included in V1 contact enrichment.
+
 ---
 
 ## Scope Pivot (No Bulk Scraping)

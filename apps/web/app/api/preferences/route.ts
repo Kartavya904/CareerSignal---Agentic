@@ -13,6 +13,8 @@ function rowToJson(row: Awaited<ReturnType<typeof getPreferencesByUserId>>) {
     user_id: row.userId,
     work_authorization: row.workAuthorization,
     target_locations: row.targetLocations as TargetLocationRow[],
+    willing_to_relocate: row.willingToRelocate,
+    has_car: row.hasCar,
     remote_preference: row.remotePreference,
     target_seniority: row.targetSeniority,
     target_roles: row.targetRoles,
@@ -76,6 +78,8 @@ export async function PUT(request: Request) {
     const row = await upsertPreferences(db, userId, {
       workAuthorization: data.work_authorization,
       targetLocations: data.target_locations as TargetLocationRow[],
+      willingToRelocate: data.willing_to_relocate,
+      hasCar: data.has_car,
       remotePreference: data.remote_preference,
       targetSeniority: data.target_seniority,
       targetRoles: data.target_roles,

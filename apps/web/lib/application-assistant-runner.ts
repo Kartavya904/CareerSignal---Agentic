@@ -23,6 +23,8 @@ import {
 import {
   getDb,
   getProfileByUserId,
+  getPreferencesByUserId,
+  getAnalysisById,
   updateAnalysis,
   updateAnalysisRunState,
   insertAnalysisLog,
@@ -30,7 +32,15 @@ import {
 import { registerLoginWait } from '@/lib/login-wall-state';
 import { registerCaptchaSolve } from '@/lib/captcha-state';
 import { getScraperStatus } from '@/lib/scraper-state';
-import { getRunFolderName, saveApplicationAssistantRun } from '@/lib/application-assistant-disk';
+import {
+  getRunFolderName,
+  getRunFolderPath,
+  saveApplicationAssistantRun,
+  saveHtmlVariant,
+  saveJsonArtifact,
+} from '@/lib/application-assistant-disk';
+import path from 'path';
+import { transitionAssistantStep } from '@/lib/application-assistant-planner';
 
 async function dbLog(
   db: ReturnType<typeof getDb>,
@@ -109,6 +119,61 @@ function urlLooksLikeJobPage(url: string): boolean {
 }
 
 /**
+ * Fetch-first helper: resolves redirects and performs a cheap HTML fetch
+ * before launching the browser. This is used for URL normalization and
+ * early diagnostics; the Playwright browser still drives the main flow.
+ */
+async function fetchFinalUrl(
+  originalUrl: string,
+  db: ReturnType<typeof getDb>,
+  analysisId: string,
+): Promise<string> {
+  try {
+    await dbLog(db, analysisId, 'Fetcher', `Fetching URL via HTTP: ${originalUrl}`, {
+      level: 'info',
+    });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(originalUrl, {
+      redirect: 'follow',
+      signal: controller.signal,
+    }).catch((err) => {
+      throw err;
+    });
+    clearTimeout(timeout);
+
+    if (!res) {
+      await dbLog(db, analysisId, 'Fetcher', 'Fetch failed (no response). Using original URL.', {
+        level: 'warn',
+      });
+      return originalUrl;
+    }
+
+    const finalUrl = res.url || originalUrl;
+    await dbLog(
+      db,
+      analysisId,
+      'Fetcher',
+      `Fetch completed with status ${res.status}. Final URL: ${finalUrl}`,
+      { level: 'info' },
+    );
+    return finalUrl;
+  } catch (err) {
+    await dbLog(
+      db,
+      analysisId,
+      'Fetcher',
+      `Fetch failed. Using original URL. Error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      { level: 'warn' },
+    );
+    return originalUrl;
+  }
+}
+
+/**
  * Run the full Application Assistant pipeline for a single URL.
  * analysisId must refer to an existing row with run_status = 'running'.
  */
@@ -119,6 +184,8 @@ export async function runApplicationAssistantPipeline(
 ): Promise<void> {
   let browser: Browser | null = null;
   const db = getDb();
+  const timings: Record<string, number> = {};
+  const t0 = Date.now();
 
   try {
     if (getScraperStatus().running) {
@@ -130,6 +197,7 @@ export async function runApplicationAssistantPipeline(
     }
 
     const profile = await getProfileByUserId(db, userId);
+    const preferences = await getPreferencesByUserId(db, userId);
     const userName = profile?.name ?? null;
 
     const heartbeat = setInterval(() => {
@@ -137,8 +205,13 @@ export async function runApplicationAssistantPipeline(
     }, 30000);
 
     try {
+      // 0. Fetch-first URL normalization (resolve redirects, keep original for reference)
+      const finalUrl = await fetchFinalUrl(url, db, analysisId);
+      timings.fetchMs = Date.now() - t0;
+
       // 1. Launch visible browser
-      await updateAnalysisRunState(db, analysisId, { currentStep: 'scraping' });
+      await transitionAssistantStep(db, analysisId, 'scraping');
+      const tBrowserStart = Date.now();
       await dbLog(db, analysisId, 'Browser', 'Launching visible browser...', { level: 'info' });
       browser = await chromium.launch({ headless: false, args: STEALTH_ARGS });
       const page = await browser.newPage();
@@ -146,8 +219,8 @@ export async function runApplicationAssistantPipeline(
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
 
       // 2. Navigate to URL (allow network idle for SPAs like Citadel)
-      await dbLog(db, analysisId, 'Browser', `Navigating to ${url}`, { level: 'info' });
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await dbLog(db, analysisId, 'Browser', `Navigating to ${finalUrl}`, { level: 'info' });
+      await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(4000);
       try {
         await page.waitForLoadState('networkidle', { timeout: 5000 });
@@ -156,13 +229,15 @@ export async function runApplicationAssistantPipeline(
       }
 
       let html = await page.content();
+      timings.browserMs = Date.now() - tBrowserStart;
       await dbLog(db, analysisId, 'Browser', `Page loaded: ${html.length} chars`, {
         level: 'success',
       });
 
       // 3. Clean + classify
+      const tClassifyStart = Date.now();
       const cleanResult = cleanHtml(html);
-      let classification = await classifyPage(cleanResult.html, url);
+      let classification = await classifyPage(cleanResult.html, finalUrl);
       dbLog(
         db,
         analysisId,
@@ -176,7 +251,7 @@ export async function runApplicationAssistantPipeline(
       // 3b. Persist run to disk for debugging and re-analysis
       const runFolderName = getRunFolderName(userName, userId);
       await saveApplicationAssistantRun(runFolderName, html, cleanResult.html, {
-        url,
+        url: finalUrl,
         userId,
         userName,
         folderName: runFolderName,
@@ -196,6 +271,15 @@ export async function runApplicationAssistantPipeline(
             { level: 'warn' },
           );
         });
+      // Initial screenshot
+      try {
+        const screenshotPath = path.join(getRunFolderPath(runFolderName), 'screenshot-initial.png');
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        await dbLog(db, analysisId, 'Browser', `Initial screenshot saved.`, { level: 'info' });
+      } catch {
+        // ignore screenshot failures
+      }
+      timings.classifyMs = Date.now() - tClassifyStart;
 
       // 4. Handle login wall
       if (classification.type === 'login_wall') {
@@ -216,10 +300,22 @@ export async function runApplicationAssistantPipeline(
         });
         html = loginHtml;
         const reclean = cleanHtml(html);
-        classification = await classifyPage(reclean.html, url);
+        classification = await classifyPage(reclean.html, finalUrl);
         await dbLog(db, analysisId, 'Classifier', `Post-login type: ${classification.type}`, {
           level: 'info',
         });
+        // Save post-login HTML variant and screenshot
+        try {
+          await saveHtmlVariant(runFolderName, 'post-login', loginHtml, reclean.html);
+          const screenshotPath = path.join(
+            getRunFolderPath(runFolderName),
+            'screenshot-post-login.png',
+          );
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          await dbLog(db, analysisId, 'Browser', 'Post-login artifacts saved.', { level: 'info' });
+        } catch {
+          // ignore disk/screenshot failures
+        }
       }
 
       // 5. Handle captcha
@@ -239,11 +335,24 @@ export async function runApplicationAssistantPipeline(
         });
         html = captchaHtml;
         const reclean = cleanHtml(html);
-        classification = await classifyPage(reclean.html, url);
+        classification = await classifyPage(reclean.html, finalUrl);
+        try {
+          await saveHtmlVariant(runFolderName, 'post-captcha', captchaHtml, reclean.html);
+          const screenshotPath = path.join(
+            getRunFolderPath(runFolderName),
+            'screenshot-post-captcha.png',
+          );
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          await dbLog(db, analysisId, 'Browser', 'Post-captcha artifacts saved.', {
+            level: 'info',
+          });
+        } catch {
+          // ignore
+        }
       }
 
       // 6. URL resolution (depth 2) — only when URL does NOT look like a job page and classifier says not job
-      let resolvedUrl = url;
+      let resolvedUrl = finalUrl;
       let resolvedHtml = html;
       const trustUrlAsJobPage = urlLooksLikeJobPage(url);
       if (trustUrlAsJobPage) {
@@ -272,19 +381,24 @@ export async function runApplicationAssistantPipeline(
             level: 'success',
           });
         } else {
-          dbLog(
+          await dbLog(
             db,
             analysisId,
             'Resolver',
-            'Could not find a job page within depth 2. Using original page.',
-            { level: 'warn' },
+            'Could not find a job page within depth 2. Hard-stopping as non-job page.',
+            {
+              level: 'error',
+            },
           );
+          await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
+          return;
         }
       }
 
       // 7. Extract job detail (try cleaned first; fallback to raw HTML for JS-heavy pages)
-      await updateAnalysisRunState(db, analysisId, { currentStep: 'extracting' });
+      await transitionAssistantStep(db, analysisId, 'extracting');
       await dbLog(db, analysisId, 'Extractor', 'Extracting job details...', { level: 'info' });
+      const tExtractStart = Date.now();
       const cleanedForExtract = cleanHtml(resolvedHtml);
       let jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
       if (
@@ -299,6 +413,19 @@ export async function runApplicationAssistantPipeline(
           jobDetail = rawJob;
         }
       }
+      if (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') {
+        await dbLog(
+          db,
+          analysisId,
+          'Extractor',
+          'Failed to extract a concrete job (Untitled / Unknown). Stopping analysis.',
+          { level: 'error' },
+        );
+        timings.extractMs = Date.now() - tExtractStart;
+        await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
+        return;
+      }
+      timings.extractMs = Date.now() - tExtractStart;
       dbLog(
         db,
         analysisId,
@@ -401,9 +528,15 @@ export async function runApplicationAssistantPipeline(
         companyResearch: companyResearchText,
         runFolderName,
       });
+      // Persist extracted job detail JSON artifact for debugging
+      try {
+        await saveJsonArtifact(runFolderName, 'job-detail.json', jobDetail);
+      } catch {
+        // ignore
+      }
 
       // 10. Match and downstream (profile already loaded at start)
-      await updateAnalysisRunState(db, analysisId, { currentStep: 'matching' });
+      await transitionAssistantStep(db, analysisId, 'matching');
       let matchResult = null;
       let resumeSuggestions = null;
 
@@ -425,10 +558,25 @@ export async function runApplicationAssistantPipeline(
           education:
             (profile.education as { institution: string; degree?: string; field?: string }[]) ?? [],
           resumeRawText: profile.resumeRawText ?? null,
+        } as ProfileSnapshot & {
+          willingToRelocate?: boolean;
+          hasCar?: boolean;
+          remotePreference?: string;
+          targetLocations?: { country: string; state?: string; city?: string }[];
         };
+        (profileSnapshot as any).willingToRelocate = preferences?.willingToRelocate ?? undefined;
+        (profileSnapshot as any).hasCar = preferences?.hasCar ?? undefined;
+        (profileSnapshot as any).remotePreference = preferences?.remotePreference ?? undefined;
+        (profileSnapshot as any).targetLocations =
+          (preferences?.targetLocations as {
+            country: string;
+            state?: string;
+            city?: string;
+          }[]) ?? undefined;
 
         // 10. Match
         await dbLog(db, analysisId, 'Match', 'Computing profile-job match...', { level: 'info' });
+        const tMatchStart = Date.now();
         matchResult = await matchProfileToJob(profileSnapshot, jobDetail);
         dbLog(
           db,
@@ -441,14 +589,20 @@ export async function runApplicationAssistantPipeline(
         await updateAnalysis(db, analysisId, {
           matchScore: matchResult.overallScore,
           matchGrade: matchResult.grade,
-          matchBreakdown: matchResult.breakdown as unknown as Record<string, unknown>,
+          matchBreakdown: {
+            ...(matchResult.breakdown as unknown as Record<string, unknown>),
+            strengths: matchResult.strengths,
+            gaps: matchResult.gaps,
+          } as Record<string, unknown>,
         });
+        timings.matchMs = Date.now() - tMatchStart;
 
         // 11. Resume suggestions
-        await updateAnalysisRunState(db, analysisId, { currentStep: 'writing' });
+        await transitionAssistantStep(db, analysisId, 'writing');
         await dbLog(db, analysisId, 'Resume', 'Generating resume suggestions...', {
           level: 'info',
         });
+        const tWritingStart = Date.now();
         resumeSuggestions = await generateResumeSuggestions(profileSnapshot, jobDetail);
         dbLog(
           db,
@@ -504,6 +658,7 @@ export async function runApplicationAssistantPipeline(
         await updateAnalysis(db, analysisId, {
           interviewPrepBullets: interviewBullets,
         });
+        timings.writingMs = Date.now() - tWritingStart;
 
         // 14. Salary / level check
         let salaryCheck: string | null = null;
@@ -557,8 +712,27 @@ export async function runApplicationAssistantPipeline(
         });
       }
 
-      await updateAnalysisRunState(db, analysisId, { runStatus: 'done', currentStep: 'done' });
+      await transitionAssistantStep(db, analysisId, 'done', { runStatusOverride: 'done' });
       await dbLog(db, analysisId, 'Pipeline', 'Analysis complete!', { level: 'success' });
+      timings.totalMs = Date.now() - t0;
+      // Save timings and a compact summary artifact
+      try {
+        await saveJsonArtifact(runFolderName, 'timings.json', timings);
+        await saveJsonArtifact(runFolderName, 'analysis-summary.json', {
+          url: resolvedUrl,
+          matchScore: matchResult?.overallScore ?? null,
+          matchGrade: matchResult?.grade ?? null,
+          hasResumeSuggestions: !!resumeSuggestions,
+          hasCoverLetters: !!(profile && profile.name),
+          hasInterviewPrep: Array.isArray(
+            (await getAnalysisById(db, analysisId))?.interviewPrepBullets,
+          )
+            ? true
+            : false,
+        });
+      } catch {
+        // ignore
+      }
     } finally {
       clearInterval(heartbeat);
       if (browser) {
@@ -572,7 +746,7 @@ export async function runApplicationAssistantPipeline(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await dbLog(db, analysisId, 'Pipeline', `Error: ${msg}`, { level: 'error' });
-    await updateAnalysisRunState(db, analysisId, { runStatus: 'error', currentStep: 'error' });
+    await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
   }
 }
 

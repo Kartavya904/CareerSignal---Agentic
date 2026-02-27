@@ -2,6 +2,20 @@
 
 **Purpose:** Definitive scope document for V1, V2, and V3. All decisions are locked unless explicitly marked `[OPEN]`. Derived from `plan.md` and stakeholder confirmation session.
 
+## Scope Addendum (2026-02-26)
+
+This addendum overrides any older conflicting sections below.
+
+- V1 input is exactly one user-provided URL per run (Application Assistant only).
+- Continuous source-cache direction is deprecated; `miscellaneous/project_plan_next.md` is superseded.
+- Non-job classification stays as a hard-stop gate in V1 (used as a quality signal during testing).
+- URL normalization to final destination is required (redirect/tracking normalization).
+- Company/title confirmation by user is mandatory before deep company research starts.
+- Deep company dossier runs asynchronously after quick snapshot, while main pipeline continues.
+- Contact discovery runs automatically as the last major stage before run completion.
+- Email pattern inference is included in V1 contact pipeline.
+- Strict filter mismatches should be visible in a collapsible rejected section (not silently hidden).
+
 **Implementation Context (Agentic Rebuild):**
 
 - This is an **agentic re-implementation** of an existing working application. Core focus: **Application Assistant** (user provides a job URL → extract, match, contact hunt, drafts, blueprint) and **profile/preferences/tracker**. The main gap is **contact search/discovery** for that single-job flow; implementation can be ported from the previous version.

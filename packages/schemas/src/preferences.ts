@@ -20,7 +20,10 @@ export const maxContactsPerJobSchema = z.union([
 export const preferencesPutBodySchema = z
   .object({
     work_authorization: z.enum(['US_CITIZEN', 'GREEN_CARD', 'H1B', 'OPT', 'EAD', 'OTHER']),
+    // Locations + mobility
     target_locations: z.array(targetLocationSchema).default([]),
+    willing_to_relocate: z.boolean().default(false),
+    has_car: z.boolean().default(false),
     remote_preference: z.enum(['REMOTE', 'HYBRID', 'ONSITE', 'ANY']).default('ANY'),
     target_seniority: z.array(z.string()).default([]),
     target_roles: z.array(z.string()).default([]),
