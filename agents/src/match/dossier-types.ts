@@ -34,8 +34,10 @@ export interface DossierMemory {
   visitedUrls: string[];
   /** URLs actually returned by search (browser or API). Only these are used when set; no synthetic paths. */
   discoveredUrls?: string[];
-  /** URLs to visit: top N results from each browser search, populated as searches run. Single source of truth for what to fetch. */
+  /** URLs to visit: one result per browser search (title contains company). */
   urlsToVisit?: string[];
+  /** Fallback: one URL per missing field from "company + missing field" browser search (title contains company). Visited after urlsToVisit. */
+  urlsToVisitMissingFields?: string[];
   lastExtractionByUrl?: Record<string, string>;
 }
 

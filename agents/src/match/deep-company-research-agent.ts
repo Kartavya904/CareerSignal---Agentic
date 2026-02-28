@@ -317,6 +317,13 @@ const MAX_URLS_TO_FETCH = 22;
 const TOP_URLS_PER_SEARCH = 1;
 const SEARCH_DELAY_MS = 800;
 
+/** True if the result title contains the company name (case-insensitive). Used to skip random top results that don't mention the company. */
+function resultTitleMatchesCompany(title: string, companyName: string): boolean {
+  const normalized = companyName.trim().toLowerCase();
+  if (!normalized) return false;
+  return title.trim().toLowerCase().includes(normalized);
+}
+
 /**
  * Discover URLs via SerpAPI (when key is set). Returns ranked, deduped URLs to fetch.
  */
@@ -378,7 +385,9 @@ async function discoverUrlsViaBrowser(
     const prevLength = urlsOrder.length;
 
     const results = await searchWebViaBrowser(page, query);
-    const taken = results.slice(0, TOP_URLS_PER_SEARCH);
+    // Only select the first result whose title contains the company name (avoids random top links from DDG).
+    const firstMatch = results.find((r) => resultTitleMatchesCompany(r.title, companyName));
+    const taken = firstMatch ? [firstMatch] : [];
     for (const r of taken) {
       const key = normalizeUrlForDedupe(r.url);
       if (seen.has(key)) continue;
@@ -955,14 +964,12 @@ Return only the JSON object.`;
 }
 
 const COVERAGE_TARGET_DOSSIER = 0.7;
-/** Trigger targeted browser search for missing fields at or above this (e.g. 69% so we don't stop one step short). */
-const COVERAGE_TARGET_FOR_MISSING_SEARCH = 0.69;
 
 async function runDossierPipeline(
   input: DeepCompanyResearchInput,
 ): Promise<DeepCompanyEnrichmentDraft> {
   const start = Date.now();
-  const hardTimeout = input.hardTimeoutMs ?? 300_000;
+  const hardTimeout = input.hardTimeoutMs ?? 900_000; // 15 min default for full pipeline
   const runFolderName = input.runFolderName!;
   const writer = input.dossierWriter!;
   const runCompanyPageRag = input.runCompanyPageRag!;
@@ -1003,8 +1010,6 @@ async function runDossierPipeline(
   let suggestedUrls: string[] | null = null;
   let orchestratorIterations = 0;
   const maxOrchestratorRounds = 15;
-  /** Avoid re-running targeted search for the same missing set when no new URLs were found. */
-  let lastTargetedMissingKey: string | null = null;
   /** Prevent infinite loops when search extraction returns zero URLs repeatedly. */
   let consecutiveZeroUrlRounds = 0;
 
@@ -1036,8 +1041,12 @@ async function runDossierPipeline(
           : isSearchConfigured()
             ? await searchWeb(q, { num: 5 })
             : [];
-        logIf(input.log, 'info', `Targeted search: "${q}" — ${results.length} URLs extracted`);
-        for (const r of results) {
+        const firstMatch = input.browserPage
+          ? results.find((r) => resultTitleMatchesCompany(r.title, input.companyName))
+          : results[0];
+        const toAdd = firstMatch ? [firstMatch] : [];
+        logIf(input.log, 'info', `Targeted search: "${q}" — ${toAdd.length} URLs extracted`);
+        for (const r of toAdd) {
           const key = normalizeUrlForDedupe(r.url);
           if (!visitedSet.has(key)) urlsToFetch.push({ url: r.url });
         }
@@ -1074,6 +1083,60 @@ async function runDossierPipeline(
       // Only use fallback when we have no browser (e.g. SerpAPI-only) and search returned nothing.
       if (urlsToFetch.length === 0 && primaryHost && !input.browserPage && withinBudget()) {
         for (const url of getFallbackUrls(primaryHost)) urlsToFetch.push({ url });
+      }
+    } else if (memory.urlsToVisit?.length) {
+      // Drain all initial discovered URLs before fallback (may span rounds if we hit timeout).
+      const unvisited = memory.urlsToVisit.filter((u) => !visitedSet.has(normalizeUrlForDedupe(u)));
+      for (const url of unvisited) urlsToFetch.push({ url });
+      if (unvisited.length > 0) {
+        logIf(input.log, 'info', `Continuing initial URLs: ${unvisited.length} remaining to visit`);
+      }
+    } else if (
+      input.browserPage &&
+      memory.urlsToVisit?.length &&
+      memory.coverage.missing.length > 0 &&
+      !(memory.urlsToVisitMissingFields && memory.urlsToVisitMissingFields.length > 0) &&
+      memory.urlsToVisit.every((u) => visitedSet.has(normalizeUrlForDedupe(u)))
+    ) {
+      // Fallback: one browser search per missing field, exactly one URL per search (title must contain company name).
+      logIf(
+        input.log,
+        'info',
+        `Initial URLs done. Running fallback search for missing fields: ${memory.coverage.missing.join(', ')}`,
+      );
+      const fallbackUrls: string[] = [];
+      for (const field of memory.coverage.missing) {
+        if (!withinBudget()) break;
+        const queries = targetedQueriesForMissingFields([field], input.companyName);
+        const query = queries[0] ?? `${input.companyName} ${field}`;
+        logIf(input.log, 'info', `Fallback search: "${query}"`);
+        const results = await searchWebViaBrowser(input.browserPage!, query);
+        const first = results.find((r) => resultTitleMatchesCompany(r.title, input.companyName));
+        if (first) {
+          fallbackUrls.push(first.url);
+          logIf(
+            input.log,
+            'info',
+            `Fallback search: "${query}" — 1 link extracted (saved to urlsToVisitMissingFields)`,
+          );
+        } else {
+          logIf(input.log, 'info', `Fallback search: "${query}"`);
+        }
+        if (memory.coverage.missing.length > 1) {
+          await new Promise((resolve) => setTimeout(resolve, SEARCH_DELAY_MS));
+        }
+      }
+      memory = { ...memory, urlsToVisitMissingFields: fallbackUrls };
+      await writer.writeMemory(runFolderName, memory);
+      for (const url of fallbackUrls) {
+        const key = normalizeUrlForDedupe(url);
+        if (!visitedSet.has(key)) urlsToFetch.push({ url });
+      }
+    } else if (memory.urlsToVisitMissingFields?.length) {
+      // Still have fallback URLs to visit (e.g. from a previous round).
+      for (const url of memory.urlsToVisitMissingFields) {
+        const key = normalizeUrlForDedupe(url);
+        if (!visitedSet.has(key)) urlsToFetch.push({ url });
       }
     }
 
@@ -1132,33 +1195,28 @@ async function runDossierPipeline(
       break;
     }
 
-    if (memory.coverage.ratio >= COVERAGE_TARGET_DOSSIER && memory.coverage.missing.length === 0) {
+    // Only finalize at 70% when we've visited all initial URLs (goal: drain discovered first, then 70%).
+    const allInitialVisited =
+      !memory.urlsToVisit?.length ||
+      memory.urlsToVisit.every((u) => visitedSet.has(normalizeUrlForDedupe(u)));
+    if (
+      memory.coverage.ratio >= COVERAGE_TARGET_DOSSIER &&
+      memory.coverage.missing.length === 0 &&
+      allInitialVisited
+    ) {
       logIf(input.log, 'info', `Coverage >= 70% and no missing fields. Finalizing.`);
       break;
     }
 
+    // After visiting all fallback URLs (urlsToVisitMissingFields), finalize (we're done with the run).
     if (
-      memory.coverage.ratio >= COVERAGE_TARGET_FOR_MISSING_SEARCH &&
-      memory.coverage.missing.length > 0
+      memory.urlsToVisitMissingFields?.length &&
+      memory.urlsToVisitMissingFields.every((u) => visitedSet.has(normalizeUrlForDedupe(u)))
     ) {
-      const missingKey = memory.coverage.missing.slice().sort().join(',');
-      if (missingKey !== lastTargetedMissingKey) {
-        lastTargetedMissingKey = missingKey;
-        logIf(
-          input.log,
-          'info',
-          `Coverage >= 69%; missing: ${memory.coverage.missing.join(', ')}. Running targeted browser search for missing fields...`,
-        );
-        suggestedQueries = targetedQueriesForMissingFields(
-          memory.coverage.missing,
-          input.companyName,
-        );
-        continue;
-      }
       logIf(
         input.log,
         'info',
-        `Targeted search for missing fields already tried; no new progress. Finalizing.`,
+        `All fallback URLs visited. Coverage ${(memory.coverage.ratio * 100).toFixed(0)}%. Finalizing.`,
       );
       break;
     }

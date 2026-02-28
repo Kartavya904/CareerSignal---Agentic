@@ -150,6 +150,7 @@ export interface DossierMemory {
   visitedUrls: string[];
   discoveredUrls?: string[];
   urlsToVisit?: string[];
+  urlsToVisitMissingFields?: string[];
   lastExtractionByUrl?: Record<string, string>;
 }
 

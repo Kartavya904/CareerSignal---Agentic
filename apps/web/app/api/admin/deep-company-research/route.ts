@@ -116,7 +116,7 @@ export async function POST(req: Request) {
             level,
             message,
           }),
-        hardTimeoutMs: 280_000,
+        hardTimeoutMs: 900_000, // 15 min for full pipeline (all discovered + fallback URLs)
         browserPage: page,
         runFolderName,
         dossierWriter,

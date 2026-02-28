@@ -1,0 +1,333 @@
+Application Assisstant Pipeline: (Incomplete Feature, But Current Perfect Example)
+✓
+scraping
+✓
+extracting
+✓
+matching
+✓
+writing
+✓
+done
+Agent Terminal
+Pipeline finished
+Auto-confirm title & company
+
+▶
+[02:19:50]
+[Fetcher]
+Fetching URL via HTTP: https://www.google.com/about/careers/applications/jobs/results/96957711316329158-software-engineer-phd-early-career-embedded-systems-and-firmware-2026-start?category=DATA_CENTER_OPERATIONS&category=DEVELOPER_RELATIONS&category=HARDWARE_ENGINEERING&category=INFORMATION_TECHNOLOGY&category=MANUFACTURING_SUPPLY_CHAIN&category=NETWORK_ENGINEERING&category=PRODUCT_MANAGEMENT&category=PROGRAM_MANAGEMENT&category=SOFTWARE_ENGINEERING&category=TECHNICAL_INFRASTRUCTURE_ENGINEERING&category=TECHNICAL_SOLUTIONS&category=TECHNICAL_WRITING&category=USER_EXPERIENCE&employment_type=FULL_TIME&employment_type=PART_TIME&employment_type=TEMPORARY&jex=ENTRY_LEVEL&location=United%20States
+[02:19:50]
+[Fetcher]
+Fetch completed with status 200. Final URL: https://www.google.com/about/careers/applications/jobs/results/96957711316329158-software-engineer-phd-early-career-embedded-systems-and-firmware-2026-start?category=DATA_CENTER_OPERATIONS&category=DEVELOPER_RELATIONS&category=HARDWARE_ENGINEERING&category=INFORMATION_TECHNOLOGY&category=MANUFACTURING_SUPPLY_CHAIN&category=NETWORK_ENGINEERING&category=PRODUCT_MANAGEMENT&category=PROGRAM_MANAGEMENT&category=SOFTWARE_ENGINEERING&category=TECHNICAL_INFRASTRUCTURE_ENGINEERING&category=TECHNICAL_SOLUTIONS&category=TECHNICAL_WRITING&category=USER_EXPERIENCE&employment_type=FULL_TIME&employment_type=PART_TIME&employment_type=TEMPORARY&jex=ENTRY_LEVEL&location=United%20States
+[02:19:50]
+[Browser]
+Launching visible browser...
+[02:19:50]
+[Browser]
+Navigating to https://www.google.com/about/careers/applications/jobs/results/96957711316329158-software-engineer-phd-early-career-embedded-systems-and-firmware-2026-start?category=DATA_CENTER_OPERATIONS&category=DEVELOPER_RELATIONS&category=HARDWARE_ENGINEERING&category=INFORMATION_TECHNOLOGY&category=MANUFACTURING_SUPPLY_CHAIN&category=NETWORK_ENGINEERING&category=PRODUCT_MANAGEMENT&category=PROGRAM_MANAGEMENT&category=SOFTWARE_ENGINEERING&category=TECHNICAL_INFRASTRUCTURE_ENGINEERING&category=TECHNICAL_SOLUTIONS&category=TECHNICAL_WRITING&category=USER_EXPERIENCE&employment_type=FULL_TIME&employment_type=PART_TIME&employment_type=TEMPORARY&jex=ENTRY_LEVEL&location=United%20States
+[02:19:55]
+[Browser]
+Page loaded: 1216085 chars
+[02:19:55]
+[Classifier]
+Page type: detail (0.95)
+[02:19:55]
+[CleanerVerifier]
+Cleaning confidence: 32% (manual review recommended)
+[02:19:55]
+[Pipeline]
+Run saved to D:\Desktop\All Projects\CareerSignal - Agentic\data_application_assistant\kartavya-singh_2026-02-28-07-19-55
+[02:19:56]
+[Browser]
+Initial screenshot saved.
+[02:19:56]
+[Resolver]
+URL looks like a job/application page — using it directly.
+[02:19:56]
+[Extractor]
+Extracting job details...
+[02:19:56]
+[RAG]
+RAG: Chunking HTML...
+[02:19:56]
+[RAG]
+RAG: 54 chunks saved.
+[02:19:56]
+[RAG]
+RAG: Embedding chunks (local model)...
+[02:19:57]
+[RAG]
+RAG: Scoring chunks with embeddings (pre-filter)...
+[02:19:57]
+[RAG]
+RAG: LLM ranking 40 candidate chunks (FAST model)...
+[02:21:11]
+[RAG]
+RAG: LLM kept 31/40 candidate chunks.
+[02:21:11]
+[RAG]
+RAG: Kept 31/54 chunks.
+[02:21:11]
+[RAG]
+RAG: Focused content saved.
+[02:21:11]
+[RAG]
+Using 31 focused chunks for extraction.
+[02:22:46]
+[Extractor]
+Extracted: "Software Engineer, PhD, Early Career, Embedded Systems and Firmware, 2026 Start" at Google
+[02:22:46]
+[CompanyResolver]
+Resolved company: "Google" (confidence 50%)
+[02:22:46]
+[DeepCompanyDossier]
+Starting deep company enrichment (DB lookup + web research)...
+[02:22:46]
+[DeepCompanyDossier]
+Search: "Google official website"
+[02:22:47]
+[DeepCompanyDossier]
+Search: "Google company about us"
+[02:22:50]
+[DeepCompanyDossier]
+Search: "Google Wikipedia"
+[02:22:53]
+[DeepCompanyDossier]
+Search: "site:reddit.com Google company"
+[02:22:55]
+[DeepCompanyDossier]
+Search: "Google careers jobs"
+[02:22:58]
+[DeepCompanyDossier]
+Search: "Google company size employees headquarters"
+[02:23:03]
+[DeepCompanyDossier]
+Search: "Google funding series stock"
+[02:23:06]
+[DeepCompanyDossier]
+Search: "Google H1B visa sponsorship"
+[02:23:07]
+[DeepCompanyDossier]
+Fetching: https://en.wikipedia.org/wiki/Google
+[02:23:07]
+[DeepCompanyDossier]
+RAG (company): Chunking HTML...
+[02:23:07]
+[DeepCompanyDossier]
+RAG (company): Embedding chunks (local model)...
+[02:23:07]
+[DeepCompanyDossier]
+RAG (company): 2583 chunks saved.
+[02:24:02]
+[DeepCompanyDossier]
+RAG (company): Scoring chunks with company query...
+[02:24:02]
+[DeepCompanyDossier]
+RAG (company): Kept 40/2583 chunks.
+[02:24:02]
+[DeepCompanyDossier]
+RAG (company): Focused content saved.
+[02:25:13]
+[DeepCompanyDossier]
+Memory updated. Coverage 54%
+[02:25:13]
+[DeepCompanyDossier]
+Fetching: https://en.wikipedia.org/wiki/History_of_Google
+[02:25:13]
+[DeepCompanyDossier]
+RAG (company): Chunking HTML...
+[02:25:13]
+[DeepCompanyDossier]
+RAG (company): 753 chunks saved.
+[02:25:13]
+[DeepCompanyDossier]
+RAG (company): Embedding chunks (local model)...
+[02:25:30]
+[DeepCompanyDossier]
+RAG (company): Scoring chunks with company query...
+[02:25:30]
+[DeepCompanyDossier]
+RAG (company): Kept 40/753 chunks.
+[02:25:30]
+[DeepCompanyDossier]
+RAG (company): Focused content saved.
+[02:26:21]
+[DeepCompanyDossier]
+Memory updated. Coverage 62%
+[02:26:21]
+[DeepCompanyDossier]
+Fetching: https://simple.wikipedia.org/wiki/Google
+[02:26:21]
+[DeepCompanyDossier]
+RAG (company): Chunking HTML...
+[02:26:21]
+[DeepCompanyDossier]
+RAG (company): Embedding chunks (local model)...
+[02:26:21]
+[DeepCompanyDossier]
+RAG (company): 175 chunks saved.
+[02:26:26]
+[DeepCompanyDossier]
+RAG (company): Scoring chunks with company query...
+[02:26:26]
+[DeepCompanyDossier]
+RAG (company): Kept 40/175 chunks.
+[02:26:26]
+[DeepCompanyDossier]
+RAG (company): Focused content saved.
+[02:27:19]
+[DeepCompanyDossier]
+Fetching: https://en.wikipedia.org/wiki/Google_Search
+[02:27:19]
+[DeepCompanyDossier]
+Memory updated. Coverage 62%
+[02:27:20]
+[DeepCompanyDossier]
+RAG (company): Chunking HTML...
+[02:27:20]
+[DeepCompanyDossier]
+RAG (company): Embedding chunks (local model)...
+[02:27:20]
+[DeepCompanyDossier]
+RAG (company): 1222 chunks saved.
+[02:27:47]
+[DeepCompanyDossier]
+RAG (company): Scoring chunks with company query...
+[02:27:47]
+[DeepCompanyDossier]
+RAG (company): Kept 40/1222 chunks.
+[02:27:47]
+[DeepCompanyDossier]
+RAG (company): Focused content saved.
+[02:28:12]
+[DeepCompanyDossier]
+Company enrichment upserted (id=195c22da-8bc5-4564-8eac-b8079661fb93, coverage=62%).
+[02:28:12]
+[Match]
+Computing profile-job match...
+[02:29:00]
+[Match]
+Score: 48/100 (D)
+[02:29:00]
+[Resume]
+Generating resume suggestions...
+[02:30:04]
+[Resume]
+3 matches, 3 improvements, 10 keywords
+[02:30:04]
+[CoverLetter]
+Generating cover letters (3 styles)...
+[02:32:10]
+[CoverLetter]
+Cover letters ready (formal, conversational, bold)
+[02:32:10]
+[InterviewPrep]
+Generating interview talking points...
+[02:34:14]
+[InterviewPrep]
+0 talking points ready
+[02:34:14]
+[Pipeline]
+Analysis complete!
+
+
+Deep Research Company Pipeline: (Perfect Example)
+{
+  "id": "b9ac7e18-9621-4128-a889-1566ca65db8a",
+  "name": "Airbnb",
+  "normalizedName": "airbnb",
+  "websiteDomain": "airbnb.com",
+  "hqLocation": "888 Brannan Street, San Francisco",
+  "sizeRange": "5,001-10,000 employees",
+  "fundingStage": "IPO",
+  "enrichmentStatus": "DONE",
+  "lastEnrichedAt": "2026-02-28T07:16:36.563Z",
+  "visitedUrlsCount": 8,
+  "coreFieldCoverage": 1
+}
+Logs (84)
+ [Admin] Starting deep company research for: "Airbnb"
+ [Admin] Using browser-based search (DuckDuckGo); no API key required.
+ [Admin] Launching visible browser...
+ [Admin] Browser ready; running discovery and enrichment...
+ [Admin] Pre-warming GENERAL model (may take 1–2 min on first run)...
+ [Admin] Model ready.
+ Search (browser): "Airbnb official website" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Airbnb company about us" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Airbnb Wikipedia" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "site:reddit.com Airbnb company" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Airbnb careers jobs" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Airbnb company size employees headquarters" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Airbnb funding series stock" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Airbnb H1B visa sponsorship" Extracted 1 links from the results (saved to memory!)
+ Fetching: https://www.airbnb.com/
+ RAG (company): Chunking HTML...
+ RAG (company): 2 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 2/2 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 0%
+ Fetching: https://news.airbnb.com/about-us/
+ RAG (company): Chunking HTML...
+ RAG (company): 48 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 40/48 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 46%
+ Fetching: https://en.wikipedia.org/wiki/Airbnb
+ RAG (company): Chunking HTML...
+ RAG (company): 619 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 40/619 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 62%
+ Fetching: https://www.reddit.com/r/airbnb_hosts/comments/1chc0fi/current_best_property_management_companies/
+ RAG (company): Chunking HTML...
+ RAG (company): 9 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 9/9 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 62%
+ Fetching: https://careers.airbnb.com/
+ RAG (company): Chunking HTML...
+ RAG (company): 15 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 15/15 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 77%
+ Fetching: https://www.linkedin.com/company/airbnb
+ RAG (company): Chunking HTML...
+ RAG (company): 50 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 40/50 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 92%
+ Fetching: https://eqvista.com/airbnb-ipo-all-you-need-to-know/
+ RAG (company): Chunking HTML...
+ RAG (company): 117 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 40/117 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 100%
+ Fetching: https://h1bgrader.com/h1b-sponsors/airbnb-inc-8r0v6v69k1
+ Retry fetch: https://h1bgrader.com/h1b-sponsors/airbnb-inc-8r0v6v69k1
+ Retry with browser: https://h1bgrader.com/h1b-sponsors/airbnb-inc-8r0v6v69k1
+ RAG (company): Chunking HTML...
+ RAG (company): 70 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 40/70 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 100%
+ Coverage >= 70% and no missing fields. Finalizing.
+ [Admin] Agent finished. Visited 8 URLs, core coverage 100%
+ [Admin] Upserting company to database...
+ [Admin] Done. Company id=b9ac7e18-9621-4128-a889-1566ca65db8a, elapsed=417.8s
