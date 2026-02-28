@@ -30,6 +30,7 @@ export async function GET() {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    console.error('[application-assistant/status]', e);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }

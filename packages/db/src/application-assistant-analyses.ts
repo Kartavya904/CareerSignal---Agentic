@@ -4,6 +4,11 @@ import { applicationAssistantAnalyses as table } from './schema';
 
 const STALE_RUN_MS = 5 * 60 * 1000;
 
+export interface StrictFilterRejectRow {
+  dimension: string;
+  reason: string;
+}
+
 export interface AnalysisRow {
   id: string;
   userId: string;
@@ -11,7 +16,9 @@ export interface AnalysisRow {
   jobSummary: Record<string, unknown> | null;
   matchScore: number | null;
   matchGrade: string | null;
+  matchRationale: string | null;
   matchBreakdown: Record<string, unknown> | null;
+  strictFilterRejects: StrictFilterRejectRow[] | null;
   resumeSuggestions: Record<string, unknown> | null;
   coverLetters: Record<string, string> | null;
   contacts: Record<string, unknown> | null;
@@ -37,7 +44,9 @@ export interface InsertAnalysisData {
   jobSummary?: Record<string, unknown> | null;
   matchScore?: number | null;
   matchGrade?: string | null;
+  matchRationale?: string | null;
   matchBreakdown?: Record<string, unknown> | null;
+  strictFilterRejects?: StrictFilterRejectRow[] | null;
   resumeSuggestions?: Record<string, unknown> | null;
   coverLetters?: Record<string, string> | null;
   contacts?: Record<string, unknown> | null;
@@ -63,9 +72,11 @@ export async function insertAnalysis(db: Db, data: InsertAnalysisData): Promise<
       userId: data.userId,
       url: data.url,
       jobSummary: data.jobSummary ?? null,
-      matchScore: data.matchScore ?? null,
+      matchScore: data.matchScore != null ? String(data.matchScore) : null,
       matchGrade: data.matchGrade ?? null,
+      matchRationale: data.matchRationale ?? null,
       matchBreakdown: data.matchBreakdown ?? null,
+      strictFilterRejects: data.strictFilterRejects ?? null,
       resumeSuggestions: data.resumeSuggestions ?? null,
       coverLetters: data.coverLetters ?? null,
       contacts: data.contacts ?? null,
@@ -95,9 +106,12 @@ export async function updateAnalysis(
   if (data.url !== undefined) set.url = data.url;
   if (data.jobSummary !== undefined) set.jobSummary = data.jobSummary;
   if (data.runFolderName !== undefined) set.runFolderName = data.runFolderName;
-  if (data.matchScore !== undefined) set.matchScore = data.matchScore;
+  if (data.matchScore !== undefined)
+    set.matchScore = data.matchScore != null ? String(data.matchScore) : null;
   if (data.matchGrade !== undefined) set.matchGrade = data.matchGrade;
+  if (data.matchRationale !== undefined) set.matchRationale = data.matchRationale;
   if (data.matchBreakdown !== undefined) set.matchBreakdown = data.matchBreakdown;
+  if (data.strictFilterRejects !== undefined) set.strictFilterRejects = data.strictFilterRejects;
   if (data.resumeSuggestions !== undefined) set.resumeSuggestions = data.resumeSuggestions;
   if (data.coverLetters !== undefined) set.coverLetters = data.coverLetters;
   if (data.contacts !== undefined) set.contacts = data.contacts;

@@ -33,12 +33,20 @@ export interface MatchBreakdown {
   education: number;
 }
 
+/** One dimension that failed a strict filter (e.g. location, seniority). */
+export interface StrictFilterReject {
+  dimension: string;
+  reason: string;
+}
+
 export interface MatchResult {
   overallScore: number;
   grade: string;
+  rationale: string;
   breakdown: MatchBreakdown;
   strengths: string[];
   gaps: string[];
+  strictFilterRejects: StrictFilterReject[];
 }
 
 function scoreToGrade(score: number): string {
@@ -110,7 +118,8 @@ JOB POSTING:
 ${jobSummary}
 
 Return a JSON object with:
-- overallScore: 0-100 integer (how well the candidate matches)
+- overallScore: 0-100 number with up to 2 decimals (e.g. 87.5)
+- rationale: 1-2 sentence short explanation of the match (why this score/grade)
 - breakdown: { skills: 0-100, experience: 0-100, location: 0-100, seniority: 0-100, education: 0-100 }
 - strengths: array of 3-5 specific strengths (what makes this candidate a good fit)
 - gaps: array of 3-5 specific gaps (what the candidate is missing or could improve)
@@ -125,27 +134,62 @@ Be honest and specific. A 70+ score means strong match. 50-69 is moderate. Below
       timeout: 180000, // 3 min minimum for application assistant
     });
     const parsed = JSON.parse(response);
-    const score = Math.max(0, Math.min(100, parsed.overallScore ?? 50));
+    const rawScore = typeof parsed.overallScore === 'number' ? parsed.overallScore : 50;
+    const score = Math.round(Math.max(0, Math.min(100, rawScore)) * 100) / 100;
+    const breakdown = {
+      skills: parsed.breakdown?.skills ?? 50,
+      experience: parsed.breakdown?.experience ?? 50,
+      location: parsed.breakdown?.location ?? 50,
+      seniority: parsed.breakdown?.seniority ?? 50,
+      education: parsed.breakdown?.education ?? 50,
+    };
+    const strictFilterRejects = buildStrictFilterRejects(breakdown);
     return {
       overallScore: score,
       grade: scoreToGrade(score),
-      breakdown: {
-        skills: parsed.breakdown?.skills ?? 50,
-        experience: parsed.breakdown?.experience ?? 50,
-        location: parsed.breakdown?.location ?? 50,
-        seniority: parsed.breakdown?.seniority ?? 50,
-        education: parsed.breakdown?.education ?? 50,
-      },
+      rationale:
+        typeof parsed.rationale === 'string' && parsed.rationale.trim()
+          ? parsed.rationale.trim()
+          : '',
+      breakdown,
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 5) : [],
       gaps: Array.isArray(parsed.gaps) ? parsed.gaps.slice(0, 5) : [],
+      strictFilterRejects,
     };
   } catch {
     return {
       overallScore: 0,
       grade: 'N/A',
+      rationale: '',
       breakdown: { skills: 0, experience: 0, location: 0, seniority: 0, education: 0 },
       strengths: [],
       gaps: ['Unable to compute match — LLM unavailable'],
+      strictFilterRejects: [],
     };
   }
+}
+
+const STRICT_THRESHOLD = 40;
+
+function buildStrictFilterRejects(breakdown: MatchBreakdown): StrictFilterReject[] {
+  const rejects: StrictFilterReject[] = [];
+  if (breakdown.location < STRICT_THRESHOLD) {
+    rejects.push({
+      dimension: 'Location',
+      reason: `Location fit score is ${breakdown.location}; job may not match your target locations.`,
+    });
+  }
+  if (breakdown.seniority < STRICT_THRESHOLD) {
+    rejects.push({
+      dimension: 'Seniority',
+      reason: `Seniority fit score is ${breakdown.seniority}; job level may not match your experience.`,
+    });
+  }
+  if (breakdown.skills < STRICT_THRESHOLD) {
+    rejects.push({
+      dimension: 'Skills',
+      reason: `Skills overlap score is ${breakdown.skills}; key job requirements may not align with your profile.`,
+    });
+  }
+  return rejects;
 }

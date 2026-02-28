@@ -231,9 +231,12 @@ export const applicationAssistantAnalyses = pgTable('application_assistant_analy
     .references(() => users.id, { onDelete: 'cascade' }),
   url: text('url').notNull(),
   jobSummary: jsonb('job_summary').$type<Record<string, unknown>>(),
-  matchScore: integer('match_score'),
+  matchScore: decimal('match_score', { precision: 5, scale: 2 }),
   matchGrade: varchar('match_grade', { length: 8 }),
+  matchRationale: text('match_rationale'),
   matchBreakdown: jsonb('match_breakdown').$type<Record<string, unknown>>(),
+  strictFilterRejects:
+    jsonb('strict_filter_rejects').$type<{ dimension: string; reason: string }[]>(),
   resumeSuggestions: jsonb('resume_suggestions').$type<Record<string, unknown>>(),
   coverLetters: jsonb('cover_letters').$type<Record<string, string>>(),
   contacts: jsonb('contacts').$type<Record<string, unknown>>(),
@@ -264,6 +267,21 @@ export const applicationAssistantAnalysisLogs = pgTable('application_assistant_a
   level: varchar('level', { length: 16 }).notNull(),
   message: text('message').notNull(),
   detail: text('detail'),
+});
+
+/** Feedback (thumbs up/down) per analysis and component for learning. */
+export const applicationAssistantFeedback = pgTable('application_assistant_feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  analysisId: uuid('analysis_id')
+    .notNull()
+    .references(() => applicationAssistantAnalyses.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  component: varchar('component', { length: 32 }).notNull(), // 'match' | 'contact' | 'outreach' | 'overall'
+  value: varchar('value', { length: 16 }).notNull(), // 'up' | 'down'
+  comment: text('comment'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // Jobs table for when extraction is implemented

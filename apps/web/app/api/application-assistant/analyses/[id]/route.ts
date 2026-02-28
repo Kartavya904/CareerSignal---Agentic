@@ -12,7 +12,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!analysis || analysis.userId !== userId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    return NextResponse.json(analysis);
+    const matchScore =
+      typeof analysis.matchScore === 'string' ? Number(analysis.matchScore) : analysis.matchScore;
+    return NextResponse.json({ ...analysis, matchScore });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

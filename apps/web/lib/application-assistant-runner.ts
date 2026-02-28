@@ -872,11 +872,15 @@ export async function runApplicationAssistantPipeline(
         await updateAnalysis(db, analysisId, {
           matchScore: matchResult.overallScore,
           matchGrade: matchResult.grade,
+          matchRationale: matchResult.rationale || null,
           matchBreakdown: {
             ...(matchResult.breakdown as unknown as Record<string, unknown>),
             strengths: matchResult.strengths,
             gaps: matchResult.gaps,
           } as Record<string, unknown>,
+          strictFilterRejects: matchResult.strictFilterRejects?.length
+            ? matchResult.strictFilterRejects
+            : null,
         });
         timings.matchMs = Date.now() - tMatchStart;
 
@@ -1009,6 +1013,8 @@ export async function runApplicationAssistantPipeline(
           url: resolvedUrl,
           matchScore: matchResult?.overallScore ?? null,
           matchGrade: matchResult?.grade ?? null,
+          matchRationale: matchResult?.rationale ?? null,
+          strictFilterRejects: matchResult?.strictFilterRejects ?? null,
           hasResumeSuggestions: !!resumeSuggestions,
           hasCoverLetters: !!(profile && profile.name),
           hasInterviewPrep: Array.isArray(

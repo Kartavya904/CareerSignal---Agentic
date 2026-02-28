@@ -7,12 +7,17 @@ export async function GET() {
   try {
     const userId = await getRequiredUserId();
     const db = getDb();
-    const analyses = await listAnalysesByUser(db, userId);
+    const rows = await listAnalysesByUser(db, userId);
+    const analyses = rows.map((a) => ({
+      ...a,
+      matchScore: typeof a.matchScore === 'string' ? Number(a.matchScore) : a.matchScore,
+    }));
     return NextResponse.json({ analyses });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    console.error('[application-assistant/analyses]', e);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }

@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate:pg",
     "db:migrate": "drizzle-kit up:pg",
     "db:push": "drizzle-kit push:pg",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:clean-orphans": "node scripts/delete-orphan-logs.cjs"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

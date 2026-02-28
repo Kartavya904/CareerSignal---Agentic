@@ -58,13 +58,20 @@ interface ChecklistItem {
   done: boolean;
 }
 
+interface StrictFilterReject {
+  dimension: string;
+  reason: string;
+}
+
 interface Analysis {
   id: string;
   url: string;
   jobSummary: JobSummary | null;
   matchScore: number | null;
   matchGrade: string | null;
+  matchRationale: string | null;
   matchBreakdown: MatchBreakdown | null;
+  strictFilterRejects: StrictFilterReject[] | null;
   resumeSuggestions: ResumeSuggestions | null;
   coverLetters: { formal: string; conversational: string; bold: string } | null;
   contacts: {
@@ -253,6 +260,7 @@ export default function ApplicationAssistantPage({
   const [historySortDir, setHistorySortDir] = useState<'asc' | 'desc'>('desc');
   const [historyPage, setHistoryPage] = useState(1);
   const HISTORY_PAGE_SIZE = 5;
+  const [feedbackList, setFeedbackList] = useState<{ component: string; value: string }[]>([]);
 
   // Poll status (from DB: running state and progress persist across refresh/tabs)
   useEffect(() => {
@@ -331,6 +339,19 @@ export default function ApplicationAssistantPage({
       return () => clearInterval(interval);
     }
   }, [status?.analysisId, status?.running, status?.currentStep]);
+
+  // Fetch feedback when we have an analysis to show
+  useEffect(() => {
+    const id = analysis?.id ?? status?.analysisId;
+    if (!id) {
+      setFeedbackList([]);
+      return;
+    }
+    fetch(`/api/application-assistant/feedback?analysisId=${id}`)
+      .then((r) => (r.ok ? r.json() : { feedback: [] }))
+      .then((d) => setFeedbackList(d.feedback ?? []))
+      .catch(() => setFeedbackList([]));
+  }, [analysis?.id, status?.analysisId]);
 
   // Scroll terminal
   useEffect(() => {
@@ -1556,11 +1577,22 @@ export default function ApplicationAssistantPage({
 
       {/* Match score */}
       {analysis?.matchScore != null && analysis.matchBreakdown && (
-        <MatchCard
-          score={analysis.matchScore}
-          grade={analysis.matchGrade || 'N/A'}
-          breakdown={analysis.matchBreakdown as MatchBreakdown}
-        />
+        <>
+          <MatchCard
+            score={analysis.matchScore}
+            grade={analysis.matchGrade || 'N/A'}
+            rationale={analysis.matchRationale ?? undefined}
+            breakdown={analysis.matchBreakdown as MatchBreakdown}
+            analysisId={analysis.id}
+            feedbackValue={
+              (feedbackList?.find((f) => f.component === 'match')?.value as 'up' | 'down') ?? null
+            }
+            onFeedbackSubmitted={setFeedbackList}
+          />
+          {analysis.strictFilterRejects && analysis.strictFilterRejects.length > 0 && (
+            <StrictFilterRejectsSection rejects={analysis.strictFilterRejects} />
+          )}
+        </>
       )}
 
       {/* No profile message */}
@@ -1629,7 +1661,15 @@ export default function ApplicationAssistantPage({
           >
             {analysis.coverLetters[coverTab]}
           </div>
-          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+          <div
+            style={{
+              marginTop: '0.5rem',
+              display: 'flex',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
             <button
               type="button"
               className="btn btn-ghost"
@@ -1638,6 +1678,15 @@ export default function ApplicationAssistantPage({
             >
               {copyFeedback === coverTab ? 'Copied!' : 'Copy to clipboard'}
             </button>
+            <FeedbackThumbs
+              analysisId={analysis.id}
+              component="outreach"
+              feedbackValue={
+                (feedbackList?.find((f) => f.component === 'outreach')?.value as 'up' | 'down') ??
+                null
+              }
+              onFeedbackSubmitted={setFeedbackList}
+            />
           </div>
         </div>
       )}
@@ -1678,6 +1727,17 @@ export default function ApplicationAssistantPage({
                   </div>
                 </div>
               ))}
+            </div>
+            <div style={{ marginTop: '0.75rem' }}>
+              <FeedbackThumbs
+                analysisId={analysis.id}
+                component="contact"
+                feedbackValue={
+                  (feedbackList?.find((f) => f.component === 'contact')?.value as 'up' | 'down') ??
+                  null
+                }
+                onFeedbackSubmitted={setFeedbackList}
+              />
             </div>
           </div>
         )}
@@ -1918,15 +1978,151 @@ function InfoPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function FeedbackThumbs({
+  analysisId,
+  component,
+  feedbackValue,
+  onFeedbackSubmitted,
+}: {
+  analysisId: string;
+  component: 'match' | 'contact' | 'outreach' | 'overall';
+  feedbackValue?: 'up' | 'down' | null;
+  onFeedbackSubmitted?: (list: { component: string; value: string }[]) => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const submit = async (value: 'up' | 'down') => {
+    if (sending) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/application-assistant/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysisId, component, value }),
+      });
+      const data = await res.json();
+      if (res.ok && data.feedback && onFeedbackSubmitted) onFeedbackSubmitted(data.feedback);
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+        fontSize: '0.75rem',
+        color: 'var(--muted-foreground)',
+      }}
+    >
+      Helpful?
+      <button
+        type="button"
+        onClick={() => submit('up')}
+        disabled={sending}
+        title="Yes"
+        style={{
+          padding: '0.2rem 0.4rem',
+          border: `1px solid ${feedbackValue === 'up' ? 'var(--accent)' : 'var(--border)'}`,
+          background: feedbackValue === 'up' ? 'var(--accent-muted)' : 'transparent',
+          color: feedbackValue === 'up' ? 'var(--accent)' : 'var(--muted-foreground)',
+          borderRadius: 6,
+          cursor: sending ? 'not-allowed' : 'pointer',
+          fontSize: '0.875rem',
+        }}
+      >
+        👍
+      </button>
+      <button
+        type="button"
+        onClick={() => submit('down')}
+        disabled={sending}
+        title="No"
+        style={{
+          padding: '0.2rem 0.4rem',
+          border: `1px solid ${feedbackValue === 'down' ? 'var(--warning)' : 'var(--border)'}`,
+          background: feedbackValue === 'down' ? 'rgba(234,179,8,0.15)' : 'transparent',
+          color: feedbackValue === 'down' ? 'var(--warning)' : 'var(--muted-foreground)',
+          borderRadius: 6,
+          cursor: sending ? 'not-allowed' : 'pointer',
+          fontSize: '0.875rem',
+        }}
+      >
+        👎
+      </button>
+    </span>
+  );
+}
+
+function StrictFilterRejectsSection({ rejects }: { rejects: StrictFilterReject[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="card"
+      style={{ marginBottom: '1.5rem', borderLeft: '3px solid var(--warning)' }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: 0,
+          border: 'none',
+          background: 'none',
+          color: 'var(--text)',
+          fontSize: '0.9375rem',
+          fontWeight: 600,
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <span>Rejected by strict filter ({rejects.length})</span>
+        <span style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
+          {open ? '▼' : '▶'}
+        </span>
+      </button>
+      {open && (
+        <ul
+          style={{
+            margin: '0.75rem 0 0 0',
+            paddingLeft: '1.25rem',
+            color: 'var(--text-secondary)',
+            fontSize: '0.875rem',
+            lineHeight: 1.6,
+          }}
+        >
+          {rejects.map((r, i) => (
+            <li key={i}>
+              <strong>{r.dimension}:</strong> {r.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function MatchCard({
   score,
   grade,
+  rationale,
   breakdown,
+  analysisId,
+  feedbackValue,
+  onFeedbackSubmitted,
 }: {
   score: number;
   grade: string;
+  rationale?: string;
   breakdown: MatchBreakdown & { strengths?: string[]; gaps?: string[] };
+  analysisId?: string;
+  feedbackValue?: 'up' | 'down' | null;
+  onFeedbackSubmitted?: (list: { component: string; value: string }[]) => void;
 }) {
+  const [sending, setSending] = useState(false);
   const color = scoreColor(score);
   const strengths = Array.isArray(breakdown.strengths) ? breakdown.strengths : [];
   const categories = [
@@ -1936,6 +2132,25 @@ function MatchCard({
     { label: 'Seniority', value: breakdown.seniority },
     { label: 'Education', value: breakdown.education },
   ];
+  const displayScore = Number.isFinite(score)
+    ? (Math.round(score * 100) / 100).toFixed(2)
+    : String(score);
+
+  const submitFeedback = async (value: 'up' | 'down') => {
+    if (!analysisId || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/application-assistant/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysisId, component: 'match', value }),
+      });
+      const data = await res.json();
+      if (res.ok && data.feedback && onFeedbackSubmitted) onFeedbackSubmitted(data.feedback);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="card" style={{ marginBottom: '1.5rem' }}>
@@ -1957,15 +2172,28 @@ function MatchCard({
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: '1.5rem', fontWeight: 700, color, lineHeight: 1 }}>{score}</span>
+          <span style={{ fontSize: '1.5rem', fontWeight: 700, color, lineHeight: 1 }}>
+            {displayScore}
+          </span>
           <span style={{ fontSize: '0.625rem', color: 'var(--muted-foreground)' }}>/100</span>
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: '1.25rem', fontWeight: 700, color }}>{grade}</div>
           <div style={{ color: 'var(--muted-foreground)', fontSize: '0.8125rem' }}>
             {score >= 75 ? 'Strong match' : score >= 50 ? 'Moderate match' : 'Weak match'}
           </div>
-          {strengths.length > 0 && (
+          {rationale && (
+            <p
+              style={{
+                margin: '0.5rem 0 0 0',
+                fontSize: '0.8125rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {rationale}
+            </p>
+          )}
+          {strengths.length > 0 && !rationale && (
             <div
               style={{
                 marginTop: '0.5rem',
@@ -1975,6 +2203,49 @@ function MatchCard({
             >
               <span style={{ fontWeight: 600 }}>Why you’re a strong fit:</span>{' '}
               <span>{strengths[0]}</span>
+            </div>
+          )}
+          {analysisId && (
+            <div
+              style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', alignItems: 'center' }}
+            >
+              <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+                Help us improve:
+              </span>
+              <button
+                type="button"
+                onClick={() => submitFeedback('up')}
+                disabled={sending}
+                title="Good match"
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  border: `1px solid ${feedbackValue === 'up' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: feedbackValue === 'up' ? 'var(--accent-muted)' : 'transparent',
+                  color: feedbackValue === 'up' ? 'var(--accent)' : 'var(--muted-foreground)',
+                  borderRadius: 6,
+                  cursor: sending ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                👍
+              </button>
+              <button
+                type="button"
+                onClick={() => submitFeedback('down')}
+                disabled={sending}
+                title="Poor match"
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  border: `1px solid ${feedbackValue === 'down' ? 'var(--warning)' : 'var(--border)'}`,
+                  background: feedbackValue === 'down' ? 'rgba(234,179,8,0.15)' : 'transparent',
+                  color: feedbackValue === 'down' ? 'var(--warning)' : 'var(--muted-foreground)',
+                  borderRadius: 6,
+                  cursor: sending ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                👎
+              </button>
             </div>
           )}
         </div>
