@@ -178,3 +178,68 @@ export async function deleteRunFolder(folderName: string): Promise<void> {
   if (!existsSync(dir)) return;
   await rm(dir, { recursive: true });
 }
+
+/** Step entry in orchestrator memory (for retry/context). */
+export interface OrchestratorStepEntry {
+  step: string;
+  completedAt?: string;
+  model?: string;
+  outputSummary?: string;
+  error?: string;
+  payload?: Record<string, unknown>;
+}
+
+/** Running memory for a single Application Assistant run (like Company Dossier memory.json). */
+export interface OrchestratorMemory {
+  updatedAt: string;
+  runFolderName: string;
+  currentStep?: string;
+  steps: Record<string, OrchestratorStepEntry>;
+  /** Last error for retry context */
+  lastError?: string;
+}
+
+const MEMORY_FILENAME = 'memory.json';
+
+/** Read orchestrator memory from run folder. Returns default if missing. */
+export async function readOrchestratorMemory(folderName: string): Promise<OrchestratorMemory> {
+  const dir = getRunFolderPath(folderName);
+  const filePath = path.join(dir, MEMORY_FILENAME);
+  if (!existsSync(filePath)) {
+    return {
+      updatedAt: new Date().toISOString(),
+      runFolderName: folderName,
+      steps: {},
+    };
+  }
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    return JSON.parse(raw) as OrchestratorMemory;
+  } catch {
+    return { updatedAt: new Date().toISOString(), runFolderName: folderName, steps: {} };
+  }
+}
+
+/** Update orchestrator memory (merge steps, set currentStep/lastError). Persists to disk. */
+export async function updateOrchestratorMemory(
+  folderName: string,
+  partial: Partial<Pick<OrchestratorMemory, 'currentStep' | 'lastError'>> & {
+    step?: OrchestratorStepEntry;
+  },
+): Promise<void> {
+  const dir = getRunFolderPath(folderName);
+  if (!existsSync(ROOT)) await mkdir(ROOT, { recursive: true });
+  if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+
+  const current = await readOrchestratorMemory(folderName);
+  const updated: OrchestratorMemory = {
+    ...current,
+    updatedAt: new Date().toISOString(),
+    ...(partial.currentStep !== undefined && { currentStep: partial.currentStep }),
+    ...(partial.lastError !== undefined && { lastError: partial.lastError }),
+  };
+  if (partial.step) {
+    updated.steps = { ...current.steps, [partial.step.step]: partial.step };
+  }
+  await writeFile(path.join(dir, MEMORY_FILENAME), JSON.stringify(updated, null, 2), 'utf-8');
+}

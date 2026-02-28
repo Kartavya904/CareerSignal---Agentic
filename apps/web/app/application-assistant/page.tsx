@@ -85,6 +85,10 @@ interface Analysis {
   interviewPrepBullets: string[] | null;
   companyResearch: string | null;
   companySnapshot?: Record<string, unknown> | null;
+  matchEvidence?: Record<string, unknown> | null;
+  resumeEvidence?: Record<string, unknown> | null;
+  coverLettersEvidence?: Record<string, unknown> | null;
+  contactsEvidence?: Record<string, unknown> | null;
   createdAt: string;
   runStatus?: string | null;
   runUpdatedAt?: string | null;
@@ -1583,6 +1587,7 @@ export default function ApplicationAssistantPage({
             grade={analysis.matchGrade || 'N/A'}
             rationale={analysis.matchRationale ?? undefined}
             breakdown={analysis.matchBreakdown as MatchBreakdown}
+            matchEvidence={analysis.matchEvidence ?? undefined}
             analysisId={analysis.id}
             feedbackValue={
               (feedbackList?.find((f) => f.component === 'match')?.value as 'up' | 'down') ?? null
@@ -1613,15 +1618,29 @@ export default function ApplicationAssistantPage({
         <ResumeSuggestionsCard
           suggestions={analysis.resumeSuggestions as ResumeSuggestions}
           keywords={analysis.keywordsToAdd}
+          resumeEvidence={analysis.resumeEvidence ?? undefined}
         />
       )}
 
       {/* Cover letters */}
       {analysis?.coverLetters && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-            Cover Letters
-          </h2>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <h2 className="section-title" style={{ margin: 0 }}>
+              Cover Letters
+            </h2>
+            <EvidenceInfoIcon
+              evidence={analysis.coverLettersEvidence ?? undefined}
+              cardTitle="Cover Letters"
+            />
+          </div>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
             {(['formal', 'conversational', 'bold'] as const).map((style) => (
               <button
@@ -1698,9 +1717,22 @@ export default function ApplicationAssistantPage({
           (analysis.contacts.linkedIn && analysis.contacts.linkedIn.length > 0) ||
           (analysis.contacts.others && analysis.contacts.others.length > 0)) && (
           <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-              Contacts
-            </h2>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Contacts
+              </h2>
+              <EvidenceInfoIcon
+                evidence={analysis.contactsEvidence ?? undefined}
+                cardTitle="Contacts"
+              />
+            </div>
             <div
               style={{
                 display: 'grid',
@@ -1863,6 +1895,33 @@ export default function ApplicationAssistantPage({
           )}
         </div>
       )}
+
+      {/* Phase 16: Outreach section (placeholder until OutReachPipeline is built) */}
+      {analysis && (analysis.runStatus === 'done' || status?.currentStep === 'done') && (
+        <>
+          <div
+            className="card"
+            style={{
+              marginBottom: '1rem',
+              borderLeft: '4px solid var(--accent)',
+              background: 'var(--surface-elevated)',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              <strong>OutReachPipeline</strong> has started. Yet to build.
+            </p>
+          </div>
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
+              Outreach
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
+              Multi-channel outreach (LinkedIn, email) will appear here once the OutReachPipeline is
+              built.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1975,6 +2034,84 @@ function InfoPill({ label, value }: { label: string; value: string }) {
       <span style={{ color: 'var(--muted-foreground)' }}>{label}:</span>
       <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{value}</span>
     </div>
+  );
+}
+
+/** Renders an info icon that shows Evidence modal on hover. Only renders if evidence is present. */
+function EvidenceInfoIcon({
+  evidence,
+  cardTitle,
+}: {
+  evidence: Record<string, unknown> | null | undefined;
+  cardTitle: string;
+}) {
+  const [hover, setHover] = useState(false);
+  if (!evidence || Object.keys(evidence).length === 0) return null;
+  const lines: string[] = [];
+  if (typeof evidence.model === 'string') lines.push(`Model: ${evidence.model}`);
+  if (typeof evidence.summary === 'string') lines.push(evidence.summary);
+  Object.entries(evidence).forEach(([k, v]) => {
+    if (k === 'model' || k === 'summary') return;
+    if (Array.isArray(v)) lines.push(`${k}: ${v.length} item(s)`);
+    else if (v !== null && typeof v === 'object')
+      lines.push(`${k}: ${JSON.stringify(v).slice(0, 80)}...`);
+    else if (v != null) lines.push(`${k}: ${String(v)}`);
+  });
+  return (
+    <span
+      style={{ position: 'relative', flexShrink: 0 }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          border: '1px solid var(--border)',
+          background: 'var(--surface-elevated)',
+          color: 'var(--muted-foreground)',
+          fontSize: '0.75rem',
+          fontWeight: 700,
+          cursor: 'help',
+        }}
+        title="Evidence"
+      >
+        i
+      </span>
+      {hover && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            marginTop: 4,
+            padding: '0.75rem 1rem',
+            background: 'var(--surface-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            minWidth: 220,
+            maxWidth: 360,
+            maxHeight: 320,
+            overflow: 'auto',
+            fontSize: '0.8125rem',
+            lineHeight: 1.5,
+            color: 'var(--text-secondary)',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: '0.35rem', color: 'var(--text)' }}>
+            Evidence — {cardTitle}
+          </div>
+          {lines.join('\n')}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -2110,6 +2247,7 @@ function MatchCard({
   grade,
   rationale,
   breakdown,
+  matchEvidence,
   analysisId,
   feedbackValue,
   onFeedbackSubmitted,
@@ -2118,6 +2256,7 @@ function MatchCard({
   grade: string;
   rationale?: string;
   breakdown: MatchBreakdown & { strengths?: string[]; gaps?: string[] };
+  matchEvidence?: Record<string, unknown> | null;
   analysisId?: string;
   feedbackValue?: 'up' | 'down' | null;
   onFeedbackSubmitted?: (list: { component: string; value: string }[]) => void;
@@ -2154,9 +2293,19 @@ function MatchCard({
 
   return (
     <div className="card" style={{ marginBottom: '1.5rem' }}>
-      <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-        Profile Match
-      </h2>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <h2 className="section-title" style={{ margin: 0 }}>
+          Profile Match
+        </h2>
+        <EvidenceInfoIcon evidence={matchEvidence} cardTitle="Profile Match" />
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '1rem' }}>
         {/* Score circle */}
         <div
@@ -2305,15 +2454,27 @@ function MatchCard({
 function ResumeSuggestionsCard({
   suggestions,
   keywords,
+  resumeEvidence,
 }: {
   suggestions: ResumeSuggestions;
   keywords: string[] | null;
+  resumeEvidence?: Record<string, unknown> | null;
 }) {
   return (
     <div className="card" style={{ marginBottom: '1.5rem' }}>
-      <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-        Resume Overview
-      </h2>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <h2 className="section-title" style={{ margin: 0 }}>
+          Resume Overview
+        </h2>
+        <EvidenceInfoIcon evidence={resumeEvidence} cardTitle="Resume Overview" />
+      </div>
 
       {suggestions.matches.length > 0 && (
         <div style={{ marginBottom: '1rem' }}>

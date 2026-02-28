@@ -45,6 +45,7 @@ import {
   saveApplicationAssistantRun,
   saveHtmlVariant,
   saveJsonArtifact,
+  updateOrchestratorMemory,
 } from '@/lib/application-assistant-disk';
 import { runRagPipeline, runCompanyPageRag } from '@/lib/application-assistant-rag';
 import path from 'path';
@@ -402,6 +403,7 @@ export async function runApplicationAssistantPipeline(
             { level: 'warn' },
           );
         });
+      await updateOrchestratorMemory(runFolderName, { currentStep: 'scraping' });
       // Initial screenshot
       try {
         const screenshotPath = path.join(getRunFolderPath(runFolderName), 'screenshot-initial.png');
@@ -655,6 +657,16 @@ export async function runApplicationAssistantPipeline(
         `Extracted: "${jobDetail.title}" at ${jobDetail.company}`,
         { level: 'success' },
       );
+      await updateOrchestratorMemory(runFolderName, {
+        currentStep: 'extracting',
+        step: {
+          step: 'extract',
+          completedAt: new Date().toISOString(),
+          model: 'GENERAL',
+          outputSummary: `"${jobDetail.title}" at ${jobDetail.company}`,
+          payload: { jobTitle: jobDetail.title, company: jobDetail.company },
+        },
+      });
 
       throwIfAborted(effectiveSignal);
       // 7b. Company identity resolver (multi-signal, DB-aware at app layer)
@@ -735,17 +747,32 @@ export async function runApplicationAssistantPipeline(
             `Running deep company dossier (${DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS / 60_000} min timeout; total pipeline deadline extended).`,
             { level: 'info' },
           );
-          const deepResult = await deepResearchCompany({
-            companyName: companyResolution.canonicalName,
-            seedUrl: resolvedUrl,
-            jobDescriptionText: jobDetail.description,
-            log: ({ level, message }) =>
-              dbLog(db, analysisId, 'DeepCompanyDossier', message, { level }),
-            hardTimeoutMs: DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS, // 10 min when run inside assistant
-            runFolderName: getDossierRunFolderName(companyResolution.canonicalName),
-            dossierWriter: createDossierDiskWriter(),
-            runCompanyPageRag,
-          });
+          // Match admin exactly: dedicated page for DuckDuckGo discovery, no seedUrl/jobDescriptionText
+          // so URL discovery and filtering are identical to admin (company-name-only search).
+          const dossierPage = await browser.newPage();
+          try {
+            await dossierPage.setViewportSize({ width: 1280, height: 720 });
+            await dossierPage.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+          } catch {
+            // ignore
+          }
+          let deepResult: Awaited<ReturnType<typeof deepResearchCompany>>;
+          try {
+            deepResult = await deepResearchCompany({
+              companyName: companyResolution.canonicalName,
+              seedUrl: undefined,
+              jobDescriptionText: undefined,
+              log: ({ level, message }) =>
+                dbLog(db, analysisId, 'DeepCompanyDossier', message, { level }),
+              hardTimeoutMs: DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS, // 10 min when run inside assistant
+              browserPage: dossierPage,
+              runFolderName: getDossierRunFolderName(companyResolution.canonicalName),
+              dossierWriter: createDossierDiskWriter(),
+              runCompanyPageRag,
+            });
+          } finally {
+            await dossierPage.close().catch(() => {});
+          }
 
           const upserted = await upsertCompanyEnrichment(db, {
             name: deepResult.companyName,
@@ -869,6 +896,15 @@ export async function runApplicationAssistantPipeline(
           { level: 'success' },
         );
 
+        const matchEvidence = {
+          model: 'GENERAL',
+          summary:
+            matchResult.rationale || `Score ${matchResult.overallScore}/100 (${matchResult.grade})`,
+          breakdown: matchResult.breakdown,
+          strengths: matchResult.strengths,
+          gaps: matchResult.gaps,
+          strictFilterRejects: matchResult.strictFilterRejects,
+        };
         await updateAnalysis(db, analysisId, {
           matchScore: matchResult.overallScore,
           matchGrade: matchResult.grade,
@@ -881,6 +917,17 @@ export async function runApplicationAssistantPipeline(
           strictFilterRejects: matchResult.strictFilterRejects?.length
             ? matchResult.strictFilterRejects
             : null,
+          matchEvidence,
+        });
+        await updateOrchestratorMemory(runFolderName, {
+          currentStep: 'matching',
+          step: {
+            step: 'match',
+            completedAt: new Date().toISOString(),
+            model: 'GENERAL',
+            outputSummary: `Score ${matchResult.overallScore}/100 (${matchResult.grade})`,
+            payload: matchEvidence,
+          },
         });
         timings.matchMs = Date.now() - tMatchStart;
 
@@ -901,9 +948,27 @@ export async function runApplicationAssistantPipeline(
           { level: 'success' },
         );
 
+        const resumeEvidence = {
+          model: 'GENERAL',
+          summary: `${resumeSuggestions.matches.length} matches, ${resumeSuggestions.improvements.length} improvements, ${resumeSuggestions.keywordsToAdd.length} keywords`,
+          matchCount: resumeSuggestions.matches.length,
+          improvementCount: resumeSuggestions.improvements.length,
+          keywordCount: resumeSuggestions.keywordsToAdd.length,
+        };
         await updateAnalysis(db, analysisId, {
           resumeSuggestions: resumeSuggestions as unknown as Record<string, unknown>,
           keywordsToAdd: resumeSuggestions.keywordsToAdd,
+          resumeEvidence,
+        });
+        await updateOrchestratorMemory(runFolderName, {
+          currentStep: 'writing',
+          step: {
+            step: 'resume',
+            completedAt: new Date().toISOString(),
+            model: 'GENERAL',
+            outputSummary: resumeEvidence.summary,
+            payload: resumeEvidence,
+          },
         });
 
         throwIfAborted(effectiveSignal);
@@ -924,8 +989,23 @@ export async function runApplicationAssistantPipeline(
           },
         );
 
+        const coverLettersEvidence = {
+          model: 'GENERAL',
+          summary: 'Cover letters ready (formal, conversational, bold)',
+          styles: ['formal', 'conversational', 'bold'],
+        };
         await updateAnalysis(db, analysisId, {
           coverLetters: coverLetters as unknown as Record<string, string>,
+          coverLettersEvidence,
+        });
+        await updateOrchestratorMemory(runFolderName, {
+          step: {
+            step: 'coverLetters',
+            completedAt: new Date().toISOString(),
+            model: 'GENERAL',
+            outputSummary: coverLettersEvidence.summary,
+            payload: coverLettersEvidence,
+          },
         });
 
         throwIfAborted(effectiveSignal);
@@ -983,10 +1063,26 @@ export async function runApplicationAssistantPipeline(
           { item: 'Prepare for interview questions', done: true },
         ];
 
+        const contactsEvidence = {
+          model: 'N/A',
+          summary: 'Contact pipeline not yet run (Phase 16 placeholder).',
+          emails: 0,
+          linkedIn: 0,
+          others: 0,
+        };
         await updateAnalysis(db, analysisId, {
           salaryLevelCheck: salaryCheck,
           applicationChecklist: checklist as unknown as Record<string, unknown>[],
           contacts: { emails: [], linkedIn: [], others: [] },
+          contactsEvidence,
+        });
+        await updateOrchestratorMemory(runFolderName, {
+          step: {
+            step: 'contacts',
+            completedAt: new Date().toISOString(),
+            outputSummary: contactsEvidence.summary,
+            payload: contactsEvidence,
+          },
         });
       } else {
         dbLog(
@@ -1002,6 +1098,24 @@ export async function runApplicationAssistantPipeline(
           contacts: { emails: [], linkedIn: [], others: [] },
         });
       }
+
+      // Phase 16: Outreach pipeline placeholder — will be built next
+      await dbLog(
+        db,
+        analysisId,
+        'OutReachPipeline',
+        'OutReachPipeline has started. Yet to build.',
+        { level: 'info' },
+      );
+      await updateOrchestratorMemory(runFolderName, {
+        currentStep: 'outreach_placeholder',
+        step: {
+          step: 'outreach_placeholder',
+          completedAt: new Date().toISOString(),
+          outputSummary: 'Yet to build',
+          payload: { status: 'placeholder' },
+        },
+      });
 
       await transitionAssistantStep(db, analysisId, 'done', { runStatusOverride: 'done' });
       await dbLog(db, analysisId, 'Pipeline', 'Analysis complete!', { level: 'success' });

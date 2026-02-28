@@ -19,6 +19,10 @@ export interface AnalysisRow {
   matchRationale: string | null;
   matchBreakdown: Record<string, unknown> | null;
   strictFilterRejects: StrictFilterRejectRow[] | null;
+  matchEvidence: Record<string, unknown> | null;
+  resumeEvidence: Record<string, unknown> | null;
+  coverLettersEvidence: Record<string, unknown> | null;
+  contactsEvidence: Record<string, unknown> | null;
   resumeSuggestions: Record<string, unknown> | null;
   coverLetters: Record<string, string> | null;
   contacts: Record<string, unknown> | null;
@@ -47,6 +51,10 @@ export interface InsertAnalysisData {
   matchRationale?: string | null;
   matchBreakdown?: Record<string, unknown> | null;
   strictFilterRejects?: StrictFilterRejectRow[] | null;
+  matchEvidence?: Record<string, unknown> | null;
+  resumeEvidence?: Record<string, unknown> | null;
+  coverLettersEvidence?: Record<string, unknown> | null;
+  contactsEvidence?: Record<string, unknown> | null;
   resumeSuggestions?: Record<string, unknown> | null;
   coverLetters?: Record<string, string> | null;
   contacts?: Record<string, unknown> | null;
@@ -77,6 +85,10 @@ export async function insertAnalysis(db: Db, data: InsertAnalysisData): Promise<
       matchRationale: data.matchRationale ?? null,
       matchBreakdown: data.matchBreakdown ?? null,
       strictFilterRejects: data.strictFilterRejects ?? null,
+      matchEvidence: data.matchEvidence ?? null,
+      resumeEvidence: data.resumeEvidence ?? null,
+      coverLettersEvidence: data.coverLettersEvidence ?? null,
+      contactsEvidence: data.contactsEvidence ?? null,
       resumeSuggestions: data.resumeSuggestions ?? null,
       coverLetters: data.coverLetters ?? null,
       contacts: data.contacts ?? null,
@@ -112,6 +124,10 @@ export async function updateAnalysis(
   if (data.matchRationale !== undefined) set.matchRationale = data.matchRationale;
   if (data.matchBreakdown !== undefined) set.matchBreakdown = data.matchBreakdown;
   if (data.strictFilterRejects !== undefined) set.strictFilterRejects = data.strictFilterRejects;
+  if (data.matchEvidence !== undefined) set.matchEvidence = data.matchEvidence;
+  if (data.resumeEvidence !== undefined) set.resumeEvidence = data.resumeEvidence;
+  if (data.coverLettersEvidence !== undefined) set.coverLettersEvidence = data.coverLettersEvidence;
+  if (data.contactsEvidence !== undefined) set.contactsEvidence = data.contactsEvidence;
   if (data.resumeSuggestions !== undefined) set.resumeSuggestions = data.resumeSuggestions;
   if (data.coverLetters !== undefined) set.coverLetters = data.coverLetters;
   if (data.contacts !== undefined) set.contacts = data.contacts;

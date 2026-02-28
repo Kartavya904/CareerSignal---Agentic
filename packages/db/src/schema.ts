@@ -237,6 +237,10 @@ export const applicationAssistantAnalyses = pgTable('application_assistant_analy
   matchBreakdown: jsonb('match_breakdown').$type<Record<string, unknown>>(),
   strictFilterRejects:
     jsonb('strict_filter_rejects').$type<{ dimension: string; reason: string }[]>(),
+  matchEvidence: jsonb('match_evidence').$type<Record<string, unknown>>(),
+  resumeEvidence: jsonb('resume_evidence').$type<Record<string, unknown>>(),
+  coverLettersEvidence: jsonb('cover_letters_evidence').$type<Record<string, unknown>>(),
+  contactsEvidence: jsonb('contacts_evidence').$type<Record<string, unknown>>(),
   resumeSuggestions: jsonb('resume_suggestions').$type<Record<string, unknown>>(),
   coverLetters: jsonb('cover_letters').$type<Record<string, string>>(),
   contacts: jsonb('contacts').$type<Record<string, unknown>>(),

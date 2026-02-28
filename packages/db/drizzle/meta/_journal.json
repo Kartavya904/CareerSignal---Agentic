@@ -50,6 +50,13 @@
       "when": 1772300000000,
       "tag": "0010_phase13_14_analyses_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1772350000000,
+      "tag": "0011_card_evidence_columns",
+      "breakpoints": true
     }
   ]
 }
