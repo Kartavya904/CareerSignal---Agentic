@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredUserId } from '@/lib/auth';
 import { getScraperStatus } from '@/lib/scraper-state';
 import { getDb, insertAnalysis, getRunningAnalysisForUser } from '@careersignal/db';
+import { setAssistantAbortController } from '@/lib/application-assistant-state';
 import { runApplicationAssistantPipeline } from '@/lib/application-assistant-runner';
 
 export async function POST(req: Request) {
@@ -35,7 +36,9 @@ export async function POST(req: Request) {
     const analysis = await insertAnalysis(db, { userId, url });
     const sessionId = `aa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    runApplicationAssistantPipeline(userId, url, analysis.id).catch(() => {});
+    const controller = new AbortController();
+    setAssistantAbortController(analysis.id, controller);
+    runApplicationAssistantPipeline(userId, url, analysis.id, controller.signal).catch(() => {});
 
     return NextResponse.json({
       ok: true,

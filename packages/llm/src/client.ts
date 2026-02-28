@@ -177,7 +177,7 @@ export class OllamaClient {
     options?: { model?: string; timeout?: number },
   ): Promise<number[][]> {
     const model = options?.model ?? process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text';
-    const timeout = options?.timeout ?? 60000;
+    const timeout = options?.timeout ?? 180000; // 3 min default for application assistant
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 

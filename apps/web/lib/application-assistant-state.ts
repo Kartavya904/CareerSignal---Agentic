@@ -1,7 +1,13 @@
 /**
  * In-memory state for the Application Assistant single-URL analysis flow.
  * Tracks running state, step progress, and page-scoped logs (separate from Admin).
+ *
+ * Stop button: we store an AbortController per analysisId so the stop route can
+ * call abort() and the pipeline runner can react immediately (check signal at
+ * step boundaries and pass to fetch).
  */
+
+const abortControllersByAnalysisId = new Map<string, AbortController>();
 
 export type AssistantStep =
   | 'idle'
@@ -59,6 +65,21 @@ export function clearAssistantRunning(): void {
   sessionId = null;
   waitingForLogin = false;
   waitingForCaptcha = false;
+}
+
+/** Register the AbortController for a run so stop can abort it. */
+export function setAssistantAbortController(analysisId: string, controller: AbortController): void {
+  abortControllersByAnalysisId.set(analysisId, controller);
+}
+
+/** Get the controller for a run (used by stop route). */
+export function getAssistantAbortController(analysisId: string): AbortController | undefined {
+  return abortControllersByAnalysisId.get(analysisId);
+}
+
+/** Remove controller after run ends or after stop. */
+export function clearAssistantAbortController(analysisId: string): void {
+  abortControllersByAnalysisId.delete(analysisId);
 }
 
 export function setAssistantStep(step: AssistantStep): void {

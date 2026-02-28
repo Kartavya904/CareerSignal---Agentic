@@ -35,7 +35,7 @@ Return a JSON array of 3-5 strings.`;
       format: 'json',
       temperature: 0.3,
       maxTokens: 1024,
-      timeout: 90000,
+      timeout: 180000, // 3 min minimum for application assistant
     });
     const parsed = JSON.parse(response);
     return Array.isArray(parsed) ? parsed.slice(0, 5) : [];

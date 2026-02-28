@@ -50,7 +50,7 @@ Be specific and actionable. Reference actual terms from both the resume and job 
       format: 'json',
       temperature: 0.2,
       maxTokens: 2048,
-      timeout: 120000,
+      timeout: 180000, // 3 min minimum for application assistant
     });
     const parsed = JSON.parse(response);
     return {

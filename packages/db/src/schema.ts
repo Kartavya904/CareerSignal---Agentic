@@ -242,6 +242,7 @@ export const applicationAssistantAnalyses = pgTable('application_assistant_analy
   applicationChecklist: jsonb('application_checklist').$type<Record<string, unknown>[]>(),
   interviewPrepBullets: jsonb('interview_prep_bullets').$type<string[]>(),
   companyResearch: text('company_research'),
+  companySnapshot: jsonb('company_snapshot').$type<Record<string, unknown>>(),
   runFolderName: varchar('run_folder_name', { length: 256 }),
   runStatus: varchar('run_status', { length: 16 }),
   currentStep: varchar('current_step', { length: 32 }),
@@ -354,6 +355,10 @@ export const jobRemoteTypeEnum = pgEnum('job_remote_type', [
 export const jobStatusEnum = pgEnum('job_status', ['OPEN', 'CLOSED', 'UNKNOWN']);
 
 /** Single table for companies, sources, connector templates, and resources. Type discriminator + optional parent_company_id. */
+export type EnrichmentStatus = (typeof enrichmentStatusEnum.enumValues)[number];
+
+export type CompanyRow = typeof companies.$inferSelect;
+
 export const companies = pgTable(
   'companies',
   {

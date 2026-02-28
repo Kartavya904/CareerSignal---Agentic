@@ -62,6 +62,10 @@ export default async function DashboardPage() {
     },
   ];
 
+  const card0 = cards[0]!;
+  const card1 = cards[1]!;
+  const card2 = cards[2]!;
+
   const accountComplete = [hasProfile, hasPreferences].filter(Boolean).length;
 
   return (
@@ -172,7 +176,7 @@ export default async function DashboardPage() {
           }}
         >
           <Link
-            href={cards[0].href}
+            href={card0.href}
             className="card"
             style={{
               textDecoration: 'none',
@@ -191,18 +195,18 @@ export default async function DashboardPage() {
               }}
             >
               <span style={{ fontWeight: 600, fontSize: '1.0625rem', color: 'var(--text)' }}>
-                {cards[0].title}
+                {card0.title}
               </span>
               <span
                 className="badge"
                 style={{
-                  background: cards[0].done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
-                  color: cards[0].done ? 'var(--accent)' : 'var(--muted-foreground)',
+                  background: card0.done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                  color: card0.done ? 'var(--accent)' : 'var(--muted-foreground)',
                   fontSize: '0.75rem',
                   padding: '0.25rem 0.5rem',
                 }}
               >
-                {cards[0].stat}
+                {card0.stat}
               </span>
             </div>
             <p
@@ -213,7 +217,7 @@ export default async function DashboardPage() {
                 lineHeight: 1.5,
               }}
             >
-              {cards[0].description}
+              {card0.description}
             </p>
             <div
               style={{
@@ -227,7 +231,7 @@ export default async function DashboardPage() {
               <div
                 style={{
                   height: '100%',
-                  width: cards[0].done ? '100%' : '0%',
+                  width: card0.done ? '100%' : '0%',
                   background: 'var(--accent)',
                   borderRadius: 2,
                   transition: 'width 0.25s ease',
@@ -237,7 +241,7 @@ export default async function DashboardPage() {
           </Link>
 
           <Link
-            href={cards[1].href}
+            href={card1.href}
             className="card"
             style={{
               textDecoration: 'none',
@@ -256,18 +260,18 @@ export default async function DashboardPage() {
               }}
             >
               <span style={{ fontWeight: 600, fontSize: '1.0625rem', color: 'var(--text)' }}>
-                {cards[1].title}
+                {card1.title}
               </span>
               <span
                 className="badge"
                 style={{
-                  background: cards[1].done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
-                  color: cards[1].done ? 'var(--accent)' : 'var(--muted-foreground)',
+                  background: card1.done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                  color: card1.done ? 'var(--accent)' : 'var(--muted-foreground)',
                   fontSize: '0.75rem',
                   padding: '0.25rem 0.5rem',
                 }}
               >
-                {cards[1].stat}
+                {card1.stat}
               </span>
             </div>
             <p
@@ -278,7 +282,7 @@ export default async function DashboardPage() {
                 lineHeight: 1.5,
               }}
             >
-              {cards[1].description}
+              {card1.description}
             </p>
             <div
               style={{
@@ -292,7 +296,7 @@ export default async function DashboardPage() {
               <div
                 style={{
                   height: '100%',
-                  width: cards[1].done ? '100%' : '0%',
+                  width: card1.done ? '100%' : '0%',
                   background: 'var(--accent)',
                   borderRadius: 2,
                   transition: 'width 0.25s ease',
@@ -303,7 +307,7 @@ export default async function DashboardPage() {
         </div>
 
         <Link
-          href={cards[2].href}
+          href={card2.href}
           className="card"
           style={{
             textDecoration: 'none',
@@ -322,18 +326,18 @@ export default async function DashboardPage() {
             }}
           >
             <span style={{ fontWeight: 600, fontSize: '1.0625rem', color: 'var(--text)' }}>
-              {cards[2].title}
+              {card2.title}
             </span>
             <span
               className="badge"
               style={{
-                background: cards[2].done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
-                color: cards[2].done ? 'var(--accent)' : 'var(--muted-foreground)',
+                background: card2.done ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                color: card2.done ? 'var(--accent)' : 'var(--muted-foreground)',
                 fontSize: '0.75rem',
                 padding: '0.25rem 0.5rem',
               }}
             >
-              {cards[2].stat}
+              {card2.stat}
             </span>
           </div>
           <p
@@ -344,7 +348,7 @@ export default async function DashboardPage() {
               lineHeight: 1.5,
             }}
           >
-            {cards[2].description}
+            {card2.description}
           </p>
           <div
             style={{
@@ -358,7 +362,7 @@ export default async function DashboardPage() {
             <div
               style={{
                 height: '100%',
-                width: cards[2].done ? '100%' : '0%',
+                width: card2.done ? '100%' : '0%',
                 background: 'var(--accent)',
                 borderRadius: 2,
                 transition: 'width 0.25s ease',

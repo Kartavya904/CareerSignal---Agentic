@@ -20,6 +20,7 @@ export interface AnalysisRow {
   applicationChecklist: Record<string, unknown>[] | null;
   interviewPrepBullets: string[] | null;
   companyResearch: string | null;
+  companySnapshot: Record<string, unknown> | null;
   runFolderName: string | null;
   runStatus: string | null;
   currentStep: string | null;
@@ -45,6 +46,7 @@ export interface InsertAnalysisData {
   applicationChecklist?: Record<string, unknown>[] | null;
   interviewPrepBullets?: string[] | null;
   companyResearch?: string | null;
+  companySnapshot?: Record<string, unknown> | null;
   runFolderName?: string | null;
   runStatus?: string | null;
   currentStep?: string | null;
@@ -72,6 +74,7 @@ export async function insertAnalysis(db: Db, data: InsertAnalysisData): Promise<
       applicationChecklist: data.applicationChecklist ?? null,
       interviewPrepBullets: data.interviewPrepBullets ?? null,
       companyResearch: data.companyResearch ?? null,
+      companySnapshot: data.companySnapshot ?? null,
       runFolderName: data.runFolderName ?? null,
       runStatus: data.runStatus ?? 'running',
       currentStep: data.currentStep ?? 'scraping',
@@ -103,6 +106,7 @@ export async function updateAnalysis(
   if (data.applicationChecklist !== undefined) set.applicationChecklist = data.applicationChecklist;
   if (data.interviewPrepBullets !== undefined) set.interviewPrepBullets = data.interviewPrepBullets;
   if (data.companyResearch !== undefined) set.companyResearch = data.companyResearch;
+  if (data.companySnapshot !== undefined) set.companySnapshot = data.companySnapshot;
   if (data.runStatus !== undefined) set.runStatus = data.runStatus;
   if (data.currentStep !== undefined) set.currentStep = data.currentStep;
   if (data.waitingForLogin !== undefined) set.waitingForLogin = data.waitingForLogin;

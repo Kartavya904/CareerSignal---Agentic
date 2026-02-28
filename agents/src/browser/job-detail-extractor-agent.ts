@@ -317,12 +317,12 @@ ${htmlSlice}`;
   };
 
   try {
-    return await runOne(truncated, 120000);
+    return await runOne(truncated, 300000); // 5 min for extraction (heavy step)
   } catch (err) {
     if (isAbortError(err)) {
       try {
         const smaller = sliceHtmlForLlm(html, LLM_HTML_RETRY_CHARS);
-        return await runOne(smaller, 90000);
+        return await runOne(smaller, 180000); // 3 min retry
       } catch {
         return emptyDetail();
       }

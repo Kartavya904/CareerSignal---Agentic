@@ -478,7 +478,7 @@ Return JSON: { "type": "<type>", "confidence": 0.0-1.0 }`;
       format: 'json',
       temperature: 0.1,
       maxTokens: 128,
-      timeout: 30000,
+      timeout: 180000, // 3 min minimum for application assistant
     });
     const parsed = JSON.parse(response) as { type?: string; confidence?: number };
     const type = ALL_PAGE_TYPES.includes(parsed.type as PageType)

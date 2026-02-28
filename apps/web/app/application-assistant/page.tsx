@@ -77,6 +77,7 @@ interface Analysis {
   applicationChecklist: ChecklistItem[] | null;
   interviewPrepBullets: string[] | null;
   companyResearch: string | null;
+  companySnapshot?: Record<string, unknown> | null;
   createdAt: string;
   runStatus?: string | null;
   runUpdatedAt?: string | null;
@@ -97,6 +98,114 @@ function stepIndex(step: string): number {
 
 function formatTime(ts: number) {
   return new Date(ts).toTimeString().slice(0, 8);
+}
+
+/** Renders the full company snapshot from DB (all fields in a small card). */
+function CompanySnapshotCard({
+  snapshot,
+  jobLocation,
+}: {
+  snapshot: Record<string, unknown>;
+  jobLocation: string | null;
+}) {
+  const name = (snapshot.name as string) ?? '';
+  const descriptionText = (snapshot.descriptionText as string) ?? null;
+  const url = (snapshot.url as string) ?? null;
+  const industries = snapshot.industries as string[] | null | undefined;
+  const hqLocation = (snapshot.hqLocation as string) ?? null;
+  const sizeRange = (snapshot.sizeRange as string) ?? null;
+  const foundedYear = snapshot.foundedYear as number | null | undefined;
+  const fundingStage = (snapshot.fundingStage as string) ?? null;
+  const publicCompany = snapshot.publicCompany as boolean | null | undefined;
+  const ticker = (snapshot.ticker as string) ?? null;
+  const remotePolicy = (snapshot.remotePolicy as string) ?? null;
+  const hiringLocations = snapshot.hiringLocations as string[] | null | undefined;
+  const techStackHints = snapshot.techStackHints as string[] | null | undefined;
+  const jobCountTotal = snapshot.jobCountTotal as number | null | undefined;
+  const jobCountOpen = snapshot.jobCountOpen as number | null | undefined;
+  const websiteDomain = (snapshot.websiteDomain as string) ?? null;
+
+  const label = (str: string) => (
+    <span style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginBottom: 2 }}>
+      {str}
+    </span>
+  );
+  const row = (l: string, v: React.ReactNode) =>
+    v != null && v !== '' && v !== false ? (
+      <div key={l} style={{ marginBottom: '0.5rem' }}>
+        {label(l)}
+        <div style={{ fontSize: '0.85rem' }}>{v}</div>
+      </div>
+    ) : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{name}</div>
+          {jobLocation && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginTop: 2 }}>
+              Job location: {jobLocation}
+            </div>
+          )}
+          {url && (
+            <a
+              href={url.startsWith('http') ? url : `https://${url}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '0.8rem',
+                color: 'var(--accent)',
+                marginTop: 4,
+                display: 'inline-block',
+              }}
+            >
+              {websiteDomain || url}
+            </a>
+          )}
+        </div>
+        {descriptionText && (
+          <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+            {label('About')}
+            <p style={{ fontSize: '0.85rem', margin: 0, lineHeight: 1.45 }}>{descriptionText}</p>
+          </div>
+        )}
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+          gap: '0.75rem 1rem',
+          fontSize: '0.8rem',
+        }}
+      >
+        {row('Industries', industries?.length ? industries.join(', ') : null)}
+        {row('HQ', hqLocation)}
+        {row('Size', sizeRange)}
+        {foundedYear != null && row('Founded', String(foundedYear))}
+        {row('Funding', fundingStage)}
+        {publicCompany === true && row('Public', ticker ? `${ticker} (public)` : 'Yes')}
+        {row('Remote policy', remotePolicy)}
+        {hiringLocations?.length
+          ? row(
+              'Hiring locations',
+              hiringLocations.slice(0, 5).join(', ') + (hiringLocations.length > 5 ? '…' : ''),
+            )
+          : null}
+        {techStackHints?.length
+          ? row(
+              'Tech stack',
+              techStackHints.slice(0, 6).join(', ') + (techStackHints.length > 6 ? '…' : ''),
+            )
+          : null}
+        {jobCountOpen != null && jobCountOpen > 0
+          ? row('Open roles', String(jobCountOpen))
+          : jobCountTotal != null && jobCountTotal > 0
+            ? row('Roles', String(jobCountTotal))
+            : null}
+      </div>
+    </div>
+  );
 }
 
 function levelColor(level: string) {
@@ -1147,7 +1256,7 @@ export default function ApplicationAssistantPage({
         </div>
       )}
 
-      {/* Quick company snapshot (Phase 11) */}
+      {/* Quick company snapshot (Phase 11) — full DB company when available */}
       {analysis?.jobSummary && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <div
@@ -1188,71 +1297,82 @@ export default function ApplicationAssistantPage({
               </span>
             </div>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '0.5rem',
-            }}
-          >
-            <div style={{ minWidth: 0, flex: 1 }}>
+          {analysis.companySnapshot ? (
+            <CompanySnapshotCard
+              snapshot={analysis.companySnapshot}
+              jobLocation={analysis.jobSummary.location}
+            />
+          ) : (
+            <>
               <div
                 style={{
-                  fontSize: '0.8rem',
-                  color: 'var(--muted-foreground)',
-                  marginBottom: 2,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  marginBottom: '0.5rem',
                 }}
               >
-                Company
-              </div>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: '0.95rem',
-                }}
-              >
-                {analysis.jobSummary.company}
-              </div>
-              {analysis.jobSummary.location && (
-                <div
-                  style={{
-                    fontSize: '0.8rem',
-                    color: 'var(--muted-foreground)',
-                    marginTop: 2,
-                  }}
-                >
-                  {analysis.jobSummary.location}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
+                    Company
+                  </div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                    }}
+                  >
+                    {analysis.jobSummary.company}
+                  </div>
+                  {analysis.jobSummary.location && (
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--muted-foreground)',
+                        marginTop: 2,
+                      }}
+                    >
+                      {analysis.jobSummary.location}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div style={{ minWidth: 0, flex: 2 }}>
-              <div
-                style={{
-                  fontSize: '0.8rem',
-                  color: 'var(--muted-foreground)',
-                  marginBottom: 2,
-                }}
-              >
-                Snapshot
+                <div style={{ minWidth: 0, flex: 2 }}>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--muted-foreground)',
+                      marginBottom: 2,
+                    }}
+                  >
+                    Snapshot
+                  </div>
+                  <p
+                    style={{
+                      fontSize: '0.85rem',
+                      margin: 0,
+                      maxHeight: 60,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                    title={
+                      analysis.companyResearch ?? analysis.jobSummary.companyOneLiner ?? undefined
+                    }
+                  >
+                    {analysis.companyResearch
+                      ? analysis.companyResearch.slice(0, 220)
+                      : (analysis.jobSummary.companyOneLiner ??
+                        'We will enrich this company profile over time.')}
+                  </p>
+                </div>
               </div>
-              <p
-                style={{
-                  fontSize: '0.85rem',
-                  margin: 0,
-                  maxHeight: 60,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-                title={analysis.companyResearch ?? analysis.jobSummary.companyOneLiner ?? undefined}
-              >
-                {analysis.companyResearch
-                  ? analysis.companyResearch.slice(0, 220)
-                  : (analysis.jobSummary.companyOneLiner ??
-                    'We will enrich this company profile over time.')}
-              </p>
-            </div>
-          </div>
+            </>
+          )}
           <div
             style={{
               display: 'flex',

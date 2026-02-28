@@ -48,6 +48,10 @@ data_sources/
 data_application_assistant/
 !data_application_assistant/.gitkeep
 
+# Application Assistant per-run captures (HTML, metadata)
+data_company_dossier/
+!data_company_dossier/.gitkeep
+
 # Pipeline evidence (Greenhouse/Lever raw API responses)
 data/evidence/
 

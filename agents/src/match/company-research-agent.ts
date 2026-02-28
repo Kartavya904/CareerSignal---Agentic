@@ -44,7 +44,7 @@ ${truncated}`;
       format: 'json',
       temperature: 0.2,
       maxTokens: 1024,
-      timeout: 60000,
+      timeout: 180000, // 3 min minimum for application assistant
     });
     const parsed = JSON.parse(response);
     return {

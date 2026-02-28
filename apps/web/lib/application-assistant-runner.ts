@@ -20,6 +20,7 @@ import {
   normalizeUrl,
   verifyCleaning,
   resolveCompanyIdentity,
+  deepResearchCompany,
   type ProfileSnapshot,
 } from '@careersignal/agents';
 import {
@@ -30,10 +31,14 @@ import {
   updateAnalysis,
   updateAnalysisRunState,
   insertAnalysisLog,
+  findCompanyByNameOrDomain,
+  needsCompanyRefresh,
+  upsertCompanyEnrichment,
 } from '@careersignal/db';
 import { registerLoginWait } from '@/lib/login-wall-state';
 import { registerCaptchaSolve } from '@/lib/captcha-state';
 import { getScraperStatus } from '@/lib/scraper-state';
+import { clearAssistantAbortController } from '@/lib/application-assistant-state';
 import {
   getRunFolderName,
   getRunFolderPath,
@@ -41,9 +46,55 @@ import {
   saveHtmlVariant,
   saveJsonArtifact,
 } from '@/lib/application-assistant-disk';
-import { runRagPipeline } from '@/lib/application-assistant-rag';
+import { runRagPipeline, runCompanyPageRag } from '@/lib/application-assistant-rag';
 import path from 'path';
 import { transitionAssistantStep } from '@/lib/application-assistant-planner';
+import { getDossierRunFolderName, createDossierDiskWriter } from '@/lib/dossier-disk';
+
+/** Build a serializable company snapshot for the analysis (all DB company fields for the UI card). */
+function toCompanySnapshot(row: {
+  name: string;
+  url?: string | null;
+  descriptionText?: string | null;
+  industries?: string[] | null;
+  hqLocation?: string | null;
+  sizeRange?: string | null;
+  foundedYear?: number | null;
+  fundingStage?: string | null;
+  publicCompany?: boolean | null;
+  ticker?: string | null;
+  remotePolicy?: string | null;
+  sponsorshipSignals?: Record<string, unknown> | null;
+  hiringLocations?: string[] | null;
+  techStackHints?: string[] | null;
+  jobCountTotal?: number | null;
+  jobCountOpen?: number | null;
+  websiteDomain?: string | null;
+  enrichmentSources?: { urls?: string[] } | null;
+  lastEnrichedAt?: Date | null;
+}): Record<string, unknown> {
+  return {
+    name: row.name ?? null,
+    url: row.url ?? null,
+    descriptionText: row.descriptionText ?? null,
+    industries: row.industries ?? null,
+    hqLocation: row.hqLocation ?? null,
+    sizeRange: row.sizeRange ?? null,
+    foundedYear: row.foundedYear ?? null,
+    fundingStage: row.fundingStage ?? null,
+    publicCompany: row.publicCompany ?? null,
+    ticker: row.ticker ?? null,
+    remotePolicy: row.remotePolicy ?? null,
+    sponsorshipSignals: row.sponsorshipSignals ?? null,
+    hiringLocations: row.hiringLocations ?? null,
+    techStackHints: row.techStackHints ?? null,
+    jobCountTotal: row.jobCountTotal ?? null,
+    jobCountOpen: row.jobCountOpen ?? null,
+    websiteDomain: row.websiteDomain ?? null,
+    enrichmentSources: row.enrichmentSources ?? null,
+    lastEnrichedAt: row.lastEnrichedAt instanceof Date ? row.lastEnrichedAt.toISOString() : null,
+  };
+}
 
 async function dbLog(
   db: ReturnType<typeof getDb>,
@@ -121,6 +172,17 @@ function urlLooksLikeJobPage(url: string): boolean {
   }
 }
 
+/** Error message when the user clicks Stop (so we can log a friendly message). */
+export const STOPPED_BY_USER_MSG = 'STOPPED_BY_USER';
+
+function throwIfAborted(signal?: AbortSignal | null): void {
+  if (signal?.aborted) {
+    const err = new Error(STOPPED_BY_USER_MSG);
+    err.name = 'AbortError';
+    throw err;
+  }
+}
+
 /**
  * Fetch-first helper: resolves redirects and performs a cheap HTML fetch
  * before launching the browser. This is used for URL normalization and
@@ -130,14 +192,22 @@ async function fetchFinalUrl(
   originalUrl: string,
   db: ReturnType<typeof getDb>,
   analysisId: string,
+  abortSignal?: AbortSignal | null,
 ): Promise<string> {
   try {
+    throwIfAborted(abortSignal);
     await dbLog(db, analysisId, 'Fetcher', `Fetching URL via HTTP: ${originalUrl}`, {
       level: 'info',
     });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', () => {
+        clearTimeout(timeout);
+        controller.abort();
+      });
+    }
     const res = await fetch(originalUrl, {
       redirect: 'follow',
       signal: controller.signal,
@@ -179,11 +249,13 @@ async function fetchFinalUrl(
 /**
  * Run the full Application Assistant pipeline for a single URL.
  * analysisId must refer to an existing row with run_status = 'running'.
+ * When abortSignal is aborted (user clicked Stop), the pipeline exits at the next check.
  */
 export async function runApplicationAssistantPipeline(
   userId: string,
   url: string,
   analysisId: string,
+  abortSignal?: AbortSignal | null,
 ): Promise<void> {
   let browser: Browser | null = null;
   const db = getDb();
@@ -191,6 +263,7 @@ export async function runApplicationAssistantPipeline(
   const t0 = Date.now();
 
   try {
+    throwIfAborted(abortSignal);
     if (getScraperStatus().running) {
       await dbLog(db, analysisId, 'Pipeline', 'Admin scraper is running. Cannot start.', {
         level: 'error',
@@ -209,17 +282,20 @@ export async function runApplicationAssistantPipeline(
 
     try {
       // 0. Fetch-first URL normalization (resolve redirects, keep original for reference)
-      const finalUrl = await fetchFinalUrl(url, db, analysisId);
+      const finalUrl = await fetchFinalUrl(url, db, analysisId, abortSignal);
       timings.fetchMs = Date.now() - t0;
+      throwIfAborted(abortSignal);
 
       // 1. Launch visible browser
       await transitionAssistantStep(db, analysisId, 'scraping');
       const tBrowserStart = Date.now();
       await dbLog(db, analysisId, 'Browser', 'Launching visible browser...', { level: 'info' });
+      throwIfAborted(abortSignal);
       browser = await chromium.launch({ headless: false, args: STEALTH_ARGS });
       const page = await browser.newPage();
       await page.setViewportSize({ width: 1280, height: 720 });
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+      throwIfAborted(abortSignal);
 
       // 2. Navigate to URL (allow network idle for SPAs like Citadel)
       await dbLog(db, analysisId, 'Browser', `Navigating to ${finalUrl}`, { level: 'info' });
@@ -233,14 +309,17 @@ export async function runApplicationAssistantPipeline(
 
       let html = await page.content();
       timings.browserMs = Date.now() - tBrowserStart;
+      throwIfAborted(abortSignal);
       await dbLog(db, analysisId, 'Browser', `Page loaded: ${html.length} chars`, {
         level: 'success',
       });
 
       // 3. Clean + classify
       const tClassifyStart = Date.now();
+      throwIfAborted(abortSignal);
       const cleanResult = cleanHtml(html);
       let classification = await classifyPage(cleanResult.html, finalUrl);
+      throwIfAborted(abortSignal);
       dbLog(
         db,
         analysisId,
@@ -304,6 +383,7 @@ export async function runApplicationAssistantPipeline(
       }
       timings.classifyMs = Date.now() - tClassifyStart;
 
+      throwIfAborted(abortSignal);
       // 4. Handle login wall
       if (classification.type === 'login_wall') {
         await dbLog(
@@ -347,6 +427,7 @@ export async function runApplicationAssistantPipeline(
         await dbLog(db, analysisId, 'Classifier', `Post-login type: ${classification.type}`, {
           level: 'info',
         });
+        throwIfAborted(abortSignal);
         // Save post-login HTML variant and screenshot
         try {
           await saveHtmlVariant(runFolderName, 'post-login', loginHtml, reclean.html);
@@ -361,6 +442,7 @@ export async function runApplicationAssistantPipeline(
         }
       }
 
+      throwIfAborted(abortSignal);
       // 5. Handle captcha
       if (classification.type === 'captcha_challenge') {
         dbLog(
@@ -414,6 +496,7 @@ export async function runApplicationAssistantPipeline(
         }
       }
 
+      throwIfAborted(abortSignal);
       // 6. URL resolution (depth 2) — only when URL does NOT look like a job page and classifier says not job
       let resolvedUrl = finalUrl;
       let resolvedHtml = html;
@@ -436,7 +519,7 @@ export async function runApplicationAssistantPipeline(
             level: 'info',
           },
         );
-        const found = await resolveToJobPage(page, html, url, 0, db, analysisId);
+        const found = await resolveToJobPage(page, html, url, 0, db, analysisId, abortSignal);
         if (found) {
           resolvedUrl = found.url;
           resolvedHtml = found.html;
@@ -458,6 +541,7 @@ export async function runApplicationAssistantPipeline(
         }
       }
 
+      throwIfAborted(abortSignal);
       // 7. Extract job detail (RAG-focused content first when enabled, then cleaned/raw fallback)
       await transitionAssistantStep(db, analysisId, 'extracting');
       await dbLog(db, analysisId, 'Extractor', 'Extracting job details...', { level: 'info' });
@@ -469,9 +553,11 @@ export async function runApplicationAssistantPipeline(
       let focusedHtml: string | null = null;
       let extractionSource: 'rag_focused' | 'cleaned_html' | 'raw_html' = 'cleaned_html';
       if (useRag) {
+        throwIfAborted(abortSignal);
         const ragResult = await runRagPipeline(runFolderName, resolvedHtml, (msg) =>
           dbLog(db, analysisId, 'RAG', msg, { level: 'info' }),
         );
+        throwIfAborted(abortSignal);
         focusedHtml = ragResult.focusedHtml;
         if (focusedHtml && ragResult.keptCount > 0) {
           await dbLog(
@@ -541,6 +627,7 @@ export async function runApplicationAssistantPipeline(
         { level: 'success' },
       );
 
+      throwIfAborted(abortSignal);
       // 7b. Company identity resolver (multi-signal, DB-aware at app layer)
       const companyResolution = resolveCompanyIdentity({
         pageUrl: resolvedUrl,
@@ -560,107 +647,118 @@ export async function runApplicationAssistantPipeline(
         { level: 'info' },
       );
 
-      // 8. Company research — fetch about/culture page and summarize before analysis
-      // Use the job page origin only when it's the company's site; for ATS (Lever, Greenhouse, etc.)
-      // origin + /about is the ATS's page, not the company's — so use a company-derived URL or skip.
+      throwIfAborted(abortSignal);
+      // 8. Deep Company Dossier (Phase 12) — DB-backed; blocks until enrichment for first-time
+      //    companies; reuses cached record when fresh, refreshes when stale (e.g. >30 days).
       let companyResearchText: string | null = null;
+      let companySnapshotData: Record<string, unknown> | null = null;
       try {
+        throwIfAborted(abortSignal);
+        await dbLog(
+          db,
+          analysisId,
+          'DeepCompanyDossier',
+          'Starting deep company enrichment (DB lookup + web research)...',
+          { level: 'info' },
+        );
+
         const jobOrigin = new URL(resolvedUrl).origin;
-        const aboutPaths = ['/about', '/who-we-are', '/our-company', '/about-us', '/careers', '/'];
-        let baseOrigin: string;
-        if (isAtsJobOrigin(jobOrigin)) {
-          // Derive company site from name, e.g. "Jobgether" -> https://jobgether.com
-          const slug = jobDetail.company
-            .replace(/\s*[(\[].*?[)\]]\s*$/g, '')
-            .replace(/[^a-z0-9-]/gi, '')
-            .toLowerCase()
-            .slice(0, 50);
-          if (slug) {
-            baseOrigin = `https://${slug}.com`;
-            await dbLog(
-              db,
-              analysisId,
-              'CompanyResearch',
-              `Job page is ATS; trying company site: ${baseOrigin}`,
-              { level: 'info' },
-            );
-          } else {
-            baseOrigin = '';
-          }
-        } else {
-          baseOrigin = jobOrigin;
+        const originHost = new URL(resolvedUrl).hostname.toLowerCase();
+        const atsOrigin = isAtsJobOrigin(jobOrigin);
+        let websiteDomainHint: string | null = null;
+
+        if (!atsOrigin) {
+          websiteDomainHint = originHost.startsWith('www.') ? originHost.slice(4) : originHost;
         }
-        if (baseOrigin) {
-          for (const aboutPath of aboutPaths) {
-            const aboutUrl = `${baseOrigin}${aboutPath}`;
-            if (aboutUrl === resolvedUrl && aboutPath !== '/') continue;
-            try {
-              await dbLog(
-                db,
-                analysisId,
-                'CompanyResearch',
-                `Fetching company context: ${aboutUrl}`,
-                {
-                  level: 'info',
-                },
-              );
-              await page.goto(aboutUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-              await page.waitForTimeout(2000);
-              const aboutHtml = await page.content();
-              const aboutClean = cleanHtml(aboutHtml);
-              const research = await researchCompanyFromHtml(
-                jobDetail.company,
-                aboutClean.html,
-                aboutUrl,
-              );
-              const parts = [research.summary, research.culture, research.norms].filter(Boolean);
-              if (parts.length > 0) {
-                companyResearchText = parts.join('\n\n');
-                await dbLog(db, analysisId, 'CompanyResearch', 'Company summary captured.', {
-                  level: 'success',
-                });
-                break;
-              }
-            } catch {
-              continue;
-            }
-          }
-        }
-        if (!companyResearchText) {
+
+        // 8a. DB lookup: reuse existing company record when not stale.
+        const existingCompany = await findCompanyByNameOrDomain(db, {
+          name: companyResolution.canonicalName,
+          websiteDomainHint,
+        });
+
+        if (existingCompany && !needsCompanyRefresh(existingCompany)) {
           await dbLog(
             db,
             analysisId,
-            'CompanyResearch',
-            baseOrigin
-              ? 'No company page content used.'
-              : 'Skipped (job on ATS; no company site to research).',
+            'DeepCompanyDossier',
+            `Using existing company record (id=${existingCompany.id}) without refresh.`,
             { level: 'info' },
           );
+          companyResearchText = existingCompany.descriptionText ?? null;
+          companySnapshotData = toCompanySnapshot(existingCompany);
+        } else {
+          const deepResult = await deepResearchCompany({
+            companyName: companyResolution.canonicalName,
+            seedUrl: resolvedUrl,
+            jobDescriptionText: jobDetail.description,
+            log: ({ level, message }) =>
+              dbLog(db, analysisId, 'DeepCompanyDossier', message, { level }),
+            hardTimeoutMs: 300_000, // 5 min for deep company research (heavy step)
+            runFolderName: getDossierRunFolderName(companyResolution.canonicalName),
+            dossierWriter: createDossierDiskWriter(),
+            runCompanyPageRag,
+          });
+
+          const upserted = await upsertCompanyEnrichment(db, {
+            name: deepResult.companyName,
+            normalizedName: deepResult.normalizedName,
+            url: deepResult.primaryUrl ?? resolvedUrl,
+            origin: jobOrigin,
+            websiteDomain: deepResult.websiteDomain,
+            descriptionText: deepResult.descriptionText,
+            enrichmentSources: { urls: deepResult.visitedUrls },
+            industries: deepResult.industries,
+            hqLocation: deepResult.hqLocation,
+            sizeRange: deepResult.sizeRange,
+            foundedYear: deepResult.foundedYear ?? null,
+            fundingStage: deepResult.fundingStage,
+            publicCompany: deepResult.publicCompany ?? null,
+            ticker: deepResult.ticker,
+            remotePolicy: deepResult.remotePolicy,
+            sponsorshipSignals: {
+              ...(deepResult.sponsorshipSignals ?? {}),
+              coreCoverage: deepResult.coreFieldCoverage,
+              missingCoreFields: deepResult.missingCoreFields,
+            },
+            hiringLocations: deepResult.hiringLocations,
+            techStackHints: deepResult.techStackHints,
+            jobCountTotal: deepResult.jobCountTotal ?? undefined,
+            jobCountOpen: deepResult.jobCountOpen ?? undefined,
+            enrichmentStatus: deepResult.coreFieldCoverage >= 0.5 ? 'DONE' : 'ERROR',
+          });
+
+          await dbLog(
+            db,
+            analysisId,
+            'DeepCompanyDossier',
+            `Company enrichment upserted (id=${upserted.id}, coverage=${(
+              deepResult.coreFieldCoverage * 100
+            ).toFixed(0)}%).`,
+            { level: 'success' },
+          );
+
+          companyResearchText = upserted.descriptionText ?? deepResult.descriptionText;
+          companySnapshotData = toCompanySnapshot(upserted);
         }
       } catch (err) {
         dbLog(
           db,
           analysisId,
-          'CompanyResearch',
-          `Skipped: ${err instanceof Error ? err.message : String(err)}`,
+          'DeepCompanyDossier',
+          `Deep company dossier failed (non-fatal): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
           { level: 'warn' },
         );
       }
-
-      // Placeholder for Deep Company Dossier agent (Phase 12)
-      await dbLog(
-        db,
-        analysisId,
-        'DeepCompanyDossier',
-        'Deep company dossier agent placeholder — started then skipped (not yet implemented).',
-        { level: 'info' },
-      );
 
       // 9. Update analysis with job detail and company research (row was created at start)
       await updateAnalysis(db, analysisId, {
         url: resolvedUrl,
         jobSummary: jobDetail as unknown as Record<string, unknown>,
         companyResearch: companyResearchText,
+        companySnapshot: companySnapshotData,
         runFolderName,
       });
       // Persist extracted job detail JSON artifact for debugging
@@ -670,6 +768,7 @@ export async function runApplicationAssistantPipeline(
         // ignore
       }
 
+      throwIfAborted(abortSignal);
       // 10. Match and downstream (profile already loaded at start)
       await transitionAssistantStep(db, analysisId, 'matching');
       let matchResult = null;
@@ -712,7 +811,9 @@ export async function runApplicationAssistantPipeline(
         // 10. Match
         await dbLog(db, analysisId, 'Match', 'Computing profile-job match...', { level: 'info' });
         const tMatchStart = Date.now();
+        throwIfAborted(abortSignal);
         matchResult = await matchProfileToJob(profileSnapshot, jobDetail);
+        throwIfAborted(abortSignal);
         dbLog(
           db,
           analysisId,
@@ -734,11 +835,13 @@ export async function runApplicationAssistantPipeline(
 
         // 11. Resume suggestions
         await transitionAssistantStep(db, analysisId, 'writing');
+        throwIfAborted(abortSignal);
         await dbLog(db, analysisId, 'Resume', 'Generating resume suggestions...', {
           level: 'info',
         });
         const tWritingStart = Date.now();
         resumeSuggestions = await generateResumeSuggestions(profileSnapshot, jobDetail);
+        throwIfAborted(abortSignal);
         dbLog(
           db,
           analysisId,
@@ -752,6 +855,7 @@ export async function runApplicationAssistantPipeline(
           keywordsToAdd: resumeSuggestions.keywordsToAdd,
         });
 
+        throwIfAborted(abortSignal);
         // 12. Cover letters (with company research for tailoring)
         await dbLog(db, analysisId, 'CoverLetter', 'Generating cover letters (3 styles)...', {
           level: 'info',
@@ -773,6 +877,7 @@ export async function runApplicationAssistantPipeline(
           coverLetters: coverLetters as unknown as Record<string, string>,
         });
 
+        throwIfAborted(abortSignal);
         // 13. Interview prep (with company research)
         await dbLog(db, analysisId, 'InterviewPrep', 'Generating interview talking points...', {
           level: 'info',
@@ -888,8 +993,14 @@ export async function runApplicationAssistantPipeline(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await dbLog(db, analysisId, 'Pipeline', `Error: ${msg}`, { level: 'error' });
+    const stoppedByUser =
+      msg === STOPPED_BY_USER_MSG || (typeof msg === 'string' && msg.includes('Stopped by user'));
+    await dbLog(db, analysisId, 'Pipeline', stoppedByUser ? 'Stopped by user.' : `Error: ${msg}`, {
+      level: 'error',
+    });
     await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
+  } finally {
+    clearAssistantAbortController(analysisId);
   }
 }
 
@@ -903,7 +1014,9 @@ async function resolveToJobPage(
   depth: number,
   db: ReturnType<typeof getDb>,
   analysisId: string,
+  abortSignal?: AbortSignal | null,
 ): Promise<{ url: string; html: string } | null> {
+  throwIfAborted(abortSignal);
   if (depth >= MAX_RESOLVE_DEPTH) return null;
 
   const cleaned = cleanHtml(html);
@@ -936,6 +1049,7 @@ async function resolveToJobPage(
   });
 
   for (const candidate of candidates.slice(0, 5)) {
+    throwIfAborted(abortSignal);
     try {
       await dbLog(db, analysisId, 'Resolver', `Trying: ${candidate} (depth ${depth + 1})`, {
         level: 'info',
@@ -957,6 +1071,7 @@ async function resolveToJobPage(
         depth + 1,
         db,
         analysisId,
+        abortSignal,
       );
       if (deeper) return deeper;
     } catch {

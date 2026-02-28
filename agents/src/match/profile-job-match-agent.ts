@@ -122,7 +122,7 @@ Be honest and specific. A 70+ score means strong match. 50-69 is moderate. Below
       format: 'json',
       temperature: 0.2,
       maxTokens: 2048,
-      timeout: 120000,
+      timeout: 180000, // 3 min minimum for application assistant
     });
     const parsed = JSON.parse(response);
     const score = Math.max(0, Math.min(100, parsed.overallScore ?? 50));

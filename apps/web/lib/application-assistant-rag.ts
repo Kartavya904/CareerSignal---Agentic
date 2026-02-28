@@ -6,7 +6,7 @@
 
 import { parse, type HTMLElement } from 'node-html-parser';
 import { embedBatch, complete } from '@careersignal/llm';
-import { writeFile } from 'fs/promises';
+import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { getRunFolderPath, updateContentHashes } from '@/lib/application-assistant-disk';
@@ -47,6 +47,10 @@ const MAX_CHUNK_CHARS = 2000;
 /** Job-content query used to score chunks (embedded once per run). */
 const JOB_QUERY =
   'job title company name location job description responsibilities requirements qualifications salary compensation benefits apply how to apply';
+
+/** Company-page query for dossier RAG: about, description, location, size, funding, etc. */
+export const COMPANY_QUERY =
+  'company about us description headquarters location size employees industry funding remote policy careers jobs tech stack';
 
 /**
  * Chunk HTML into text blocks with id and index. Prefers block-level elements with meaningful text.
@@ -163,6 +167,37 @@ function keywordBoost(text: string): number {
   return Math.min(boost, 0.4);
 }
 
+/** Heuristic boost for company-page chunks (about, careers, funding, etc.). */
+function companyKeywordBoost(text: string): number {
+  const lower = text.toLowerCase();
+  let boost = 0;
+  const terms = [
+    'about us',
+    'about the company',
+    'our mission',
+    'headquarters',
+    'headquarters location',
+    'employees',
+    'company size',
+    'founded',
+    'funding',
+    'series',
+    'careers',
+    'we are hiring',
+    'open roles',
+    'remote',
+    'hybrid',
+    'tech stack',
+    'technologies',
+    'industry',
+    'industries',
+  ];
+  for (const t of terms) {
+    if (lower.includes(t)) boost += 0.05;
+  }
+  return Math.min(boost, 0.4);
+}
+
 /**
  * Score chunks by similarity to job query embedding + keyword boost. Mark keep for top scores.
  */
@@ -172,12 +207,25 @@ export function scoreChunks(
   queryEmbedding: number[],
   options?: { topK?: number; minScore?: number },
 ): ChunkWithScore[] {
+  return scoreChunksWithBoost(chunks, embeddings, queryEmbedding, keywordBoost, options);
+}
+
+/**
+ * Score chunks with a custom keyword boost (e.g. companyKeywordBoost for dossier pages).
+ */
+export function scoreChunksWithBoost(
+  chunks: ChunkRecord[],
+  embeddings: number[][],
+  queryEmbedding: number[],
+  keywordBoostFn: (text: string) => number,
+  options?: { topK?: number; minScore?: number },
+): ChunkWithScore[] {
   const topK = options?.topK ?? 20;
   const minScore = options?.minScore ?? 0.2;
   const withScores: ChunkWithScore[] = chunks.map((c, i) => {
     const emb = embeddings[i] ?? [];
     const sim = cosineSimilarity(emb, queryEmbedding);
-    const boost = keywordBoost(c.text);
+    const boost = keywordBoostFn(c.text);
     const score = sim + boost;
     return { ...c, score, keep: false };
   });
@@ -364,7 +412,7 @@ ${chunk.text.slice(0, 800)}`;
         format: 'json',
         temperature: 0.1,
         maxTokens: 512,
-        timeout: 120000,
+        timeout: 180000, // 3 min minimum for application assistant
       });
       const json = JSON.parse(response) as Partial<LlmRankResult>;
       parsed = {
@@ -486,7 +534,7 @@ export async function runRagPipeline(
       chunks.map((c) => c.text),
       {
         batchSize: 8,
-        timeout: 120000,
+        timeout: 180000, // 3 min minimum for application assistant
       },
     );
     if (embeddings.length !== chunks.length) {
@@ -512,7 +560,7 @@ export async function runRagPipeline(
 
     // Embedding-based scores are used as a cheap pre-filter for the LLM ranker.
     onLog?.('RAG: Scoring chunks with embeddings (pre-filter)...');
-    const queryEmbedding = (await embedBatch([JOB_QUERY], { timeout: 30000 }))[0];
+    const queryEmbedding = (await embedBatch([JOB_QUERY], { timeout: 180000 }))[0];
     let keptCount = 0;
     let withScores = scoreChunks(chunks, embeddings, queryEmbedding ?? [], {
       topK: 40,
@@ -578,6 +626,99 @@ export async function runRagPipeline(
       onLog?.(`RAG error: ${msg}`);
     }
     onLog?.('RAG: Skipping RAG; extraction will use full page.');
+    return {
+      focusedHtml: null,
+      chunksCount: 0,
+      keptCount: 0,
+      error: msg,
+    };
+  }
+}
+
+/**
+ * Run RAG pipeline for a single company page into an explicit output directory.
+ * Uses COMPANY_QUERY and companyKeywordBoost; writes chunks.json, embeddings.json,
+ * chunk_scores.json, focused_content.html to outputDir (absolute path).
+ * Used by the Deep Company Dossier flow per URL.
+ */
+export async function runCompanyPageRag(
+  outputDir: string,
+  html: string,
+  onLog?: (message: string) => void,
+): Promise<RagPipelineResult> {
+  try {
+    await mkdir(outputDir, { recursive: true });
+    onLog?.('RAG (company): Chunking HTML...');
+    const chunks = chunkHtml(html);
+    if (chunks.length === 0) {
+      onLog?.('RAG (company): No chunks produced, skipping.');
+      return { focusedHtml: null, chunksCount: 0, keptCount: 0 };
+    }
+
+    await writeFile(path.join(outputDir, 'chunks.json'), JSON.stringify(chunks, null, 2), 'utf-8');
+    onLog?.(`RAG (company): ${chunks.length} chunks saved.`);
+
+    onLog?.('RAG (company): Embedding chunks (local model)...');
+    const embeddings = await embedBatch(
+      chunks.map((c) => c.text),
+      { batchSize: 8, timeout: 180000 },
+    );
+    if (embeddings.length !== chunks.length) {
+      onLog?.(`RAG (company): Embedding count mismatch, skipping.`);
+      return {
+        focusedHtml: null,
+        chunksCount: chunks.length,
+        keptCount: 0,
+        error: 'Embedding mismatch',
+      };
+    }
+
+    await writeFile(
+      path.join(outputDir, 'embeddings.json'),
+      JSON.stringify(
+        embeddings.map((e, i) => ({ id: chunks[i]!.id, embedding: e })),
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    onLog?.('RAG (company): Scoring chunks with company query...');
+    const queryEmbedding = (await embedBatch([COMPANY_QUERY], { timeout: 180000 }))[0];
+    const withScores = scoreChunksWithBoost(
+      chunks,
+      embeddings,
+      queryEmbedding ?? [],
+      companyKeywordBoost,
+      { topK: 40, minScore: 0.0 },
+    );
+    const keptCount = withScores.filter((c) => c.keep).length;
+
+    await writeFile(
+      path.join(outputDir, 'chunk_scores.json'),
+      JSON.stringify(
+        withScores.map(({ id, index, score, keep, text }) => ({
+          id,
+          index,
+          score,
+          keep,
+          textPreview: text.slice(0, 120),
+        })),
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+    onLog?.(`RAG (company): Kept ${keptCount}/${chunks.length} chunks.`);
+
+    const focusedHtml = buildFocusedContent(withScores);
+    await writeFile(path.join(outputDir, 'focused_content.html'), focusedHtml, 'utf-8');
+    onLog?.('RAG (company): Focused content saved.');
+
+    return { focusedHtml, chunksCount: chunks.length, keptCount };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    onLog?.(`RAG (company) error: ${msg}`);
     return {
       focusedHtml: null,
       chunksCount: 0,
