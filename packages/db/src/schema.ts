@@ -492,3 +492,40 @@ export const jobObservations = pgTable(
     ),
   }),
 );
+
+/** Source of a confirmed contact (outreach run, manual, or reused from same company). */
+export const contactSourceEnum = pgEnum('contact_source', ['outreach_run', 'manual', 'reuse']);
+
+/** Contact status (pending = not yet confirmed; confirmed = validated for reuse). */
+export const contactStatusEnum = pgEnum('contact_status', ['pending', 'confirmed']);
+
+/**
+ * Confirmed contacts: discovered by outreach agent or added manually, stored for reuse.
+ * Used as fallback for other positions at the same company.
+ */
+export const contacts = pgTable(
+  'contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    role: text('role'),
+    email: text('email'),
+    linkedinUrl: text('linkedin_url'),
+    archetype: varchar('archetype', { length: 32 }), // HIRING_MANAGER, TECH_RECRUITER, etc.
+    source: contactSourceEnum('source').notNull().default('outreach_run'),
+    confidence: decimal('confidence', { precision: 3, scale: 2 }),
+    evidence: jsonb('evidence').$type<Record<string, unknown>>(),
+    status: contactStatusEnum('status').notNull().default('pending'),
+    lastUsedAt: timestamp('last_used_at'),
+    usedForJobIds: jsonb('used_for_job_ids').$type<string[]>().default([]),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    contactsCompanyIdx: index('contacts_company_id_idx').on(table.companyId),
+    contactsStatusIdx: index('contacts_status_idx').on(table.status),
+  }),
+);

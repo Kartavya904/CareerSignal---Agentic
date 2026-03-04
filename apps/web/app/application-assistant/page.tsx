@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -265,6 +265,8 @@ export default function ApplicationAssistantPage({
   const [historyPage, setHistoryPage] = useState(1);
   const HISTORY_PAGE_SIZE = 5;
   const [feedbackList, setFeedbackList] = useState<{ component: string; value: string }[]>([]);
+  const [runningOutreach, setRunningOutreach] = useState(false);
+  const [outreachLogs, setOutreachLogs] = useState<LogEntry[]>([]);
 
   // Poll status (from DB: running state and progress persist across refresh/tabs)
   useEffect(() => {
@@ -331,8 +333,9 @@ export default function ApplicationAssistantPage({
   // Fetch analysis when analysisId appears or step becomes done
   useEffect(() => {
     if (!status?.analysisId) return;
+    const analysisId = status.analysisId;
     const load = () => {
-      fetch(`/api/application-assistant/analyses/${status.analysisId}`)
+      fetch(`/api/application-assistant/analyses/${analysisId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => d && setAnalysis(d))
         .catch(() => {});
@@ -341,6 +344,12 @@ export default function ApplicationAssistantPage({
     if (status.running) {
       const interval = setInterval(load, 3000);
       return () => clearInterval(interval);
+    }
+    // When pipeline just finished (done), refetch once after a short delay so we get
+    // the final analysis with contacts/drafts (avoids race where last poll was before DB write)
+    if (status.currentStep === 'done') {
+      const t = setTimeout(load, 800);
+      return () => clearTimeout(t);
     }
   }, [status?.analysisId, status?.running, status?.currentStep]);
 
@@ -1245,13 +1254,17 @@ export default function ApplicationAssistantPage({
                 borderTop: '1px solid var(--border)',
               }}
             >
-              {logs.length === 0 ? (
+              {logs.length === 0 && outreachLogs.length === 0 ? (
                 <div style={{ color: 'var(--muted-foreground)' }}>
-                  {starting ? 'Starting pipeline…' : 'Waiting for logs…'}
+                  {starting
+                    ? 'Starting pipeline…'
+                    : runningOutreach
+                      ? 'Running outreach…'
+                      : 'Waiting for logs…'}
                 </div>
               ) : (
-                logs.map((l, idx) => {
-                  const isLast = idx === logs.length - 1;
+                [...logs, ...outreachLogs].map((l, idx) => {
+                  const isLast = idx === logs.length + outreachLogs.length - 1;
                   return (
                     <div
                       key={l.id}
@@ -1260,7 +1273,7 @@ export default function ApplicationAssistantPage({
                         gap: '0.5rem',
                         marginBottom: '0.15rem',
                         animation:
-                          isRunning && isLast
+                          (isRunning || runningOutreach) && isLast
                             ? 'pulse-opacity 1.1s ease-in-out infinite'
                             : undefined,
                       }}
@@ -1710,71 +1723,7 @@ export default function ApplicationAssistantPage({
         </div>
       )}
 
-      {/* Contacts placeholder */}
-      {analysis &&
-        analysis.contacts &&
-        ((analysis.contacts.emails && analysis.contacts.emails.length > 0) ||
-          (analysis.contacts.linkedIn && analysis.contacts.linkedIn.length > 0) ||
-          (analysis.contacts.others && analysis.contacts.others.length > 0)) && (
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '0.75rem',
-              }}
-            >
-              <h2 className="section-title" style={{ margin: 0 }}>
-                Contacts
-              </h2>
-              <EvidenceInfoIcon
-                evidence={analysis.contactsEvidence ?? undefined}
-                cardTitle="Contacts"
-              />
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                gap: '0.75rem',
-              }}
-            >
-              {['Email', 'LinkedIn', 'Other'].map((label) => (
-                <div
-                  key={label}
-                  style={{
-                    padding: '1rem',
-                    background: 'var(--bg)',
-                    border: '1px dashed var(--border)',
-                    borderRadius: 6,
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
-                    {label}
-                  </div>
-                  <div style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
-                    Coming soon
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: '0.75rem' }}>
-              <FeedbackThumbs
-                analysisId={analysis.id}
-                component="contact"
-                feedbackValue={
-                  (feedbackList?.find((f) => f.component === 'contact')?.value as 'up' | 'down') ??
-                  null
-                }
-                onFeedbackSubmitted={setFeedbackList}
-              />
-            </div>
-          </div>
-        )}
-
-      {/* Extras: Salary check, Checklist, Interview prep */}
+      {/* Extras: Salary check, Contacts (or Run Deep Outreach), Checklist, Interview prep */}
       {analysis?.salaryLevelCheck && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <h2 className="section-title" style={{ margin: '0 0 0.5rem 0' }}>
@@ -1783,6 +1732,335 @@ export default function ApplicationAssistantPage({
           <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             {analysis.salaryLevelCheck}
           </p>
+        </div>
+      )}
+
+      {/* Contacts: show extracted contacts or "Run Deep Outreach Research" to run the agent */}
+      {analysis && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.5rem',
+            }}
+          >
+            <h2 className="section-title" style={{ margin: 0 }}>
+              Contacts
+            </h2>
+            {(() => {
+              const c = analysis.contacts as Record<string, unknown> | null | undefined;
+              const hasDrafts = Array.isArray(c?.drafts) && (c.drafts as unknown[]).length > 0;
+              const hasAny =
+                c &&
+                (c.bestFirst != null ||
+                  (Array.isArray(c.ranked) && c.ranked.length > 0) ||
+                  (Array.isArray(c.emails) && c.emails.length > 0) ||
+                  (Array.isArray(c.linkedIn) && c.linkedIn.length > 0) ||
+                  hasDrafts);
+              return hasAny ? (
+                <EvidenceInfoIcon
+                  evidence={analysis.contactsEvidence ?? undefined}
+                  cardTitle="Contacts"
+                />
+              ) : null;
+            })()}
+          </div>
+          {(() => {
+            const c = analysis.contacts as Record<string, unknown> | null | undefined;
+            const hasNewShape =
+              c && (c.bestFirst != null || (Array.isArray(c.ranked) && c.ranked.length > 0));
+            const hasLegacyShape =
+              c &&
+              ((Array.isArray(c.emails) && c.emails.length > 0) ||
+                (Array.isArray(c.linkedIn) && c.linkedIn.length > 0) ||
+                (Array.isArray(c.others) && c.others.length > 0));
+            const hasDraftsOnly =
+              Array.isArray(c?.drafts) &&
+              (c.drafts as unknown[]).length > 0 &&
+              !hasNewShape &&
+              !hasLegacyShape;
+            const hasContacts = hasNewShape || hasLegacyShape || hasDraftsOnly;
+            if (hasContacts && c) {
+              const best = c.bestFirst as Record<string, string | undefined> | null | undefined;
+              const ranked = (c.ranked as Record<string, string | undefined>[] | undefined) ?? [];
+              const draftsCount = Array.isArray(c.drafts) ? (c.drafts as unknown[]).length : 0;
+              const evidenceSummary = (analysis.contactsEvidence as { summary?: string })?.summary;
+              if (hasDraftsOnly && ranked.length === 0 && !best) {
+                return (
+                  <>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                      {evidenceSummary ??
+                        (draftsCount > 0
+                          ? `${draftsCount} outreach draft(s) generated.`
+                          : 'Outreach completed.')}{' '}
+                      See Outreach drafts below.
+                    </p>
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <FeedbackThumbs
+                        analysisId={analysis.id}
+                        component="outreach"
+                        feedbackValue={
+                          (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                            | 'up'
+                            | 'down') ?? null
+                        }
+                        onFeedbackSubmitted={setFeedbackList}
+                      />
+                    </div>
+                  </>
+                );
+              }
+              return (
+                <>
+                  {best && (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        background: 'var(--surface-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        marginBottom: '0.75rem',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--muted-foreground)',
+                          marginBottom: '0.25rem',
+                        }}
+                      >
+                        Best contact
+                      </div>
+                      <div style={{ fontWeight: 600 }}>{best.name ?? '—'}</div>
+                      {best.linkedinUrl && (
+                        <a
+                          href={best.linkedinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}
+                        >
+                          LinkedIn →
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {ranked.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--muted-foreground)',
+                          marginBottom: '0.25rem',
+                        }}
+                      >
+                        All ranked contacts
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                        {ranked.map((r: Record<string, string | undefined>, i: number) => (
+                          <li key={i} style={{ marginBottom: '0.25rem' }}>
+                            <strong>{r.name ?? '—'}</strong>
+                            {r.role != null ? ` · ${r.role}` : null}
+                            {r.linkedinUrl && (
+                              <a
+                                href={r.linkedinUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ marginLeft: '0.5rem', fontSize: '0.8125rem' }}
+                              >
+                                LinkedIn
+                              </a>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <FeedbackThumbs
+                      analysisId={analysis.id}
+                      component="contact"
+                      feedbackValue={
+                        (feedbackList?.find((f) => f.component === 'contact')?.value as
+                          | 'up'
+                          | 'down') ?? null
+                      }
+                      onFeedbackSubmitted={setFeedbackList}
+                    />
+                  </div>
+                </>
+              );
+            }
+            return (
+              <div style={{ marginTop: '0.25rem' }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: '0.875rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  No contacts extracted yet.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!analysis?.id || runningOutreach) return;
+                    setTerminalOpen(true);
+                    setRunningOutreach(true);
+                    setOutreachLogs([]);
+                    try {
+                      const res = await fetch('/api/application-assistant/outreach', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ analysisId: analysis.id }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        const errMsg =
+                          (data as { error?: string }).error ?? res.statusText ?? 'Request failed';
+                        setOutreachLogs((prev) => [
+                          ...prev,
+                          {
+                            id: `outreach-err-${Date.now()}`,
+                            ts: Date.now(),
+                            agent: 'OutReachPipeline',
+                            level: 'error',
+                            message: errMsg,
+                          },
+                        ]);
+                        setRunningOutreach(false);
+                        return;
+                      }
+                      const reader = res.body?.getReader();
+                      const decoder = new TextDecoder();
+                      if (!reader) {
+                        setOutreachLogs((prev) => [
+                          ...prev,
+                          {
+                            id: `outreach-err-${Date.now()}`,
+                            ts: Date.now(),
+                            agent: 'OutReachPipeline',
+                            level: 'error',
+                            message: 'No response body',
+                          },
+                        ]);
+                        setRunningOutreach(false);
+                        return;
+                      }
+                      let buffer = '';
+                      let logIdx = 0;
+                      try {
+                        while (true) {
+                          const { done, value } = await reader.read();
+                          if (done) break;
+                          buffer += decoder.decode(value, { stream: true });
+                          const lines = buffer.split('\n');
+                          buffer = lines.pop() ?? '';
+                          for (const line of lines) {
+                            const t = line.trim();
+                            if (!t) continue;
+                            try {
+                              const obj = JSON.parse(t) as {
+                                type: string;
+                                ts?: string;
+                                level?: string;
+                                message?: string;
+                                success?: boolean;
+                                contacts?: unknown[];
+                              };
+                              if (obj.type === 'log') {
+                                logIdx += 1;
+                                setOutreachLogs((prev) => [
+                                  ...prev,
+                                  {
+                                    id: `outreach-${logIdx}-${Date.now()}`,
+                                    ts: obj.ts ? new Date(obj.ts).getTime() : Date.now(),
+                                    agent: 'OutReachPipeline',
+                                    level: obj.level ?? 'info',
+                                    message: obj.message ?? '',
+                                  },
+                                ]);
+                              } else if (obj.type === 'result') {
+                                if (obj.success && analysis?.id) {
+                                  const logRes = await fetch(
+                                    `/api/application-assistant/logs?analysisId=${analysis.id}`,
+                                  );
+                                  const d = await (logRes.ok ? logRes.json() : { logs: [] });
+                                  const allLogs = (d.logs || []) as LogEntry[];
+                                  if (allLogs.length > 0) {
+                                    setLogs(allLogs);
+                                    const last = allLogs[allLogs.length - 1];
+                                    if (last) setLastLogId(last.id);
+                                  }
+                                  const analysisRes = await fetch(
+                                    `/api/application-assistant/analyses/${analysis.id}`,
+                                  );
+                                  if (analysisRes.ok) {
+                                    const updated = (await analysisRes.json()) as Analysis;
+                                    setAnalysis(updated);
+                                    setHistory((prev) =>
+                                      prev.map((h) => (h.id === analysis.id ? updated : h)),
+                                    );
+                                  }
+                                  setOutreachLogs([]);
+                                }
+                              }
+                            } catch {
+                              // skip malformed line
+                            }
+                          }
+                        }
+                      } catch (streamErr) {
+                        const msg =
+                          streamErr instanceof Error ? streamErr.message : String(streamErr);
+                        setOutreachLogs((prev) => [
+                          ...prev,
+                          {
+                            id: `outreach-err-${Date.now()}`,
+                            ts: Date.now(),
+                            agent: 'OutReachPipeline',
+                            level: 'error',
+                            message: `Stream error: ${msg}`,
+                          },
+                        ]);
+                      } finally {
+                        setRunningOutreach(false);
+                      }
+                    } catch (err) {
+                      setOutreachLogs((prev) => [
+                        ...prev,
+                        {
+                          id: `outreach-err-${Date.now()}`,
+                          ts: Date.now(),
+                          agent: 'OutReachPipeline',
+                          level: 'error',
+                          message:
+                            err instanceof Error
+                              ? err.message
+                              : 'Run Deep Outreach Research failed',
+                        },
+                      ]);
+                      setRunningOutreach(false);
+                    }
+                  }}
+                  disabled={runningOutreach}
+                  className="btn btn-primary"
+                  style={{
+                    fontSize: '0.875rem',
+                    padding: '0.5rem 1rem',
+                    cursor: runningOutreach ? 'wait' : 'pointer',
+                  }}
+                >
+                  {runningOutreach
+                    ? 'Running Deep Outreach Research…'
+                    : 'Run Deep Outreach Research'}
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1896,32 +2174,111 @@ export default function ApplicationAssistantPage({
         </div>
       )}
 
-      {/* Phase 16: Outreach section (placeholder until OutReachPipeline is built) */}
-      {analysis && (analysis.runStatus === 'done' || status?.currentStep === 'done') && (
-        <>
-          <div
-            className="card"
-            style={{
-              marginBottom: '1rem',
-              borderLeft: '4px solid var(--accent)',
-              background: 'var(--surface-elevated)',
-            }}
-          >
-            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              <strong>OutReachPipeline</strong> has started. Yet to build.
-            </p>
-          </div>
+      {/* Outreach drafts (from Deep Outreach Research pipeline) */}
+      {analysis &&
+        (analysis.runStatus === 'done' || status?.currentStep === 'done') &&
+        Array.isArray((analysis.contacts as Record<string, unknown>)?.drafts) &&
+        ((analysis.contacts as Record<string, unknown>).drafts as unknown[]).length > 0 && (
           <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-              Outreach
-            </h2>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
-              Multi-channel outreach (LinkedIn, email) will appear here once the OutReachPipeline is
-              built.
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Outreach drafts
+              </h2>
+              <EvidenceInfoIcon
+                evidence={analysis.contactsEvidence ?? undefined}
+                cardTitle="Outreach"
+              />
+            </div>
+            <p
+              style={{
+                margin: '0 0 0.75rem 0',
+                fontSize: '0.875rem',
+                color: 'var(--muted-foreground)',
+              }}
+            >
+              Copy a draft below for LinkedIn connection, LinkedIn DM, or email.
             </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {(
+                (analysis.contacts as Record<string, unknown>).drafts as Record<string, unknown>[]
+              ).map((d: Record<string, unknown>, i: number) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: '1rem',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                      {String(d.platform ?? 'Draft')} · {String(d.variant ?? '')}{' '}
+                      {d.tone != null ? `(${String(d.tone)})` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(String(d.body ?? ''), `outreach-${i}`)}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.25rem 0.5rem',
+                        cursor: 'pointer',
+                        border: '1px solid var(--border)',
+                        borderRadius: 4,
+                        background: 'var(--surface-elevated)',
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  {d.subject != null &&
+                    (() => {
+                      const subj: string = String(d.subject ?? '');
+                      return (
+                        <div style={{ fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
+                          <strong>Subject:</strong> {subj}
+                        </div>
+                      );
+                    })()}
+                  <div
+                    style={{
+                      fontSize: '0.875rem',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {String(d.body ?? '')}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: '0.75rem' }}>
+              <FeedbackThumbs
+                analysisId={analysis.id}
+                component="outreach"
+                feedbackValue={
+                  (feedbackList?.find((f) => f.component === 'outreach')?.value as 'up' | 'down') ??
+                  null
+                }
+                onFeedbackSubmitted={setFeedbackList}
+              />
+            </div>
           </div>
-        </>
-      )}
+        )}
     </div>
   );
 }

@@ -10,4 +10,5 @@
 export * from './contact-strategy-agent.js';
 export * from './people-search-agent.js';
 export * from './contact-verifier-agent.js';
+export * from './email-pattern-agent.js';
 export * from './types.js';

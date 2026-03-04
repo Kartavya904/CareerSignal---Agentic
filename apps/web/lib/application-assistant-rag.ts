@@ -44,6 +44,11 @@ const BLOCK_TAGS = new Set([
 const MIN_CHUNK_CHARS = 15;
 const MAX_CHUNK_CHARS = 2000;
 
+/** Maximum number of chunks we embed/score; heavy pages are merged down to this so we don't lose coverage. */
+export const MAX_TOTAL_CHUNKS = 60;
+/** From those ≤MAX_TOTAL_CHUNKS chunks, we keep the top N by score for focused content. */
+export const TOP_K_CHUNKS = 40;
+
 /** Job-content query used to score chunks (embedded once per run). */
 const JOB_QUERY =
   'job title company name location job description responsibilities requirements qualifications salary compensation benefits apply how to apply';
@@ -121,6 +126,30 @@ export function chunkHtml(html: string): ChunkRecord[] {
   }
 
   return chunks;
+}
+
+/**
+ * If there are more than maxChunks, merge consecutive chunks so we have at most maxChunks.
+ * Preserves document order and content (no loss); each output chunk is a concatenation of a range.
+ * Used so heavy pages (e.g. 1200 chunks) are capped at MAX_TOTAL_CHUNKS before embedding.
+ */
+export function capChunksToMax(chunks: ChunkRecord[], maxChunks: number): ChunkRecord[] {
+  if (chunks.length <= maxChunks) return chunks;
+  const merged: ChunkRecord[] = [];
+  const step = Math.ceil(chunks.length / maxChunks);
+  for (let g = 0; g < maxChunks; g++) {
+    const start = g * step;
+    const end = Math.min((g + 1) * step, chunks.length);
+    const group = chunks.slice(start, end);
+    const text = group.map((c) => c.text).join('\n\n');
+    merged.push({
+      id: `c${g}`,
+      text,
+      index: g,
+      tag: group[0]?.tag ?? 'merged',
+    });
+  }
+  return merged;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -519,10 +548,17 @@ export async function runRagPipeline(
 
   try {
     onLog?.('RAG: Chunking HTML...');
-    const chunks = chunkHtml(html);
+    let chunks = chunkHtml(html);
     if (chunks.length === 0) {
       onLog?.('RAG: No chunks produced, skipping.');
       return { focusedHtml: null, chunksCount: 0, keptCount: 0 };
+    }
+    const originalCount = chunks.length;
+    chunks = capChunksToMax(chunks, MAX_TOTAL_CHUNKS);
+    if (originalCount > chunks.length) {
+      onLog?.(
+        `RAG: Capped ${originalCount} chunks to ${chunks.length} (max ${MAX_TOTAL_CHUNKS}) before embedding.`,
+      );
     }
 
     await writeFile(path.join(dir, 'chunks.json'), JSON.stringify(chunks, null, 2), 'utf-8');
@@ -563,12 +599,12 @@ export async function runRagPipeline(
     const queryEmbedding = (await embedBatch([JOB_QUERY], { timeout: 180000 }))[0];
     let keptCount = 0;
     let withScores = scoreChunks(chunks, embeddings, queryEmbedding ?? [], {
-      topK: 40,
+      topK: TOP_K_CHUNKS,
       minScore: 0.0,
     });
     // Take top-N by score as candidates for LLM ranking
     const sortedByScore = [...withScores].sort((a, b) => b.score - a.score);
-    const candidateIds = new Set(sortedByScore.slice(0, 40).map((c) => c.id));
+    const candidateIds = new Set(sortedByScore.slice(0, TOP_K_CHUNKS).map((c) => c.id));
     const candidateChunks = chunks.filter((c) => candidateIds.has(c.id));
 
     const llmRanked = await rankChunksWithLlm(candidateChunks, onLog);
@@ -649,10 +685,17 @@ export async function runCompanyPageRag(
   try {
     await mkdir(outputDir, { recursive: true });
     onLog?.('RAG (company): Chunking HTML...');
-    const chunks = chunkHtml(html);
+    let chunks = chunkHtml(html);
     if (chunks.length === 0) {
       onLog?.('RAG (company): No chunks produced, skipping.');
       return { focusedHtml: null, chunksCount: 0, keptCount: 0 };
+    }
+    const originalCount = chunks.length;
+    chunks = capChunksToMax(chunks, MAX_TOTAL_CHUNKS);
+    if (originalCount > chunks.length) {
+      onLog?.(
+        `RAG (company): Capped ${originalCount} chunks to ${chunks.length} (max ${MAX_TOTAL_CHUNKS}) before embedding.`,
+      );
     }
 
     await writeFile(path.join(outputDir, 'chunks.json'), JSON.stringify(chunks, null, 2), 'utf-8');
@@ -690,7 +733,7 @@ export async function runCompanyPageRag(
       embeddings,
       queryEmbedding ?? [],
       companyKeywordBoost,
-      { topK: 40, minScore: 0.0 },
+      { topK: TOP_K_CHUNKS, minScore: 0.0 },
     );
     const keptCount = withScores.filter((c) => c.keep).length;
 

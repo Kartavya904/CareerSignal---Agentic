@@ -12,6 +12,7 @@ export type AssistantPipelineStep =
   | 'extracting'
   | 'matching'
   | 'writing'
+  | 'outreach'
   | 'done'
   | 'error';
 
@@ -33,6 +34,7 @@ export function createAssistantPlan(options: { hasProfile: boolean }): Assistant
     steps.push('matching', 'writing');
   }
 
+  steps.push('outreach');
   // Always end in a terminal "done" step when successful.
   steps.push('done');
 

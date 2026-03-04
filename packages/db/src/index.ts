@@ -12,3 +12,5 @@ export * from './user-metadata';
 export * from './application-assistant-analyses';
 export * from './application-assistant-analysis-logs';
 export * from './application-assistant-feedback';
+export * from './contacts';
+export * from './job-listings';

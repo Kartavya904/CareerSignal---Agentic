@@ -51,6 +51,8 @@ import { runRagPipeline, runCompanyPageRag } from '@/lib/application-assistant-r
 import path from 'path';
 import { transitionAssistantStep } from '@/lib/application-assistant-planner';
 import { getDossierRunFolderName, createDossierDiskWriter } from '@/lib/dossier-disk';
+import { getOutreachRunFolderName } from '@/lib/outreach-research-disk';
+import { runOutreachResearch, OUTREACH_PIPELINE_TIMEOUT_MS } from '@/lib/outreach-research-runner';
 
 /** Build a serializable company snapshot for the analysis (all DB company fields for the UI card). */
 function toCompanySnapshot(row: {
@@ -285,6 +287,13 @@ export async function runApplicationAssistantPipeline(
   const extendDeadlineForDossier = () => {
     const newDeadline =
       pipelineStart + APP_ASSISTANT_BASE_TIMEOUT_MS + APP_ASSISTANT_DOSSIER_EXTRA_MS;
+    deadlineMs = Math.min(newDeadline, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => mergedController.abort(), Math.max(0, deadlineMs - Date.now()));
+  };
+  const OUTREACH_EXTRA_MS = 10 * 60 * 1000; // +10 min for outreach when run inside assistant
+  const extendDeadlineForOutreach = () => {
+    const newDeadline = deadlineMs + OUTREACH_EXTRA_MS;
     deadlineMs = Math.min(newDeadline, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => mergedController.abort(), Math.max(0, deadlineMs - Date.now()));
@@ -1063,26 +1072,9 @@ export async function runApplicationAssistantPipeline(
           { item: 'Prepare for interview questions', done: true },
         ];
 
-        const contactsEvidence = {
-          model: 'N/A',
-          summary: 'Contact pipeline not yet run (Phase 16 placeholder).',
-          emails: 0,
-          linkedIn: 0,
-          others: 0,
-        };
         await updateAnalysis(db, analysisId, {
           salaryLevelCheck: salaryCheck,
           applicationChecklist: checklist as unknown as Record<string, unknown>[],
-          contacts: { emails: [], linkedIn: [], others: [] },
-          contactsEvidence,
-        });
-        await updateOrchestratorMemory(runFolderName, {
-          step: {
-            step: 'contacts',
-            completedAt: new Date().toISOString(),
-            outputSummary: contactsEvidence.summary,
-            payload: contactsEvidence,
-          },
         });
       } else {
         dbLog(
@@ -1095,25 +1087,124 @@ export async function runApplicationAssistantPipeline(
 
         await updateAnalysis(db, analysisId, {
           matchScore: null,
-          contacts: { emails: [], linkedIn: [], others: [] },
         });
       }
 
-      // Phase 16: Outreach pipeline placeholder — will be built next
-      await dbLog(
-        db,
-        analysisId,
-        'OutReachPipeline',
-        'OutReachPipeline has started. Yet to build.',
-        { level: 'info' },
-      );
+      // Phase 16: Deep Outreach Research pipeline (contact discovery + ranking + drafts)
+      let outreachContacts: Record<string, unknown> = { bestFirst: null, ranked: [], drafts: [] };
+      let contactsEvidence: Record<string, unknown> = {
+        model: 'N/A',
+        summary: 'Outreach pipeline skipped (wrapping up).',
+        emails: 0,
+        linkedIn: 0,
+        others: 0,
+      };
+
+      if (!isWrappingUp()) {
+        await transitionAssistantStep(db, analysisId, 'outreach');
+        await dbLog(
+          db,
+          analysisId,
+          'OutReachPipeline',
+          'Running contact discovery and outreach generation...',
+          { level: 'info' },
+        );
+        extendDeadlineForOutreach();
+        const companyForOutreach = await findCompanyByNameOrDomain(db, {
+          name: companyResolution.canonicalName,
+        });
+        const outreachPage = await browser.newPage();
+        try {
+          await outreachPage.setViewportSize({ width: 1280, height: 720 });
+          await outreachPage.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+        } catch {
+          // ignore
+        }
+        try {
+          const outreachResult = await runOutreachResearch({
+            job: {
+              title: jobDetail.title,
+              companyName: jobDetail.company,
+              description: jobDetail.description ?? undefined,
+              sourceUrl: resolvedUrl,
+              applyUrl: resolvedUrl,
+            },
+            company: companyForOutreach
+              ? {
+                  id: companyForOutreach.id,
+                  name: companyForOutreach.name,
+                  websiteDomain: companyForOutreach.websiteDomain ?? undefined,
+                  descriptionText: companyForOutreach.descriptionText ?? undefined,
+                }
+              : null,
+            profile: profile
+              ? {
+                  name: profile.name,
+                  skills: (profile.skills as string[]) ?? [],
+                  targetRoles: (profile.targetRoles as string[]) ?? [],
+                }
+              : null,
+            runFolderName: getOutreachRunFolderName(resolvedUrl),
+            log: ({ level, message }) =>
+              dbLog(db, analysisId, 'OutReachPipeline', message, { level }),
+            browserPage: outreachPage,
+            hardTimeoutMs: Math.min(OUTREACH_PIPELINE_TIMEOUT_MS, getRemainingMs() - 5000),
+            abortSignal: effectiveSignal,
+          });
+          outreachContacts = {
+            bestFirst: outreachResult.bestFirst ?? null,
+            ranked: outreachResult.rankedContacts ?? outreachResult.contacts ?? [],
+            drafts: outreachResult.drafts ?? [],
+          };
+          const contacts = (outreachResult.contacts ?? []) as unknown[];
+          const emails = contacts.filter(
+            (c: unknown) => (c as Record<string, unknown>).email,
+          ).length;
+          const linkedIn = contacts.filter(
+            (c: unknown) => (c as Record<string, unknown>).linkedinUrl,
+          ).length;
+          contactsEvidence = {
+            model: 'outreach_pipeline',
+            summary: `Contacts: ${contacts.length}, Drafts: ${(outreachResult.drafts ?? []).length}`,
+            emails,
+            linkedIn,
+            others: contacts.length - emails - linkedIn,
+          };
+          await dbLog(
+            db,
+            analysisId,
+            'OutReachPipeline',
+            `Done. ${contacts.length} contact(s), ${(outreachResult.drafts ?? []).length} draft(s).`,
+            { level: 'success' },
+          );
+        } catch (err) {
+          dbLog(
+            db,
+            analysisId,
+            'OutReachPipeline',
+            `Outreach pipeline failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+            { level: 'warn' },
+          );
+        } finally {
+          await outreachPage.close().catch(() => {});
+        }
+      }
+
+      // Persist outreach result on the analysis row (contacts jsonb). The dedicated
+      // contacts table (DB) exists for reuse across jobs at the same company; it is
+      // not yet populated by this pipeline. Linking to analysisId would require
+      // usedForAnalysisIds or an analysis_contacts junction table.
+      await updateAnalysis(db, analysisId, {
+        contacts: outreachContacts,
+        contactsEvidence,
+      });
       await updateOrchestratorMemory(runFolderName, {
-        currentStep: 'outreach_placeholder',
+        currentStep: 'outreach',
         step: {
-          step: 'outreach_placeholder',
+          step: 'outreach',
           completedAt: new Date().toISOString(),
-          outputSummary: 'Yet to build',
-          payload: { status: 'placeholder' },
+          outputSummary: (contactsEvidence as { summary?: string }).summary ?? 'Outreach complete',
+          payload: contactsEvidence,
         },
       });
 

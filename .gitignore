@@ -52,6 +52,10 @@ data_application_assistant/
 data_company_dossier/
 !data_company_dossier/.gitkeep
 
+# Outreach Research Data
+data_outreach_research/
+!data_outreach_research/.gitkeep
+
 # Pipeline evidence (Greenhouse/Lever raw API responses)
 data/evidence/
 

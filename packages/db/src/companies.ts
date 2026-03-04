@@ -26,6 +26,12 @@ export async function findCompanyByNormalizedName(
   return (row as CompanyRow | undefined) ?? null;
 }
 
+/** Find a company by primary key. */
+export async function getCompanyById(db: Db, id: string): Promise<CompanyRow | null> {
+  const [row] = await db.select().from(companies).where(eq(companies.id, id)).limit(1);
+  return (row as CompanyRow | undefined) ?? null;
+}
+
 /**
  * Find a company using a combination of normalized name and optional websiteDomain/url hints.
  *
