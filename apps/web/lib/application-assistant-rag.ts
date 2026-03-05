@@ -57,6 +57,9 @@ const JOB_QUERY =
 export const COMPANY_QUERY =
   'company about us description headquarters location size employees industry funding remote policy careers jobs tech stack';
 
+// Cached embedding for COMPANY_QUERY so we only compute it once per process.
+let companyQueryEmbeddingCache: number[] | null = null;
+
 /**
  * Chunk HTML into text blocks with id and index. Prefers block-level elements with meaningful text.
  */
@@ -727,7 +730,11 @@ export async function runCompanyPageRag(
     );
 
     onLog?.('RAG (company): Scoring chunks with company query...');
-    const queryEmbedding = (await embedBatch([COMPANY_QUERY], { timeout: 180000 }))[0];
+    if (!companyQueryEmbeddingCache) {
+      companyQueryEmbeddingCache =
+        (await embedBatch([COMPANY_QUERY], { timeout: 180000 }))[0] ?? [];
+    }
+    const queryEmbedding = companyQueryEmbeddingCache;
     const withScores = scoreChunksWithBoost(
       chunks,
       embeddings,

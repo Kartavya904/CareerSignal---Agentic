@@ -137,6 +137,31 @@ export async function generateDrafts(
   return { drafts, errors };
 }
 
+/**
+ * Generate a single outreach draft for a contact (on-demand from UI).
+ * Uses one tone (default CONCISE). Preferences can pass a different tone.
+ */
+export async function generateSingleDraftForContact(
+  job: NormalizedJob,
+  contact: Contact,
+  candidateName: string,
+  candidateSkills: string[],
+  hooks: PersonalizationHook[],
+  tone: OutreachTone = 'CONCISE',
+): Promise<OutreachDraft> {
+  const platform: OutreachPlatform = contact.linkedinUrl ? 'LINKEDIN_CONNECTION' : 'EMAIL';
+  return generateSingleDraft(
+    job,
+    contact,
+    candidateName,
+    candidateSkills,
+    hooks,
+    platform,
+    tone,
+    'A',
+  );
+}
+
 async function generateSingleDraft(
   job: NormalizedJob,
   contact: Contact,

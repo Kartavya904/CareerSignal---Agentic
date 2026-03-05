@@ -1,8 +1,11 @@
 /**
  * Ollama HTTP client for local LLM inference.
  * Supports streaming and non-streaming completions.
+ *
+ * Chat uses streaming by default so the server sends tokens as they're generated; this avoids
+ * Ollama's ~2-minute server-side timeout that hits non-streaming /api/chat when the model is slow.
+ * Strict timeout policy: all chat/generate use at least 3 min and at most 5 min client-side.
  */
-
 import {
   OLLAMA_BASE_URL,
   OllamaModels,
@@ -10,6 +13,16 @@ import {
   defaultModelConfigs,
   type OllamaModelType,
 } from './models.js';
+
+/** Minimum timeout for chat/generate (3 min). Ensures we don't abort before Ollama can finish. */
+const MIN_CHAT_TIMEOUT_MS = 180_000;
+/** Maximum timeout for chat/generate (5 min). Keeps requests bounded. */
+const MAX_CHAT_TIMEOUT_MS = 300_000;
+
+function clampTimeout(ms: number | undefined, defaultMs: number): number {
+  const value = ms ?? defaultMs;
+  return Math.min(MAX_CHAT_TIMEOUT_MS, Math.max(MIN_CHAT_TIMEOUT_MS, value));
+}
 
 export interface OllamaGenerateRequest {
   model: string;
@@ -90,7 +103,8 @@ export class OllamaClient {
     timeout?: number,
   ): Promise<OllamaGenerateResponse> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout ?? this.defaultTimeout);
+    const effectiveTimeout = clampTimeout(timeout, this.defaultTimeout);
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
     try {
       const response = await fetch(`${this.baseUrl}/api/generate`, {
@@ -113,16 +127,19 @@ export class OllamaClient {
 
   /**
    * Chat completion using the /api/chat endpoint.
+   * Uses streaming so the server sends tokens as they're generated, avoiding Ollama's
+   * ~2-minute server-side timeout on long-running non-streaming requests.
    */
   async chat(request: OllamaChatRequest, timeout?: number): Promise<OllamaChatResponse> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout ?? this.defaultTimeout);
+    const effectiveTimeout = clampTimeout(timeout, this.defaultTimeout);
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
     try {
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...request, stream: false }),
+        body: JSON.stringify({ ...request, stream: true }),
         signal: controller.signal,
       });
 
@@ -131,7 +148,86 @@ export class OllamaClient {
         throw new Error(`Ollama chat failed: ${response.status} - ${error}`);
       }
 
-      return response.json() as Promise<OllamaChatResponse>;
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Ollama chat failed: no response body');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let model = request.model;
+      let created_at = new Date().toISOString();
+      let content = '';
+      let done = false;
+      let total_duration: number | undefined;
+      let load_duration: number | undefined;
+      let prompt_eval_count: number | undefined;
+      let prompt_eval_duration: number | undefined;
+      let eval_count: number | undefined;
+      let eval_duration: number | undefined;
+
+      while (!done) {
+        const { done: readerDone, value } = await reader.read();
+        if (readerDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line) as {
+              model?: string;
+              created_at?: string;
+              message?: { role?: string; content?: string };
+              done?: boolean;
+              total_duration?: number;
+              load_duration?: number;
+              prompt_eval_count?: number;
+              prompt_eval_duration?: number;
+              eval_count?: number;
+              eval_duration?: number;
+            };
+            if (event.model != null) model = event.model;
+            if (event.created_at != null) created_at = event.created_at;
+            if (event.message?.content != null) content += event.message.content;
+            if (event.done) {
+              done = true;
+              if (event.total_duration != null) total_duration = event.total_duration;
+              if (event.load_duration != null) load_duration = event.load_duration;
+              if (event.prompt_eval_count != null) prompt_eval_count = event.prompt_eval_count;
+              if (event.prompt_eval_duration != null)
+                prompt_eval_duration = event.prompt_eval_duration;
+              if (event.eval_count != null) eval_count = event.eval_count;
+              if (event.eval_duration != null) eval_duration = event.eval_duration;
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer) as { message?: { content?: string }; done?: boolean };
+          if (event.message?.content != null) content += event.message.content;
+        } catch {
+          // ignore
+        }
+      }
+
+      return {
+        model,
+        created_at,
+        message: { role: 'assistant', content },
+        done: true,
+        total_duration,
+        load_duration,
+        prompt_eval_count,
+        prompt_eval_duration,
+        eval_count,
+        eval_duration,
+      };
     } finally {
       clearTimeout(timeoutId);
     }

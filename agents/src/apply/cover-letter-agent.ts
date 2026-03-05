@@ -1,8 +1,8 @@
 /**
- * Cover Letter Agent — Generates 3 style variants for a job application.
+ * Cover Letter Agent — Generates a single cover letter (or legacy 3 variants) for a job application.
  *
- * Styles: Formal, Conversational, Bold.
- * Each ~200-300 words, personalized to the job and user profile.
+ * When style preferences and/or userInstruction are provided, generates one letter tailored to them.
+ * Otherwise can generate 3 style variants (formal, conversational, bold) for backward compatibility.
  */
 
 import { complete } from '@careersignal/llm';
@@ -15,12 +15,22 @@ export interface CoverLetters {
   bold: string;
 }
 
-export async function generateCoverLetters(
-  profile: ProfileSnapshot,
-  job: JobDetail,
-  options?: { companyResearch?: string },
-): Promise<CoverLetters> {
-  const profileCtx = [
+export interface CoverLetterStylePrefs {
+  tone?: string[];
+  length?: 'CONCISE' | 'DEFAULT' | 'DETAILED';
+  wordChoice?: string[];
+  notes?: string | null;
+}
+
+export interface GenerateSingleCoverLetterOptions {
+  companyResearch?: string;
+  style?: CoverLetterStylePrefs;
+  /** User's free-form instruction for regeneration (e.g. "make it shorter and more direct") */
+  userInstruction?: string | null;
+}
+
+function buildProfileCtx(profile: ProfileSnapshot): string {
+  return [
     `Name: ${profile.name}`,
     profile.location ? `Location: ${profile.location}` : null,
     profile.skills.length > 0 ? `Key skills: ${profile.skills.slice(0, 15).join(', ')}` : null,
@@ -39,19 +49,97 @@ export async function generateCoverLetters(
   ]
     .filter(Boolean)
     .join('\n');
+}
 
-  const jobCtx = [
+function buildJobCtx(job: JobDetail, companyResearch?: string): string {
+  return [
     `Title: ${job.title}`,
     `Company: ${job.company}`,
     job.companyOneLiner ? `About company: ${job.companyOneLiner}` : null,
-    options?.companyResearch
-      ? `Company research (culture, norms): ${options.companyResearch}`
-      : null,
+    companyResearch ? `Company research (culture, norms): ${companyResearch}` : null,
     job.location ? `Location: ${job.location}` : null,
     `Description: ${job.description.slice(0, 2000)}`,
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/**
+ * Generate a single cover letter using optional style preferences and/or user instruction.
+ * Returns a Record with one key "draft" for storage in analysis.coverLetters.
+ */
+export async function generateSingleCoverLetter(
+  profile: ProfileSnapshot,
+  job: JobDetail,
+  options?: GenerateSingleCoverLetterOptions,
+): Promise<Record<string, string>> {
+  const profileCtx = buildProfileCtx(profile);
+  const jobCtx = buildJobCtx(job, options?.companyResearch);
+
+  const style = options?.style;
+  const lengthGuidance =
+    style?.length === 'CONCISE'
+      ? 'Keep it concise: roughly 150–200 words.'
+      : style?.length === 'DETAILED'
+        ? 'Use a detailed length: roughly 300–400 words.'
+        : 'Use a medium length: roughly 200–300 words.';
+
+  const toneList = style?.tone?.length
+    ? style.tone.join(', ')
+    : 'Professional, clear, and tailored to the role.';
+  const wordChoiceList = style?.wordChoice?.length
+    ? `Word choice: ${style.wordChoice.join(', ')}.`
+    : '';
+  const structureNote = style?.notes?.trim()
+    ? `\n\nIMPORTANT - Structure and closing from the candidate:\n${style.notes}\nApply this opening, structure, and signature in the letter.`
+    : '';
+  const userInstructionLine = options?.userInstruction?.trim()
+    ? `\n\nADDITIONAL INSTRUCTION FROM THE CANDIDATE (follow this):\n${options.userInstruction}`
+    : '';
+
+  const prompt = `Write one cover letter for this job application.
+
+CANDIDATE:
+${profileCtx}
+
+JOB:
+${jobCtx}
+${structureNote}${userInstructionLine}
+
+STYLE:
+- Tone: ${toneList}
+${lengthGuidance}
+${wordChoiceList}
+
+The letter should:
+- Reference specific skills and experience from the candidate's profile
+- Mention the company and role by name
+- Highlight why the candidate is a good fit
+- End with a clear call to action
+
+Return ONLY the raw cover letter text (no JSON, no key). Start directly with the greeting (e.g. Dear Hiring Manager).`;
+
+  try {
+    const response = await complete(prompt, 'GENERAL', {
+      temperature: 0.6,
+      maxTokens: 2048,
+      timeout: 120000,
+    });
+    const draft = (response?.trim() ||
+      'Cover letter generation failed. Please try again.') as string;
+    return { draft };
+  } catch {
+    return { draft: 'Cover letter generation failed. Please try again.' };
+  }
+}
+
+export async function generateCoverLetters(
+  profile: ProfileSnapshot,
+  job: JobDetail,
+  options?: { companyResearch?: string },
+): Promise<CoverLetters> {
+  const profileCtx = buildProfileCtx(profile);
+  const jobCtx = buildJobCtx(job, options?.companyResearch);
 
   const prompt = `Write 3 cover letters (each 200-300 words) for this job application in different tones.
 

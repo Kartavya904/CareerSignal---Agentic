@@ -40,7 +40,7 @@ export async function POST() {
         : { country: loc.country, state: loc.state, city: loc.city },
     );
     return NextResponse.json({
-      work_authorization: profile.workAuthorization ?? 'OTHER',
+      work_authorizations: [profile.workAuthorization ?? 'OTHER'],
       target_locations: targetLocations,
       remote_preference: profile.remotePreference ?? 'ANY',
       target_seniority: p.targetSeniority ?? [],
@@ -51,6 +51,16 @@ export async function POST() {
       strict_filter_level: 'STRICT',
       max_contacts_per_job: 2,
       outreach_tone: 'PROFESSIONAL_CONCISE',
+      cover_letter_tone: [],
+      cover_letter_length: 'DEFAULT',
+      cover_letter_word_choice: [],
+      cover_letter_notes: null,
+      cold_linkedin_tone: [],
+      cold_linkedin_length: 'SHORT',
+      cold_linkedin_notes: null,
+      cold_email_tone: [],
+      cold_email_length: 'SHORT',
+      cold_email_notes: null,
     });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '../components/ToastContext';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ interface Analysis {
   matchBreakdown: MatchBreakdown | null;
   strictFilterRejects: StrictFilterReject[] | null;
   resumeSuggestions: ResumeSuggestions | null;
-  coverLetters: { formal: string; conversational: string; bold: string } | null;
+  coverLetters: Record<string, string> | null;
   contacts: {
     emails: string[];
     linkedIn: string[];
@@ -123,7 +124,7 @@ function CompanySnapshotCard({
   const descriptionText = (snapshot.descriptionText as string) ?? null;
   const url = (snapshot.url as string) ?? null;
   const industries = snapshot.industries as string[] | null | undefined;
-  const hqLocation = (snapshot.hqLocation as string) ?? null;
+  const headquartersAndOffices = (snapshot.headquartersAndOffices as string) ?? null;
   const sizeRange = (snapshot.sizeRange as string) ?? null;
   const foundedYear = snapshot.foundedYear as number | null | undefined;
   const fundingStage = (snapshot.fundingStage as string) ?? null;
@@ -191,7 +192,7 @@ function CompanySnapshotCard({
         }}
       >
         {row('Industries', industries?.length ? industries.join(', ') : null)}
-        {row('HQ', hqLocation)}
+        {row('HQ', headquartersAndOffices)}
         {row('Size', sizeRange)}
         {foundedYear != null && row('Founded', String(foundedYear))}
         {row('Funding', fundingStage)}
@@ -244,6 +245,7 @@ export default function ApplicationAssistantPage({
   initialAnalysisId,
 }: ApplicationAssistantPageProps = {}) {
   const router = useRouter();
+  const { addToast } = useToast();
   const [url, setUrl] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastLogId, setLastLogId] = useState<string | null>(null);
@@ -252,12 +254,14 @@ export default function ApplicationAssistantPage({
   const [history, setHistory] = useState<Analysis[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [coverTab, setCoverTab] = useState<'formal' | 'conversational' | 'bold'>('formal');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [coverRegenerateInstruction, setCoverRegenerateInstruction] = useState('');
+  const [coverRegenerateLoading, setCoverRegenerateLoading] = useState(false);
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [companySnapshotOpen, setCompanySnapshotOpen] = useState(false);
   const [autoConfirmCompanyTitle, setAutoConfirmCompanyTitle] = useState(false);
   const [companyManuallyConfirmed, setCompanyManuallyConfirmed] = useState(false);
   const [historySortBy, setHistorySortBy] = useState<'date' | 'score' | 'company'>('date');
@@ -267,6 +271,16 @@ export default function ApplicationAssistantPage({
   const [feedbackList, setFeedbackList] = useState<{ component: string; value: string }[]>([]);
   const [runningOutreach, setRunningOutreach] = useState(false);
   const [outreachLogs, setOutreachLogs] = useState<LogEntry[]>([]);
+  const [outreachDraftModalOpen, setOutreachDraftModalOpen] = useState(false);
+  const [outreachDraftModalContactIndex, setOutreachDraftModalContactIndex] = useState<
+    number | null
+  >(null);
+  const [outreachDraftModalLoading, setOutreachDraftModalLoading] = useState(false);
+  const [outreachDraftModalDraft, setOutreachDraftModalDraft] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [outreachDraftModalError, setOutreachDraftModalError] = useState<string | null>(null);
 
   // Poll status (from DB: running state and progress persist across refresh/tabs)
   useEffect(() => {
@@ -530,6 +544,36 @@ export default function ApplicationAssistantPage({
     });
   };
 
+  const handleRegenerateCoverLetter = async () => {
+    if (!analysis?.id || coverRegenerateLoading) return;
+    setCoverRegenerateLoading(true);
+    try {
+      const res = await fetch('/api/application-assistant/regenerate-cover-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysisId: analysis.id,
+          userInstruction: coverRegenerateInstruction.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(data.error ?? 'Failed to regenerate cover letter', 'error');
+        return;
+      }
+      setCoverRegenerateInstruction('');
+      addToast('Cover letter regenerated', 'success');
+      const updated = await fetch(`/api/application-assistant/analyses/${analysis.id}`).then((r) =>
+        r.ok ? r.json() : null,
+      );
+      if (updated) setAnalysis(updated as Analysis);
+    } catch {
+      addToast('Failed to regenerate cover letter', 'error');
+    } finally {
+      setCoverRegenerateLoading(false);
+    }
+  };
+
   const handleExport = () => {
     if (!analysis) return;
     const job = analysis.jobSummary;
@@ -554,14 +598,14 @@ export default function ApplicationAssistantPage({
       lines.push('');
     }
     if (analysis.coverLetters) {
-      lines.push('=== COVER LETTER (Formal) ===');
-      lines.push(analysis.coverLetters.formal);
-      lines.push('');
-      lines.push('=== COVER LETTER (Conversational) ===');
-      lines.push(analysis.coverLetters.conversational);
-      lines.push('');
-      lines.push('=== COVER LETTER (Bold) ===');
-      lines.push(analysis.coverLetters.bold);
+      const draft =
+        analysis.coverLetters.draft ??
+        analysis.coverLetters.formal ??
+        Object.values(analysis.coverLetters)[0];
+      if (draft) {
+        lines.push('=== COVER LETTER ===');
+        lines.push(draft);
+      }
     }
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
     const a = document.createElement('a');
@@ -1294,174 +1338,301 @@ export default function ApplicationAssistantPage({
         </div>
       )}
 
-      {/* Quick company snapshot (Phase 11) — full DB company when available */}
-      {analysis?.jobSummary && (
+      {/* Application Checklist — right below Agent Terminal */}
+      {analysis?.applicationChecklist && analysis.applicationChecklist.length > 0 && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div
+          <button
+            type="button"
+            onClick={() => setChecklistOpen(!checklistOpen)}
             style={{
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '0.5rem',
+              justifyContent: 'space-between',
+              width: '100%',
+              background: 'none',
+              border: 'none',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              padding: 0,
             }}
           >
             <h2 className="section-title" style={{ margin: 0 }}>
-              Company Snapshot
+              Application Checklist
             </h2>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
+              {checklistOpen ? 'Collapse' : 'Expand'}
+            </span>
+          </button>
+          {checklistOpen && (
             <div
               style={{
+                marginTop: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+              }}
+            >
+              {analysis.applicationChecklist.map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.8125rem',
+                  }}
+                >
+                  <span style={{ color: item.done ? 'var(--success)' : 'var(--muted-foreground)' }}>
+                    {item.done ? '\u2713' : '\u25CB'}
+                  </span>
+                  <span style={{ color: item.done ? 'var(--text-secondary)' : 'var(--text)' }}>
+                    {item.item}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Company Snapshot — droppable, default collapsed; collapsed shows name, website, about only */}
+      {analysis?.jobSummary && (
+        <div className="card" style={{ marginBottom: '1.5rem', padding: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.75rem 1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h2 className="section-title" style={{ margin: 0, fontSize: '0.9rem' }}>
+                Company Snapshot
+              </h2>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background:
+                      isRunning && currentStepIdx < stepIndex('matching')
+                        ? 'var(--accent)'
+                        : 'var(--success)',
+                  }}
+                />
+                <span>
+                  {isRunning && currentStepIdx < stepIndex('matching')
+                    ? 'Building snapshot…'
+                    : 'Snapshot ready'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCompanySnapshotOpen((open) => !open)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: '0.15rem',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem',
-                fontSize: '0.75rem',
-                color: 'var(--muted-foreground)',
+                justifyContent: 'center',
               }}
+              aria-label={
+                companySnapshotOpen ? 'Collapse company snapshot' : 'Expand company snapshot'
+              }
             >
               <span
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background:
-                    isRunning && currentStepIdx < stepIndex('matching')
-                      ? 'var(--accent)'
-                      : 'var(--success)',
+                  display: 'inline-block',
+                  transform: companySnapshotOpen ? 'rotate(90deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.15s ease-out',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
                 }}
-              />
-              <span>
-                {isRunning && currentStepIdx < stepIndex('matching')
-                  ? 'Building snapshot…'
-                  : 'Snapshot ready'}
+              >
+                ▶
               </span>
-            </div>
+            </button>
           </div>
-          {analysis.companySnapshot ? (
-            <CompanySnapshotCard
-              snapshot={analysis.companySnapshot}
-              jobLocation={analysis.jobSummary.location}
-            />
-          ) : (
-            <>
+          {!companySnapshotOpen && (
+            <div style={{ padding: '0 1rem 0.75rem', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                {analysis.companySnapshot
+                  ? ((analysis.companySnapshot.name as string) ?? analysis.jobSummary.company)
+                  : analysis.jobSummary.company}
+              </div>
+              {analysis.companySnapshot?.url ? (
+                <a
+                  href={
+                    String(analysis.companySnapshot.url).startsWith('http')
+                      ? String(analysis.companySnapshot.url)
+                      : `https://${analysis.companySnapshot.url}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--accent)',
+                    marginTop: 4,
+                    display: 'inline-block',
+                  }}
+                >
+                  {String(analysis.companySnapshot?.websiteDomain ?? 'Website')}
+                </a>
+              ) : null}
+              <div style={{ fontSize: '0.85rem', marginTop: 4, color: 'var(--text-secondary)' }}>
+                {analysis.companySnapshot?.descriptionText
+                  ? String(analysis.companySnapshot.descriptionText).slice(0, 200) +
+                    (String(analysis.companySnapshot.descriptionText).length > 200 ? '…' : '')
+                  : analysis.companyResearch
+                    ? analysis.companyResearch.slice(0, 200) +
+                      (analysis.companyResearch.length > 200 ? '…' : '')
+                    : String(analysis.jobSummary.companyOneLiner ?? '—')}
+              </div>
+            </div>
+          )}
+          {companySnapshotOpen && (
+            <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid var(--border)' }}>
+              {analysis.companySnapshot ? (
+                <CompanySnapshotCard
+                  snapshot={analysis.companySnapshot}
+                  jobLocation={analysis.jobSummary.location}
+                />
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '0.75rem',
+                      marginBottom: '0.5rem',
+                      marginTop: '0.75rem',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'var(--muted-foreground)',
+                          marginBottom: 2,
+                        }}
+                      >
+                        Company
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                        {analysis.jobSummary.company}
+                      </div>
+                      {analysis.jobSummary.location && (
+                        <div
+                          style={{
+                            fontSize: '0.8rem',
+                            color: 'var(--muted-foreground)',
+                            marginTop: 2,
+                          }}
+                        >
+                          {analysis.jobSummary.location}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 2 }}>
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'var(--muted-foreground)',
+                          marginBottom: 2,
+                        }}
+                      >
+                        Snapshot
+                      </div>
+                      <p
+                        style={{
+                          fontSize: '0.85rem',
+                          margin: 0,
+                          maxHeight: 60,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                        title={
+                          analysis.companyResearch ??
+                          analysis.jobSummary.companyOneLiner ??
+                          undefined
+                        }
+                      >
+                        {analysis.companyResearch
+                          ? analysis.companyResearch.slice(0, 220)
+                          : (analysis.jobSummary.companyOneLiner ??
+                            'We will enrich this company profile over time.')}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
               <div
                 style={{
                   display: 'flex',
                   flexWrap: 'wrap',
                   gap: '0.75rem',
-                  marginBottom: '0.5rem',
+                  fontSize: '0.75rem',
+                  marginTop: '0.75rem',
                 }}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: '0.8rem',
-                      color: 'var(--muted-foreground)',
-                      marginBottom: 2,
-                    }}
-                  >
-                    Company
-                  </div>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    {analysis.jobSummary.company}
-                  </div>
-                  {analysis.jobSummary.location && (
-                    <div
-                      style={{
-                        fontSize: '0.8rem',
-                        color: 'var(--muted-foreground)',
-                        marginTop: 2,
-                      }}
-                    >
-                      {analysis.jobSummary.location}
-                    </div>
-                  )}
+                <div
+                  style={{
+                    padding: '0.35rem 0.55rem',
+                    borderRadius: '999px',
+                    border: '1px solid var(--border)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                  }}
+                  title={resolverLog?.message}
+                >
+                  <span style={{ fontWeight: 500 }}>Identity</span>
+                  <span>{companyConfidence}%</span>
                 </div>
-                <div style={{ minWidth: 0, flex: 2 }}>
-                  <div
-                    style={{
-                      fontSize: '0.8rem',
-                      color: 'var(--muted-foreground)',
-                      marginBottom: 2,
-                    }}
-                  >
-                    Snapshot
-                  </div>
-                  <p
-                    style={{
-                      fontSize: '0.85rem',
-                      margin: 0,
-                      maxHeight: 60,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                    title={
-                      analysis.companyResearch ?? analysis.jobSummary.companyOneLiner ?? undefined
-                    }
-                  >
-                    {analysis.companyResearch
-                      ? analysis.companyResearch.slice(0, 220)
-                      : (analysis.jobSummary.companyOneLiner ??
-                        'We will enrich this company profile over time.')}
-                  </p>
+                <div
+                  style={{
+                    padding: '0.35rem 0.55rem',
+                    borderRadius: '999px',
+                    border: '1px solid var(--border)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                  }}
+                  title={cleanerInitialLog?.message}
+                >
+                  <span style={{ fontWeight: 500 }}>Cleaning</span>
+                  <span>{cleaningConfidence}%</span>
+                </div>
+                <div
+                  style={{
+                    padding: '0.35rem 0.55rem',
+                    borderRadius: '999px',
+                    border: '1px solid var(--border)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                  }}
+                  title="Deep company dossier will run as a background step in a future phase."
+                >
+                  <span style={{ fontWeight: 500 }}>Deep dossier</span>
+                  <span>Queued</span>
                 </div>
               </div>
-            </>
+            </div>
           )}
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              fontSize: '0.75rem',
-            }}
-          >
-            <div
-              style={{
-                padding: '0.35rem 0.55rem',
-                borderRadius: '999px',
-                border: '1px solid var(--border)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-              title={resolverLog?.message}
-            >
-              <span style={{ fontWeight: 500 }}>Identity</span>
-              <span>{companyConfidence}%</span>
-            </div>
-            <div
-              style={{
-                padding: '0.35rem 0.55rem',
-                borderRadius: '999px',
-                border: '1px solid var(--border)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-              title={cleanerInitialLog?.message}
-            >
-              <span style={{ fontWeight: 500 }}>Cleaning</span>
-              <span>{cleaningConfidence}%</span>
-            </div>
-            <div
-              style={{
-                padding: '0.35rem 0.55rem',
-                borderRadius: '999px',
-                border: '1px solid var(--border)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-              title="Deep company dossier will run as a background step in a future phase."
-            >
-              <span style={{ fontWeight: 500 }}>Deep dossier</span>
-              <span>Queued</span>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1635,93 +1806,133 @@ export default function ApplicationAssistantPage({
         />
       )}
 
-      {/* Cover letters */}
-      {analysis?.coverLetters && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '0.75rem',
-            }}
-          >
-            <h2 className="section-title" style={{ margin: 0 }}>
-              Cover Letters
-            </h2>
-            <EvidenceInfoIcon
-              evidence={analysis.coverLettersEvidence ?? undefined}
-              cardTitle="Cover Letters"
-            />
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            {(['formal', 'conversational', 'bold'] as const).map((style) => (
-              <button
-                key={style}
-                type="button"
-                onClick={() => setCoverTab(style)}
+      {/* Cover letter (single draft; regenerate via instruction) */}
+      {analysis?.coverLetters &&
+        (() => {
+          const draftText =
+            analysis.coverLetters.draft ??
+            analysis.coverLetters.formal ??
+            Object.values(analysis.coverLetters)[0];
+          if (!draftText) return null;
+          return (
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <div
                 style={{
-                  padding: '0.4rem 0.75rem',
-                  fontSize: '0.8125rem',
-                  fontWeight: coverTab === style ? 600 : 400,
-                  background: coverTab === style ? 'var(--accent-muted)' : 'transparent',
-                  color: coverTab === style ? 'var(--accent)' : 'var(--muted-foreground)',
-                  border: '1px solid',
-                  borderColor: coverTab === style ? 'var(--accent)' : 'var(--border)',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  textTransform: 'capitalize',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '0.75rem',
                 }}
               >
-                {style}
-              </button>
-            ))}
-          </div>
-          <div
-            style={{
-              background: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              padding: '1rem',
-              fontSize: '0.875rem',
-              lineHeight: 1.7,
-              whiteSpace: 'pre-wrap',
-              color: 'var(--text-secondary)',
-              maxHeight: 400,
-              overflow: 'auto',
-            }}
-          >
-            {analysis.coverLetters[coverTab]}
-          </div>
-          <div
-            style={{
-              marginTop: '0.5rem',
-              display: 'flex',
-              gap: '0.5rem',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-              onClick={() => copyToClipboard(analysis.coverLetters![coverTab], coverTab)}
-            >
-              {copyFeedback === coverTab ? 'Copied!' : 'Copy to clipboard'}
-            </button>
-            <FeedbackThumbs
-              analysisId={analysis.id}
-              component="outreach"
-              feedbackValue={
-                (feedbackList?.find((f) => f.component === 'outreach')?.value as 'up' | 'down') ??
-                null
-              }
-              onFeedbackSubmitted={setFeedbackList}
-            />
-          </div>
-        </div>
-      )}
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  Cover Letter
+                </h2>
+                <EvidenceInfoIcon
+                  evidence={analysis.coverLettersEvidence ?? undefined}
+                  cardTitle="Cover Letter"
+                />
+              </div>
+              <div
+                style={{
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding: '1rem',
+                  fontSize: '0.875rem',
+                  lineHeight: 1.7,
+                  whiteSpace: 'pre-wrap',
+                  color: 'var(--text-secondary)',
+                  maxHeight: 400,
+                  overflow: 'auto',
+                }}
+              >
+                {draftText}
+              </div>
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                  onClick={() => copyToClipboard(draftText, 'draft')}
+                >
+                  {copyFeedback === 'draft' ? 'Copied!' : 'Copy to clipboard'}
+                </button>
+                <FeedbackThumbs
+                  analysisId={analysis.id}
+                  component="outreach"
+                  feedbackValue={
+                    (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                      | 'up'
+                      | 'down') ?? null
+                  }
+                  onFeedbackSubmitted={setFeedbackList}
+                />
+              </div>
+              <div
+                style={{
+                  marginTop: '1rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <label className="label" style={{ display: 'block', marginBottom: '0.35rem' }}>
+                  Change the cover letter
+                </label>
+                <p
+                  style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--muted-foreground)',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Describe how you’d like it revised (e.g. “shorter and more direct”, “add a
+                  paragraph about X”). Then click Send to regenerate only the cover letter.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    flexWrap: 'wrap',
+                    alignItems: 'flex-end',
+                  }}
+                >
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. Make it more concise and add a line about relocation"
+                    value={coverRegenerateInstruction}
+                    onChange={(e) => setCoverRegenerateInstruction(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleRegenerateCoverLetter();
+                      }
+                    }}
+                    style={{ flex: '1 1 16rem', minWidth: 0 }}
+                    disabled={coverRegenerateLoading}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={coverRegenerateLoading}
+                    onClick={handleRegenerateCoverLetter}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    {coverRegenerateLoading ? 'Regenerating…' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* Extras: Salary check, Contacts (or Run Deep Outreach), Checklist, Interview prep */}
       {analysis?.salaryLevelCheck && (
@@ -1793,9 +2004,8 @@ export default function ApplicationAssistantPage({
                     <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                       {evidenceSummary ??
                         (draftsCount > 0
-                          ? `${draftsCount} outreach draft(s) generated.`
-                          : 'Outreach completed.')}{' '}
-                      See Outreach drafts below.
+                          ? `${draftsCount} outreach draft(s) saved.`
+                          : 'Outreach completed.')}
                     </p>
                     <div style={{ marginTop: '0.75rem' }}>
                       <FeedbackThumbs
@@ -1833,16 +2043,17 @@ export default function ApplicationAssistantPage({
                       >
                         Best contact
                       </div>
-                      <div style={{ fontWeight: 600 }}>{best.name ?? '—'}</div>
-                      {best.linkedinUrl && (
+                      {best.linkedinUrl ? (
                         <a
                           href={best.linkedinUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}
+                          style={{ fontWeight: 600, color: 'var(--accent)' }}
                         >
-                          LinkedIn →
+                          {best.name ?? '—'}
                         </a>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{best.name ?? '—'}</span>
                       )}
                     </div>
                   )}
@@ -1852,26 +2063,134 @@ export default function ApplicationAssistantPage({
                         style={{
                           fontSize: '0.75rem',
                           color: 'var(--muted-foreground)',
-                          marginBottom: '0.25rem',
+                          marginBottom: '0.35rem',
                         }}
                       >
-                        All ranked contacts
+                        All ranked contacts — click name for LinkedIn; use ✨ to create an outreach
+                        draft
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                      <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
                         {ranked.map((r: Record<string, string | undefined>, i: number) => (
-                          <li key={i} style={{ marginBottom: '0.25rem' }}>
-                            <strong>{r.name ?? '—'}</strong>
-                            {r.role != null ? ` · ${r.role}` : null}
-                            {r.linkedinUrl && (
-                              <a
-                                href={r.linkedinUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ marginLeft: '0.5rem', fontSize: '0.8125rem' }}
+                          <li
+                            key={i}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem',
+                              marginBottom: '0.4rem',
+                              padding: '0.35rem 0',
+                              borderBottom:
+                                i < ranked.length - 1 ? '1px solid var(--border)' : undefined,
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                minWidth: 0,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontWeight: 700,
+                                  color: 'var(--muted-foreground)',
+                                  fontSize: '0.8rem',
+                                  flexShrink: 0,
+                                  width: 20,
+                                }}
                               >
-                                LinkedIn
-                              </a>
-                            )}
+                                {i + 1}
+                              </span>
+                              {r.linkedinUrl ? (
+                                <a
+                                  href={r.linkedinUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontWeight: 600,
+                                    color: 'var(--accent)',
+                                    textOverflow: 'ellipsis',
+                                    overflow: 'hidden',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {r.name ?? '—'}
+                                </a>
+                              ) : (
+                                <span style={{ fontWeight: 600 }}>{r.name ?? '—'}</span>
+                              )}
+                              {r.role != null ? (
+                                <span
+                                  style={{
+                                    fontSize: '0.8125rem',
+                                    color: 'var(--muted-foreground)',
+                                  }}
+                                >
+                                  · {r.role}
+                                </span>
+                              ) : null}
+                            </span>
+                            <button
+                              type="button"
+                              title="Create outreach draft for this contact"
+                              onClick={async () => {
+                                if (!analysis?.id) return;
+                                setOutreachDraftModalContactIndex(i);
+                                setOutreachDraftModalOpen(true);
+                                setOutreachDraftModalLoading(true);
+                                setOutreachDraftModalDraft(null);
+                                setOutreachDraftModalError(null);
+                                try {
+                                  const res = await fetch(
+                                    '/api/application-assistant/outreach-draft',
+                                    {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        analysisId: analysis.id,
+                                        contactIndex: i,
+                                      }),
+                                    },
+                                  );
+                                  const data = await res.json().catch(() => ({}));
+                                  if (!res.ok) {
+                                    setOutreachDraftModalError(
+                                      (data as { error?: string }).error ??
+                                        'Failed to create draft',
+                                    );
+                                    return;
+                                  }
+                                  setOutreachDraftModalDraft(
+                                    (data as { draft?: Record<string, unknown> }).draft ?? null,
+                                  );
+                                  const updated = await fetch(
+                                    `/api/application-assistant/analyses/${analysis.id}`,
+                                  )
+                                    .then((r) => (r.ok ? r.json() : null))
+                                    .catch(() => null);
+                                  if (updated) setAnalysis(updated as Analysis);
+                                } finally {
+                                  setOutreachDraftModalLoading(false);
+                                }
+                              }}
+                              style={{
+                                flexShrink: 0,
+                                border: 'none',
+                                background: 'var(--surface-elevated)',
+                                borderRadius: 6,
+                                padding: '0.35rem 0.5rem',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                color: 'var(--accent)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2,
+                              }}
+                            >
+                              ✨ Draft
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -2064,59 +2383,128 @@ export default function ApplicationAssistantPage({
         </div>
       )}
 
-      {analysis?.applicationChecklist && analysis.applicationChecklist.length > 0 && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <button
-            type="button"
-            onClick={() => setChecklistOpen(!checklistOpen)}
+      {/* Outreach draft modal — on-demand draft for one contact */}
+      {outreachDraftModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="outreach-draft-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.5)',
+            padding: '1rem',
+          }}
+          onClick={() => {
+            if (!outreachDraftModalLoading) {
+              setOutreachDraftModalOpen(false);
+              setOutreachDraftModalContactIndex(null);
+              setOutreachDraftModalDraft(null);
+              setOutreachDraftModalError(null);
+            }
+          }}
+        >
+          <div
+            className="card"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              maxWidth: 520,
               width: '100%',
-              background: 'none',
-              border: 'none',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              padding: 0,
+              maxHeight: '85vh',
+              overflow: 'auto',
+              padding: '1.25rem',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="section-title" style={{ margin: 0 }}>
-              Application Checklist
-            </h2>
-            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
-              {checklistOpen ? 'Collapse' : 'Expand'}
-            </span>
-          </button>
-          {checklistOpen && (
-            <div
-              style={{
-                marginTop: '0.75rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.4rem',
-              }}
+            <h2
+              id="outreach-draft-modal-title"
+              className="section-title"
+              style={{ margin: '0 0 0.75rem 0' }}
             >
-              {analysis.applicationChecklist.map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    fontSize: '0.8125rem',
+              Outreach draft
+            </h2>
+            {outreachDraftModalLoading && (
+              <p style={{ margin: 0, color: 'var(--muted-foreground)' }}>Creating draft…</p>
+            )}
+            {outreachDraftModalError && (
+              <>
+                <p style={{ margin: 0, color: 'var(--error)' }}>{outreachDraftModalError}</p>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={() => {
+                    setOutreachDraftModalOpen(false);
+                    setOutreachDraftModalContactIndex(null);
+                    setOutreachDraftModalError(null);
                   }}
                 >
-                  <span style={{ color: item.done ? 'var(--success)' : 'var(--muted-foreground)' }}>
-                    {item.done ? '\u2713' : '\u25CB'}
-                  </span>
-                  <span style={{ color: item.done ? 'var(--text-secondary)' : 'var(--text)' }}>
-                    {item.item}
-                  </span>
+                  Close
+                </button>
+              </>
+            )}
+            {!outreachDraftModalLoading && !outreachDraftModalError && outreachDraftModalDraft && (
+              <>
+                <div
+                  style={{
+                    marginBottom: '0.75rem',
+                    fontSize: '0.8125rem',
+                    color: 'var(--muted-foreground)',
+                  }}
+                >
+                  {String(outreachDraftModalDraft.platform ?? '')} ·{' '}
+                  {String(outreachDraftModalDraft.tone ?? '')}
                 </div>
-              ))}
-            </div>
-          )}
+                {outreachDraftModalDraft.subject != null && (
+                  <div style={{ marginBottom: '0.5rem', fontSize: '0.8125rem' }}>
+                    <strong>Subject:</strong> {String(outreachDraftModalDraft.subject)}
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: '0.875rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    marginBottom: '1rem',
+                    padding: '0.75rem',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                  }}
+                >
+                  {String(outreachDraftModalDraft.body ?? '')}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      copyToClipboard(
+                        String(outreachDraftModalDraft.body ?? ''),
+                        'outreach-draft-modal',
+                      );
+                    }}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setOutreachDraftModalOpen(false);
+                      setOutreachDraftModalContactIndex(null);
+                      setOutreachDraftModalDraft(null);
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 

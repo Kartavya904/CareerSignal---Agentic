@@ -8,10 +8,12 @@ export const dynamic = 'force-dynamic';
 
 function rowToJson(row: Awaited<ReturnType<typeof getPreferencesByUserId>>) {
   if (!row) return null;
+  const workAuths = (row as { workAuthorizations?: string[] }).workAuthorizations;
   return {
     id: row.id,
     user_id: row.userId,
-    work_authorization: row.workAuthorization,
+    work_authorizations:
+      Array.isArray(workAuths) && workAuths.length > 0 ? workAuths : [row.workAuthorization],
     target_locations: row.targetLocations as TargetLocationRow[],
     willing_to_relocate: row.willingToRelocate,
     has_car: row.hasCar,
@@ -27,6 +29,17 @@ function rowToJson(row: Awaited<ReturnType<typeof getPreferencesByUserId>>) {
     strict_filter_level: row.strictFilterLevel,
     max_contacts_per_job: row.maxContactsPerJob,
     outreach_tone: row.outreachTone,
+    cover_letter_tone: (row as { coverLetterTone?: string[] }).coverLetterTone ?? [],
+    cover_letter_length: (row as { coverLetterLength?: string }).coverLetterLength ?? 'DEFAULT',
+    cover_letter_word_choice:
+      (row as { coverLetterWordChoice?: string[] }).coverLetterWordChoice ?? [],
+    cover_letter_notes: (row as { coverLetterNotes?: string | null }).coverLetterNotes ?? null,
+    cold_linkedin_tone: (row as { coldLinkedinTone?: string[] }).coldLinkedinTone ?? [],
+    cold_linkedin_length: (row as { coldLinkedinLength?: string }).coldLinkedinLength ?? 'SHORT',
+    cold_linkedin_notes: (row as { coldLinkedinNotes?: string | null }).coldLinkedinNotes ?? null,
+    cold_email_tone: (row as { coldEmailTone?: string[] }).coldEmailTone ?? [],
+    cold_email_length: (row as { coldEmailLength?: string }).coldEmailLength ?? 'SHORT',
+    cold_email_notes: (row as { coldEmailNotes?: string | null }).coldEmailNotes ?? null,
     synced_from_profile_at: row.syncedFromProfileAt?.toISOString() ?? null,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
@@ -75,8 +88,14 @@ export async function PUT(request: Request) {
         { status: 400 },
       );
     }
+    if (!data.work_authorizations?.length) {
+      return NextResponse.json(
+        { error: 'At least one work authorization is required.' },
+        { status: 400 },
+      );
+    }
     const row = await upsertPreferences(db, userId, {
-      workAuthorization: data.work_authorization,
+      workAuthorizations: data.work_authorizations,
       targetLocations: data.target_locations as TargetLocationRow[],
       willingToRelocate: data.willing_to_relocate,
       hasCar: data.has_car,
@@ -92,6 +111,16 @@ export async function PUT(request: Request) {
       strictFilterLevel: data.strict_filter_level,
       maxContactsPerJob: data.max_contacts_per_job,
       outreachTone: data.outreach_tone ?? undefined,
+      coverLetterTone: data.cover_letter_tone,
+      coverLetterLength: data.cover_letter_length,
+      coverLetterWordChoice: data.cover_letter_word_choice,
+      coverLetterNotes: data.cover_letter_notes ?? undefined,
+      coldLinkedinTone: data.cold_linkedin_tone,
+      coldLinkedinLength: data.cold_linkedin_length,
+      coldLinkedinNotes: data.cold_linkedin_notes ?? undefined,
+      coldEmailTone: data.cold_email_tone,
+      coldEmailLength: data.cold_email_length,
+      coldEmailNotes: data.cold_email_notes ?? undefined,
     });
     return NextResponse.json(rowToJson(row));
   } catch (e) {

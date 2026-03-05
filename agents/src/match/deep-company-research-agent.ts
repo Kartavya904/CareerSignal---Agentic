@@ -23,6 +23,10 @@ import {
   createEmptyDossierMemory,
   mergeExtractionIntoMemory,
   urlToDossierSlug,
+  CORE_FIELDS,
+  FIELD_PRIORITY_MUST_HAVE,
+  FIELD_PRIORITY_TIERS,
+  hasValueForCoverage,
   type DossierMemory,
   type DossierDiskWriter,
   type DossierRunCompanyPageRag,
@@ -74,47 +78,43 @@ export interface DeepCompanyEnrichmentDraft {
   primaryUrl: string | null;
   websiteDomain: string | null;
 
-  // Fields that map directly into `companies` enrichment columns
+  // Core fields (priority order = CORE_FIELDS in dossier-types)
   descriptionText: string | null;
+  longCompanyDescription: string | null;
   industries: string[] | null;
-  hqLocation: string | null;
+  headquartersAndOffices: string | null;
+  companyStage: string | null;
   sizeRange: string | null;
   foundedYear: number | null;
+  careersPageUrl: string | null;
+  linkedInCompanyUrl: string | null;
+  remotePolicy: string | null;
+  remoteFriendlyLocations: string[] | null;
+  sponsorshipSignals: Record<string, unknown> | null;
+  workAuthorizationRequirements: string | null;
+  hiringLocations: string[] | null;
+  benefitsHighlights: string | null;
   fundingStage: string | null;
   publicCompany: boolean | null;
   ticker: string | null;
-  remotePolicy: string | null;
-  sponsorshipSignals: Record<string, unknown> | null;
-  hiringLocations: string[] | null;
+  missionStatement: string | null;
+  coreValues: string[] | null;
+  typicalHiringProcess: string | null;
+  interviewProcess: string | null;
+  interviewFormatHints: string[] | null;
+  applicationTipsFromCareersPage: string | null;
+  salaryByLevel: Record<string, unknown> | null;
   techStackHints: string[] | null;
-  jobCountTotal: number | null;
   jobCountOpen: number | null;
+  hiringTrend: string | null;
+  recentLayoffsOrRestructuring: string | null;
+  jobCountTotal: number | null;
 
-  // Provenance
   visitedUrls: string[];
-
-  // Coverage heuristic over a fixed core field set
   coreFieldCoverage: number;
   missingCoreFields: string[];
-
-  /** Per-field confidence 0–1 from dossier run (when available). */
   fieldConfidence?: Partial<Record<CoreField, number>>;
 }
-
-const CORE_FIELDS: (keyof DeepCompanyEnrichmentDraft)[] = [
-  'descriptionText',
-  'industries',
-  'hqLocation',
-  'sizeRange',
-  'foundedYear',
-  'fundingStage',
-  'publicCompany',
-  'remotePolicy',
-  'sponsorshipSignals',
-  'hiringLocations',
-  'techStackHints',
-  'jobCountOpen',
-];
 
 function logIf(
   logger: DeepCompanyResearchInput['log'],
@@ -228,6 +228,29 @@ function normalizeUrlForDedupe(url: string): string {
   }
 }
 
+/** True for obvious junk/tracking URLs we should never visit (ads, DDG/Exa tracking, etc.). */
+function isJunkUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname.toLowerCase();
+    const query = u.search.toLowerCase();
+
+    if (host.includes('duckduckgo.com')) return true;
+    if (host.includes('exa.ai')) return true;
+    if (host.includes('doubleclick.net')) return true;
+    if (host.includes('googlesyndication.com')) return true;
+
+    if (path.includes('/y.js')) return true;
+    if (path.includes('/aclick')) return true;
+    if (query.includes('ad_domain=') || query.includes('ad_provider=')) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /** Fetch URL with retry: plain fetch first, then browser if retry review says so (empty/short content). */
 async function fetchUrlWithRetry(
   url: string,
@@ -304,18 +327,14 @@ const SEARCH_QUERIES = [
   (name: string) => `${name} official website`,
   (name: string) => `${name} company about us`,
   (name: string) => `${name} Wikipedia`,
-  (name: string) => `site:reddit.com ${name} company`,
-  (name: string) => `${name} careers jobs`,
-  (name: string) => `${name} company size employees headquarters`,
-  (name: string) => `${name} funding series stock`,
-  (name: string) => `${name} H1B visa sponsorship`,
 ];
 
-const MAX_SEARCH_QUERIES = 8;
+const MAX_SEARCH_QUERIES = SEARCH_QUERIES.length;
 const MAX_URLS_TO_FETCH = 22;
 /** From each browser search we take only the top N results (real search results, not synthetic). */
 const TOP_URLS_PER_SEARCH = 1;
 const SEARCH_DELAY_MS = 800;
+const FALLBACK_SEARCH_DELAY_MS = 400;
 
 /** True if the result title contains the company name (case-insensitive). Used to skip random top results that don't mention the company. */
 function resultTitleMatchesCompany(title: string, companyName: string): boolean {
@@ -378,6 +397,7 @@ async function discoverUrlsViaBrowser(
 ): Promise<SearchResult[]> {
   const seen = new Map<string, SearchResult>();
   const urlsOrder: string[] = [];
+  const companySlug = companySlugFromName(companyName) ?? '';
 
   for (let i = 0; i < Math.min(SEARCH_QUERIES.length, MAX_SEARCH_QUERIES); i++) {
     if (!withinBudget()) break;
@@ -385,14 +405,21 @@ async function discoverUrlsViaBrowser(
     const prevLength = urlsOrder.length;
 
     const results = await searchWebViaBrowser(page, query);
-    // Only select the first result whose title contains the company name (avoids random top links from DDG).
-    const firstMatch = results.find((r) => resultTitleMatchesCompany(r.title, companyName));
-    const taken = firstMatch ? [firstMatch] : [];
-    for (const r of taken) {
+    // Select the first result whose title contains the company name, skipping ads/junk and duplicates.
+    const firstMatch = results.find((r) => {
+      if (!resultTitleMatchesCompany(r.title, companyName)) return false;
+      if (isJunkUrl(r.url)) return false;
       const key = normalizeUrlForDedupe(r.url);
-      if (seen.has(key)) continue;
-      seen.set(key, r);
-      urlsOrder.push(r.url);
+      if (seen.has(key)) return false;
+      return true;
+    });
+
+    if (firstMatch) {
+      const key = normalizeUrlForDedupe(firstMatch.url);
+      if (!seen.has(key)) {
+        seen.set(key, firstMatch);
+        urlsOrder.push(firstMatch.url);
+      }
     }
 
     const extractedCount = urlsOrder.length - prevLength;
@@ -451,42 +478,52 @@ function urlsToSearchQueries(urls: string[], companyName: string): string[] {
   return out;
 }
 
-/** Generate targeted search queries for missing core fields (e.g. "Airbnb company size employees"). */
+/** Generate targeted search queries for missing core fields. Missing order = CORE_FIELDS priority. */
 function targetedQueriesForMissingFields(missing: string[], companyName: string): string[] {
   const labelMap: Record<string, string> = {
     descriptionText: 'about company',
+    longCompanyDescription: 'about company overview',
     industries: 'industries sectors',
-    hqLocation: 'headquarters location',
+    headquartersAndOffices: 'headquarters offices locations',
+    companyStage: 'startup growth enterprise',
     sizeRange: 'company size employees',
     foundedYear: 'founded year',
+    careersPageUrl: 'careers jobs hiring',
+    linkedInCompanyUrl: 'LinkedIn company',
+    remotePolicy: 'remote work policy',
+    remoteFriendlyLocations: 'remote work locations',
+    sponsorshipSignals: 'H1B visa sponsorship',
+    workAuthorizationRequirements: 'work authorization visa',
+    hiringLocations: 'careers hiring locations',
+    benefitsHighlights: 'benefits perks',
     fundingStage: 'funding series stock',
     publicCompany: 'public company stock',
     ticker: 'stock ticker symbol',
-    remotePolicy: 'remote work policy',
-    sponsorshipSignals: 'H1B visa sponsorship',
-    hiringLocations: 'careers hiring locations',
+    missionStatement: 'mission vision',
+    coreValues: 'company values culture',
+    typicalHiringProcess: 'hiring process steps',
+    interviewProcess: 'interview process',
+    interviewFormatHints: 'interview format technical',
+    applicationTipsFromCareersPage: 'application tips careers',
+    salaryByLevel: 'salary compensation',
     techStackHints: 'tech stack technologies',
     jobCountOpen: 'open jobs careers',
+    hiringTrend: 'hiring growth layoffs',
+    recentLayoffsOrRestructuring: 'layoffs restructuring',
   };
-  return missing.map((f) => `${companyName} ${labelMap[f] ?? f}`).slice(0, 8);
+  return missing.map((f) => `${companyName} ${labelMap[f] ?? f}`).slice(0, 12);
 }
 
+/** Coverage from draft using same strict rules as dossier memory (all CORE_FIELDS, no empty/metadata-only). */
 function computeCoverage(draft: DeepCompanyEnrichmentDraft): { ratio: number; missing: string[] } {
   let present = 0;
   const missing: string[] = [];
-
   for (const field of CORE_FIELDS) {
     const value = draft[field];
-    const hasValue =
-      value !== null &&
-      value !== undefined &&
-      !(Array.isArray(value) && value.length === 0) &&
-      value !== '';
-    if (hasValue) present++;
+    if (hasValueForCoverage(value, field)) present++;
     else missing.push(field);
   }
-
-  const ratio = CORE_FIELDS.length === 0 ? 1 : present / CORE_FIELDS.length;
+  const ratio = present / CORE_FIELDS.length;
   return { ratio, missing };
 }
 
@@ -632,19 +669,35 @@ async function runLegacyDeepResearch(
     primaryUrl: visitedUrls[0] ?? input.seedUrl ?? null,
     websiteDomain: primaryHost ?? null,
     descriptionText: null,
+    longCompanyDescription: null,
     industries: null,
-    hqLocation: null,
+    headquartersAndOffices: null,
+    companyStage: null,
     sizeRange: null,
     foundedYear: null,
+    careersPageUrl: null,
+    linkedInCompanyUrl: null,
+    remotePolicy: null,
+    remoteFriendlyLocations: null,
+    sponsorshipSignals: null,
+    workAuthorizationRequirements: null,
+    hiringLocations: null,
+    benefitsHighlights: null,
     fundingStage: null,
     publicCompany: null,
     ticker: null,
-    remotePolicy: null,
-    sponsorshipSignals: null,
-    hiringLocations: null,
+    missionStatement: null,
+    coreValues: null,
+    typicalHiringProcess: null,
+    interviewProcess: null,
+    interviewFormatHints: null,
+    applicationTipsFromCareersPage: null,
+    salaryByLevel: null,
     techStackHints: null,
-    jobCountTotal: null,
     jobCountOpen: null,
+    hiringTrend: null,
+    recentLayoffsOrRestructuring: null,
+    jobCountTotal: null,
     visitedUrls,
     coreFieldCoverage: 0,
     missingCoreFields: [],
@@ -694,21 +747,37 @@ Company name: ${input.companyName}
 
 Using ONLY the information below (company website pages, careers/about pages, and an optional job description snippet), infer as many of the following fields as you can. If a field is not clearly supported by the text, leave it null.
 
-Return a single JSON object with exactly these keys:
+Return a single JSON object with exactly these keys (use null if not found):
 - descriptionText: 3–5 sentence overview of what the company does and its mission.
-- industries: array of high-level industry labels (e.g. ["Biotech", "SaaS"]).
-- hqLocation: primary headquarters location (city + country or region).
-- sizeRange: descriptive employee count band (e.g. "1-10", "11-50", "51-200", "201-500", "500-1000", "1000+").
-- foundedYear: numeric year if obvious, otherwise null.
-- fundingStage: short label like "Seed", "Series A", "Series B", "Late-stage", "Public", or null if unclear.
-- publicCompany: true if clearly publicly traded, false if clearly private, null if unknown.
-- ticker: stock ticker symbol if public and obvious, else null.
-- remotePolicy: short description summarizing on-site/remote/hybrid stance.
-- sponsorshipSignals: object summarizing any evidence you see about visa/H1B sponsorship or global hiring (keys can include "h1bLikelihood", "countriesMentioned", "remoteLegalNote", etc.). If nothing is mentioned, use an empty object {}.
-- hiringLocations: array of location strings where they appear to be hiring.
-- techStackHints: array of technologies/frameworks/languages mentioned in careers/engineering pages (e.g. ["Python", "React", "AWS"]).
-- jobCountTotal: approximate number of jobs if described, otherwise null.
-- jobCountOpen: approximate current open job count if described, otherwise null.
+- longCompanyDescription: longer rich description (paragraph or more) if available, else null.
+- industries: array of high-level industry labels (e.g. ["Biotech", "SaaS"]); first = primary.
+- headquartersAndOffices: "City, Country | City, Country" for HQs and offices, else null.
+- companyStage: e.g. "startup", "growth", "scale-up", "enterprise", or null.
+- sizeRange: employee count band (e.g. "51-200", "1000+").
+- foundedYear: numeric year or null.
+- careersPageUrl: primary careers/jobs page URL if seen, else null.
+- linkedInCompanyUrl: LinkedIn company page URL if seen, else null.
+- remotePolicy: on-site/remote/hybrid stance.
+- remoteFriendlyLocations: array of regions/countries where remote is allowed, or null.
+- sponsorshipSignals: object with visa/H1B/global hiring evidence (e.g. {"h1bLikelihood":"high"}) or {}.
+- workAuthorizationRequirements: any stated work auth requirements, or null.
+- hiringLocations: array of cities/countries where they hire.
+- benefitsHighlights: short summary of benefits (health, PTO, etc.) or null.
+- fundingStage: e.g. "Seed", "Series A", "Public", or null.
+- publicCompany: true/false/null.
+- ticker: stock symbol if public, else null.
+- missionStatement: company mission text or null.
+- coreValues: array of stated values or null.
+- typicalHiringProcess: steps/timeline if described, else null.
+- interviewProcess: interview process description (accumulate detail), or null.
+- interviewFormatHints: array e.g. ["technical","behavioral","take-home"] or null.
+- applicationTipsFromCareersPage: tips or "what we look for" or null.
+- salaryByLevel: object e.g. {"entry":{"min":80,"max":120,"currency":"USD"}} or null.
+- techStackHints: array of technologies mentioned.
+- jobCountOpen: approximate open job count or null.
+- hiringTrend: "growing"|"stable"|"contracting" or null.
+- recentLayoffsOrRestructuring: brief note if known, else null.
+- jobCountTotal: approximate total jobs if described, else null.
 
 TEXT CONTEXT (URLs + snippets):
 ${combinedText.slice(0, textCap)}
@@ -741,12 +810,30 @@ Return only the JSON object.`;
         Array.isArray(parsed.techStackHints) && parsed.techStackHints.length > 0
           ? parsed.techStackHints.map((x: unknown) => String(x)).slice(0, 30)
           : null;
+      const remoteFriendlyLocations =
+        Array.isArray(parsed.remoteFriendlyLocations) && parsed.remoteFriendlyLocations.length > 0
+          ? parsed.remoteFriendlyLocations.map((x: unknown) => String(x)).slice(0, 15)
+          : null;
+      const coreValues =
+        Array.isArray(parsed.coreValues) && parsed.coreValues.length > 0
+          ? parsed.coreValues.map((x: unknown) => String(x)).slice(0, 10)
+          : null;
+      const interviewFormatHints =
+        Array.isArray(parsed.interviewFormatHints) && parsed.interviewFormatHints.length > 0
+          ? parsed.interviewFormatHints.map((x: unknown) => String(x)).slice(0, 10)
+          : null;
 
       enriched = {
         ...enriched,
         descriptionText: parsed.descriptionText ? String(parsed.descriptionText) : null,
+        longCompanyDescription: parsed.longCompanyDescription
+          ? String(parsed.longCompanyDescription)
+          : null,
         industries,
-        hqLocation: parsed.hqLocation ? String(parsed.hqLocation) : null,
+        headquartersAndOffices: parsed.headquartersAndOffices
+          ? String(parsed.headquartersAndOffices)
+          : null,
+        companyStage: parsed.companyStage ? String(parsed.companyStage) : null,
         sizeRange: parsed.sizeRange ? String(parsed.sizeRange) : null,
         foundedYear:
           typeof parsed.foundedYear === 'number'
@@ -754,6 +841,19 @@ Return only the JSON object.`;
             : parsed.foundedYear && !Number.isNaN(Number(parsed.foundedYear))
               ? Number(parsed.foundedYear)
               : null,
+        careersPageUrl: parsed.careersPageUrl ? String(parsed.careersPageUrl) : null,
+        linkedInCompanyUrl: parsed.linkedInCompanyUrl ? String(parsed.linkedInCompanyUrl) : null,
+        remotePolicy: parsed.remotePolicy ? String(parsed.remotePolicy) : null,
+        remoteFriendlyLocations,
+        sponsorshipSignals:
+          parsed.sponsorshipSignals && typeof parsed.sponsorshipSignals === 'object'
+            ? parsed.sponsorshipSignals
+            : {},
+        workAuthorizationRequirements: parsed.workAuthorizationRequirements
+          ? String(parsed.workAuthorizationRequirements)
+          : null,
+        hiringLocations,
+        benefitsHighlights: parsed.benefitsHighlights ? String(parsed.benefitsHighlights) : null,
         fundingStage: parsed.fundingStage ? String(parsed.fundingStage) : null,
         publicCompany:
           typeof parsed.publicCompany === 'boolean'
@@ -764,24 +864,36 @@ Return only the JSON object.`;
                 ? false
                 : null,
         ticker: parsed.ticker ? String(parsed.ticker) : null,
-        remotePolicy: parsed.remotePolicy ? String(parsed.remotePolicy) : null,
-        sponsorshipSignals:
-          parsed.sponsorshipSignals && typeof parsed.sponsorshipSignals === 'object'
-            ? parsed.sponsorshipSignals
-            : {},
-        hiringLocations,
+        missionStatement: parsed.missionStatement ? String(parsed.missionStatement) : null,
+        coreValues,
+        typicalHiringProcess: parsed.typicalHiringProcess
+          ? String(parsed.typicalHiringProcess)
+          : null,
+        interviewProcess: parsed.interviewProcess ? String(parsed.interviewProcess) : null,
+        interviewFormatHints,
+        applicationTipsFromCareersPage: parsed.applicationTipsFromCareersPage
+          ? String(parsed.applicationTipsFromCareersPage)
+          : null,
+        salaryByLevel:
+          parsed.salaryByLevel && typeof parsed.salaryByLevel === 'object'
+            ? (parsed.salaryByLevel as Record<string, unknown>)
+            : null,
         techStackHints,
-        jobCountTotal:
-          typeof parsed.jobCountTotal === 'number'
-            ? parsed.jobCountTotal
-            : parsed.jobCountTotal && !Number.isNaN(Number(parsed.jobCountTotal))
-              ? Number(parsed.jobCountTotal)
-              : null,
         jobCountOpen:
           typeof parsed.jobCountOpen === 'number'
             ? parsed.jobCountOpen
             : parsed.jobCountOpen && !Number.isNaN(Number(parsed.jobCountOpen))
               ? Number(parsed.jobCountOpen)
+              : null,
+        hiringTrend: parsed.hiringTrend ? String(parsed.hiringTrend) : null,
+        recentLayoffsOrRestructuring: parsed.recentLayoffsOrRestructuring
+          ? String(parsed.recentLayoffsOrRestructuring)
+          : null,
+        jobCountTotal:
+          typeof parsed.jobCountTotal === 'number'
+            ? parsed.jobCountTotal
+            : parsed.jobCountTotal && !Number.isNaN(Number(parsed.jobCountTotal))
+              ? Number(parsed.jobCountTotal)
               : null,
       };
       mainExtractionDone = true;
@@ -828,18 +940,34 @@ Return only the JSON object.`;
       try {
         const fieldHints: Record<string, string> = {
           descriptionText: '3-5 sentence company overview and mission',
+          longCompanyDescription: 'longer paragraph description of company',
           industries: 'array of industry labels e.g. ["Biotech","SaaS"]',
-          hqLocation: 'headquarters city and country or region',
-          sizeRange: 'employee count band e.g. "51-200" or "1000+"',
+          headquartersAndOffices: 'City, Country | City, Country for HQs and offices',
+          companyStage: 'e.g. startup, growth, enterprise',
+          sizeRange: 'employee count band e.g. "51-200"',
           foundedYear: 'numeric year founded',
+          careersPageUrl: 'URL of careers/jobs page',
+          linkedInCompanyUrl: 'LinkedIn company page URL',
+          remotePolicy: 'on-site/remote/hybrid policy',
+          remoteFriendlyLocations: 'array of regions/countries for remote',
+          sponsorshipSignals: 'object with H1B/visa evidence',
+          workAuthorizationRequirements: 'work authorization requirements',
+          hiringLocations: 'array of cities/countries where hiring',
+          benefitsHighlights: 'benefits summary',
           fundingStage: 'e.g. Seed, Series A, Public',
           publicCompany: 'true/false if publicly traded',
           ticker: 'stock ticker if public',
-          remotePolicy: 'on-site/remote/hybrid policy',
-          sponsorshipSignals: 'object with H1B/visa/global hiring evidence',
-          hiringLocations: 'array of cities/countries where hiring',
+          missionStatement: 'mission statement text',
+          coreValues: 'array of company values',
+          typicalHiringProcess: 'hiring process steps',
+          interviewProcess: 'interview process description',
+          interviewFormatHints: 'array e.g. technical, behavioral',
+          applicationTipsFromCareersPage: 'application tips text',
+          salaryByLevel: 'object with salary by level',
           techStackHints: 'array of technologies mentioned',
           jobCountOpen: 'approximate open job count',
+          hiringTrend: 'growing, stable, or contracting',
+          recentLayoffsOrRestructuring: 'layoffs or restructuring note',
         };
         const missingDesc = missing.map((f) => `- ${f}: ${fieldHints[f] ?? f}`).join('\n');
         // Retry with smaller context to avoid timeout
@@ -877,16 +1005,52 @@ Return only the JSON object.`;
         if (targetedParsed && typeof targetedParsed === 'object') {
           if (missing.includes('descriptionText') && targetedParsed.descriptionText)
             enriched.descriptionText = String(targetedParsed.descriptionText);
+          if (missing.includes('longCompanyDescription') && targetedParsed.longCompanyDescription)
+            enriched.longCompanyDescription = String(targetedParsed.longCompanyDescription);
           if (missing.includes('industries') && Array.isArray(targetedParsed.industries))
             enriched.industries = targetedParsed.industries
               .map((x: unknown) => String(x))
               .slice(0, 10);
-          if (missing.includes('hqLocation') && targetedParsed.hqLocation)
-            enriched.hqLocation = String(targetedParsed.hqLocation);
+          if (missing.includes('headquartersAndOffices') && targetedParsed.headquartersAndOffices)
+            enriched.headquartersAndOffices = String(targetedParsed.headquartersAndOffices);
+          if (missing.includes('companyStage') && targetedParsed.companyStage)
+            enriched.companyStage = String(targetedParsed.companyStage);
           if (missing.includes('sizeRange') && targetedParsed.sizeRange)
             enriched.sizeRange = String(targetedParsed.sizeRange);
           if (missing.includes('foundedYear') && targetedParsed.foundedYear != null)
             enriched.foundedYear = Number(targetedParsed.foundedYear) || null;
+          if (missing.includes('careersPageUrl') && targetedParsed.careersPageUrl)
+            enriched.careersPageUrl = String(targetedParsed.careersPageUrl);
+          if (missing.includes('linkedInCompanyUrl') && targetedParsed.linkedInCompanyUrl)
+            enriched.linkedInCompanyUrl = String(targetedParsed.linkedInCompanyUrl);
+          if (missing.includes('remotePolicy') && targetedParsed.remotePolicy)
+            enriched.remotePolicy = String(targetedParsed.remotePolicy);
+          if (
+            missing.includes('remoteFriendlyLocations') &&
+            Array.isArray(targetedParsed.remoteFriendlyLocations)
+          )
+            enriched.remoteFriendlyLocations = targetedParsed.remoteFriendlyLocations
+              .map((x: unknown) => String(x))
+              .slice(0, 15);
+          if (
+            missing.includes('sponsorshipSignals') &&
+            targetedParsed.sponsorshipSignals &&
+            typeof targetedParsed.sponsorshipSignals === 'object'
+          )
+            enriched.sponsorshipSignals = targetedParsed.sponsorshipSignals;
+          if (
+            missing.includes('workAuthorizationRequirements') &&
+            targetedParsed.workAuthorizationRequirements
+          )
+            enriched.workAuthorizationRequirements = String(
+              targetedParsed.workAuthorizationRequirements,
+            );
+          if (missing.includes('hiringLocations') && Array.isArray(targetedParsed.hiringLocations))
+            enriched.hiringLocations = targetedParsed.hiringLocations
+              .map((x: unknown) => String(x))
+              .slice(0, 20);
+          if (missing.includes('benefitsHighlights') && targetedParsed.benefitsHighlights)
+            enriched.benefitsHighlights = String(targetedParsed.benefitsHighlights);
           if (missing.includes('fundingStage') && targetedParsed.fundingStage)
             enriched.fundingStage = String(targetedParsed.fundingStage);
           if (
@@ -896,24 +1060,51 @@ Return only the JSON object.`;
             enriched.publicCompany = targetedParsed.publicCompany;
           if (missing.includes('ticker') && targetedParsed.ticker)
             enriched.ticker = String(targetedParsed.ticker);
-          if (missing.includes('remotePolicy') && targetedParsed.remotePolicy)
-            enriched.remotePolicy = String(targetedParsed.remotePolicy);
-          if (
-            missing.includes('sponsorshipSignals') &&
-            targetedParsed.sponsorshipSignals &&
-            typeof targetedParsed.sponsorshipSignals === 'object'
-          )
-            enriched.sponsorshipSignals = targetedParsed.sponsorshipSignals;
-          if (missing.includes('hiringLocations') && Array.isArray(targetedParsed.hiringLocations))
-            enriched.hiringLocations = targetedParsed.hiringLocations
+          if (missing.includes('missionStatement') && targetedParsed.missionStatement)
+            enriched.missionStatement = String(targetedParsed.missionStatement);
+          if (missing.includes('coreValues') && Array.isArray(targetedParsed.coreValues))
+            enriched.coreValues = targetedParsed.coreValues
               .map((x: unknown) => String(x))
-              .slice(0, 20);
+              .slice(0, 10);
+          if (missing.includes('typicalHiringProcess') && targetedParsed.typicalHiringProcess)
+            enriched.typicalHiringProcess = String(targetedParsed.typicalHiringProcess);
+          if (missing.includes('interviewProcess') && targetedParsed.interviewProcess)
+            enriched.interviewProcess = String(targetedParsed.interviewProcess);
+          if (
+            missing.includes('interviewFormatHints') &&
+            Array.isArray(targetedParsed.interviewFormatHints)
+          )
+            enriched.interviewFormatHints = targetedParsed.interviewFormatHints
+              .map((x: unknown) => String(x))
+              .slice(0, 10);
+          if (
+            missing.includes('applicationTipsFromCareersPage') &&
+            targetedParsed.applicationTipsFromCareersPage
+          )
+            enriched.applicationTipsFromCareersPage = String(
+              targetedParsed.applicationTipsFromCareersPage,
+            );
+          if (
+            missing.includes('salaryByLevel') &&
+            targetedParsed.salaryByLevel &&
+            typeof targetedParsed.salaryByLevel === 'object'
+          )
+            enriched.salaryByLevel = targetedParsed.salaryByLevel as Record<string, unknown>;
           if (missing.includes('techStackHints') && Array.isArray(targetedParsed.techStackHints))
             enriched.techStackHints = targetedParsed.techStackHints
               .map((x: unknown) => String(x))
               .slice(0, 30);
           if (missing.includes('jobCountOpen') && targetedParsed.jobCountOpen != null)
             enriched.jobCountOpen = Number(targetedParsed.jobCountOpen) || null;
+          if (missing.includes('hiringTrend') && targetedParsed.hiringTrend)
+            enriched.hiringTrend = String(targetedParsed.hiringTrend);
+          if (
+            missing.includes('recentLayoffsOrRestructuring') &&
+            targetedParsed.recentLayoffsOrRestructuring
+          )
+            enriched.recentLayoffsOrRestructuring = String(
+              targetedParsed.recentLayoffsOrRestructuring,
+            );
         }
         const after = computeCoverage(enriched);
         ratio = after.ratio;
@@ -1012,6 +1203,7 @@ async function runDossierPipeline(
   const maxOrchestratorRounds = 15;
   /** Prevent infinite loops when search extraction returns zero URLs repeatedly. */
   let consecutiveZeroUrlRounds = 0;
+  const companySlug = companySlugFromName(input.companyName) ?? '';
 
   while (withinBudget() && orchestratorIterations < maxOrchestratorRounds) {
     orchestratorIterations++;
@@ -1028,24 +1220,96 @@ async function runDossierPipeline(
 
     let urlsToFetch: { url: string }[] = [];
 
+    // Prefer orchestrator suggestions while must-have fields are still missing AND we haven't
+    // exceeded the per-field attempt budget; once all must-have attempts are exhausted, or all
+    // must-have fields are filled, rely on deterministic fallback targeting for should-have
+    // and nice-to-have fields.
+    const attemptsByField = memory.targetedAttemptsByField ?? {};
+    const missingMustHave = memory.coverage.missing.filter((f) =>
+      FIELD_PRIORITY_MUST_HAVE.includes(f as (typeof FIELD_PRIORITY_MUST_HAVE)[number]),
+    );
+    const remainingMustHave = missingMustHave.filter(
+      (f) => (attemptsByField[f] ?? 0) < 2, // allow at most 2 targeted attempts per must-have field
+    );
+
     if (suggestedUrls?.length) {
       urlsToFetch = suggestedUrls
-        .filter((u) => !visitedSet.has(normalizeUrlForDedupe(u)))
+        .filter((u) => !visitedSet.has(normalizeUrlForDedupe(u)) && !isJunkUrl(u))
         .map((url) => ({ url }));
       suggestedUrls = null;
-    } else if (suggestedQueries?.length) {
-      for (const q of suggestedQueries) {
+    } else if (suggestedQueries?.length && remainingMustHave.length > 0) {
+      const companyLower = input.companyName.toLowerCase();
+      for (const raw of suggestedQueries) {
         if (!withinBudget()) break;
+        const q = typeof raw === 'string' ? raw.trim() : String(raw).trim();
+        let effectiveQuery = q;
+
+        // If orchestrator returned a bare field name, map it to a richer query using our label map,
+        // and track that as an attempt for that specific field.
+        let fieldNameForAttempt: CoreField | null = null;
+        if (CORE_FIELDS.includes(q as CoreField)) {
+          fieldNameForAttempt = q as CoreField;
+          const mapped = targetedQueriesForMissingFields(
+            [fieldNameForAttempt],
+            input.companyName,
+          )[0];
+          effectiveQuery = mapped ?? `${input.companyName} ${q}`;
+        } else if (!q.toLowerCase().includes(companyLower)) {
+          // Ensure every query includes the company name.
+          effectiveQuery = `${input.companyName} ${q}`;
+        }
+
+        const triedSet = new Set(memory.targetedQueriesTried ?? []);
+        if (triedSet.has(effectiveQuery)) {
+          logIf(
+            input.log,
+            'info',
+            `Skipping targeted search "${effectiveQuery}" (already tried in this run).`,
+          );
+          continue;
+        }
+
         const results = input.browserPage
-          ? await searchWebViaBrowser(input.browserPage, q)
+          ? await searchWebViaBrowser(input.browserPage, effectiveQuery)
           : isSearchConfigured()
-            ? await searchWeb(q, { num: 5 })
+            ? await searchWeb(effectiveQuery, { num: 5 })
             : [];
-        const firstMatch = input.browserPage
-          ? results.find((r) => resultTitleMatchesCompany(r.title, input.companyName))
-          : results[0];
-        const toAdd = firstMatch ? [firstMatch] : [];
-        logIf(input.log, 'info', `Targeted search: "${q}" — ${toAdd.length} URLs extracted`);
+
+        // Select the first good candidate (title contains company name when browser is used),
+        // skipping junk URLs, visited URLs, and failed URLs.
+        const failedSet = new Set(memory.failedUrls ?? []);
+        const rawCandidates = input.browserPage
+          ? results.filter((r) => resultTitleMatchesCompany(r.title, input.companyName))
+          : results;
+        const firstGood = rawCandidates.find((r) => {
+          if (isJunkUrl(r.url)) return false;
+          const key = normalizeUrlForDedupe(r.url);
+          if (visitedSet.has(key)) return false;
+          if (failedSet.has(r.url)) return false;
+          return true;
+        });
+
+        const toAdd = firstGood ? [firstGood] : [];
+        logIf(
+          input.log,
+          'info',
+          `Targeted search: "${effectiveQuery}" — ${toAdd.length} URLs extracted`,
+        );
+        // Track targeted queries we've tried.
+        const tried = new Set(memory.targetedQueriesTried ?? []);
+        tried.add(effectiveQuery);
+        const attemptsByFieldNext = { ...(memory.targetedAttemptsByField ?? {}) };
+        if (fieldNameForAttempt) {
+          attemptsByFieldNext[fieldNameForAttempt] =
+            (attemptsByFieldNext[fieldNameForAttempt] ?? 0) + 1;
+        }
+        memory = {
+          ...memory,
+          targetedQueriesTried: Array.from(tried),
+          targetedAttemptsByField: attemptsByFieldNext,
+        };
+        await writer.writeMemory(runFolderName, memory);
+
         for (const r of toAdd) {
           const key = normalizeUrlForDedupe(r.url);
           if (!visitedSet.has(key)) urlsToFetch.push({ url: r.url });
@@ -1079,15 +1343,21 @@ async function runDossierPipeline(
       memory = { ...memory, discoveredUrls: urlsFromDiscovery, urlsToVisit: urlsFromDiscovery };
       await writer.writeMemory(runFolderName, memory);
 
-      for (const url of urlsFromDiscovery) urlsToFetch.push({ url });
+      // Initial discovery: visit at most 2 URLs in the first batch so we can start extracting quickly.
+      const initialUnvisited = urlsFromDiscovery.filter(
+        (u) => !visitedSet.has(normalizeUrlForDedupe(u)),
+      );
+      const initialBatch = initialUnvisited.slice(0, 2);
+      for (const url of initialBatch) urlsToFetch.push({ url });
       // Only use fallback when we have no browser (e.g. SerpAPI-only) and search returned nothing.
       if (urlsToFetch.length === 0 && primaryHost && !input.browserPage && withinBudget()) {
         for (const url of getFallbackUrls(primaryHost)) urlsToFetch.push({ url });
       }
     } else if (memory.urlsToVisit?.length) {
-      // Drain all initial discovered URLs before fallback (may span rounds if we hit timeout).
+      // Continue initial discovered URLs in small batches so we can interleave with targeted work.
       const unvisited = memory.urlsToVisit.filter((u) => !visitedSet.has(normalizeUrlForDedupe(u)));
-      for (const url of unvisited) urlsToFetch.push({ url });
+      const batch = unvisited.slice(0, 2);
+      for (const url of batch) urlsToFetch.push({ url });
       if (unvisited.length > 0) {
         logIf(input.log, 'info', `Continuing initial URLs: ${unvisited.length} remaining to visit`);
       }
@@ -1098,7 +1368,8 @@ async function runDossierPipeline(
       !(memory.urlsToVisitMissingFields && memory.urlsToVisitMissingFields.length > 0) &&
       memory.urlsToVisit.every((u) => visitedSet.has(normalizeUrlForDedupe(u)))
     ) {
-      // Fallback: one browser search per missing field, exactly one URL per search (title must contain company name).
+      // Fallback: browser search per missing field (must-have/should-have/nice-to-have), but only add a small batch
+      // of URLs (up to 2) per round so we can start visiting them quickly.
       logIf(
         input.log,
         'info',
@@ -1107,13 +1378,29 @@ async function runDossierPipeline(
       const fallbackUrls: string[] = [];
       for (const field of memory.coverage.missing) {
         if (!withinBudget()) break;
+        if (fallbackUrls.length >= 2) break;
+        // Respect per-field attempt budget: at most 2 targeted attempts per field.
+        const attempts = (memory.targetedAttemptsByField ?? {})[field] ?? 0;
+        if (attempts >= 2) continue;
         const queries = targetedQueriesForMissingFields([field], input.companyName);
         const query = queries[0] ?? `${input.companyName} ${field}`;
         logIf(input.log, 'info', `Fallback search: "${query}"`);
         const results = await searchWebViaBrowser(input.browserPage!, query);
-        const first = results.find((r) => resultTitleMatchesCompany(r.title, input.companyName));
-        if (first) {
-          fallbackUrls.push(first.url);
+
+        const failedSet = new Set(memory.failedUrls ?? []);
+        const rawCandidates = results.filter((r) =>
+          resultTitleMatchesCompany(r.title, input.companyName),
+        );
+        const firstGood = rawCandidates.find((r) => {
+          if (isJunkUrl(r.url)) return false;
+          const key = normalizeUrlForDedupe(r.url);
+          if (visitedSet.has(key)) return false;
+          if (failedSet.has(r.url)) return false;
+          return true;
+        });
+
+        if (firstGood) {
+          fallbackUrls.push(firstGood.url);
           logIf(
             input.log,
             'info',
@@ -1123,10 +1410,27 @@ async function runDossierPipeline(
           logIf(input.log, 'info', `Fallback search: "${query}"`);
         }
         if (memory.coverage.missing.length > 1) {
-          await new Promise((resolve) => setTimeout(resolve, SEARCH_DELAY_MS));
+          await new Promise((resolve) => setTimeout(resolve, FALLBACK_SEARCH_DELAY_MS));
         }
       }
-      memory = { ...memory, urlsToVisitMissingFields: fallbackUrls };
+      const existingFallback = memory.urlsToVisitMissingFields ?? [];
+      const triedQueries = new Set(memory.targetedQueriesTried ?? []);
+      const attemptsByFieldNext = { ...(memory.targetedAttemptsByField ?? {}) };
+      for (const url of fallbackUrls) {
+        // We don't know which specific field each URL was for in this batch without extra tracking,
+        // so we conservatively mark a generic "fallback" attempt in targetedQueriesTried.
+      }
+      triedQueries.add(
+        memory.coverage.missing.length > 0
+          ? `fallback: ${memory.coverage.missing.join(', ')}`
+          : 'fallback',
+      );
+      memory = {
+        ...memory,
+        urlsToVisitMissingFields: [...existingFallback, ...fallbackUrls],
+        targetedQueriesTried: Array.from(triedQueries),
+        targetedAttemptsByField: attemptsByFieldNext,
+      };
       await writer.writeMemory(runFolderName, memory);
       for (const url of fallbackUrls) {
         const key = normalizeUrlForDedupe(url);
@@ -1154,9 +1458,63 @@ async function runDossierPipeline(
         withinBudget,
         action: 'fetch_url',
       });
-      if (!html || html.length < 500) continue;
+      if (!html || html.length < 500) {
+        const failedSet = new Set(memory.failedUrls ?? []);
+        failedSet.add(url);
+        memory = { ...memory, failedUrls: Array.from(failedSet) };
+        await writer.writeMemory(runFolderName, memory);
+        continue;
+      }
 
       visitedSet.add(norm);
+      // Heuristic fills from URL patterns (careers page, LinkedIn company page) so we don't waste
+      // time repeatedly searching for fields when we already have a high-confidence URL.
+      try {
+        const u = new URL(url);
+        const host = u.hostname.toLowerCase();
+        const path = u.pathname.toLowerCase();
+
+        let heuristicExtraction: DossierPageExtraction | null = null;
+
+        const hasCareers =
+          hasValueForCoverage(memory.fields.careersPageUrl?.value, 'careersPageUrl') === true;
+        const hasLinkedIn =
+          hasValueForCoverage(memory.fields.linkedInCompanyUrl?.value, 'linkedInCompanyUrl') ===
+          true;
+
+        // Careers page URL: same primary host (or slug host) and path containing "careers" or "jobs".
+        if (!hasCareers && primaryHost && host.includes(primaryHost.replace(/^www\./, ''))) {
+          if (path.includes('careers') || path.includes('/jobs')) {
+            heuristicExtraction = {
+              ...(heuristicExtraction ?? {}),
+              careersPageUrl: url,
+            };
+          }
+        }
+
+        // LinkedIn company URL: linkedin.com/company/...
+        if (!hasLinkedIn && host.includes('linkedin.com') && path.includes('/company/')) {
+          heuristicExtraction = {
+            ...(heuristicExtraction ?? {}),
+            linkedInCompanyUrl: url,
+          };
+        }
+
+        if (heuristicExtraction) {
+          memory = mergeExtractionIntoMemory(memory, heuristicExtraction, url);
+          await writer.writeMemory(runFolderName, memory);
+          logIf(
+            input.log,
+            'info',
+            `Heuristic fill from URL: updated fields [${Object.keys(heuristicExtraction).join(
+              ', ',
+            )}]`,
+          );
+        }
+      } catch {
+        // ignore URL parsing issues
+      }
+
       const slug = urlToDossierSlug(url, memory.visitedUrls.length);
       const cleaned = cleanHtml(html);
       await writer.writePageRawAndCleaned(runFolderName, slug, html, cleaned.html);
@@ -1195,24 +1553,21 @@ async function runDossierPipeline(
       break;
     }
 
-    // Only finalize at 70% when we've visited all initial URLs (goal: drain discovered first, then 70%).
+    // Finalization rules: prefer higher coverage (core >= 80%, total >= 70%) and ensure we've tried
+    // targeted URLs for missing fields where possible, or stop when budget is exhausted.
     const allInitialVisited =
       !memory.urlsToVisit?.length ||
       memory.urlsToVisit.every((u) => visitedSet.has(normalizeUrlForDedupe(u)));
-    if (
-      memory.coverage.ratio >= COVERAGE_TARGET_DOSSIER &&
-      memory.coverage.missing.length === 0 &&
-      allInitialVisited
-    ) {
-      logIf(input.log, 'info', `Coverage >= 70% and no missing fields. Finalizing.`);
+    const allFallbackVisited =
+      !!memory.urlsToVisitMissingFields?.length &&
+      memory.urlsToVisitMissingFields.every((u) => visitedSet.has(normalizeUrlForDedupe(u)));
+
+    if (allInitialVisited && memory.coverage.ratio >= 0.8 && memory.coverage.missing.length === 0) {
+      logIf(input.log, 'info', `Core coverage >= 80% and no missing fields. Finalizing.`);
       break;
     }
 
-    // After visiting all fallback URLs (urlsToVisitMissingFields), finalize (we're done with the run).
-    if (
-      memory.urlsToVisitMissingFields?.length &&
-      memory.urlsToVisitMissingFields.every((u) => visitedSet.has(normalizeUrlForDedupe(u)))
-    ) {
+    if (allFallbackVisited) {
       logIf(
         input.log,
         'info',
@@ -1254,26 +1609,27 @@ async function extractFromSinglePage(
   const text = textFromHtml(htmlOrText, 25000);
   if (text.length < 100) return null;
 
+  const m = FIELD_PRIORITY_TIERS.mustHave.join(', ');
+  const s = FIELD_PRIORITY_TIERS.shouldHave.join(', ');
+  const n = FIELD_PRIORITY_TIERS.niceToHave.join(', ');
+
   const prompt = `You are extracting company information from a single web page.
 
 Company name: ${companyName}
 
-From the text below (from one page only), extract as many of these fields as you can. Use null if not found.
+Scrape and fill fields in this priority order (must-have first, then should-have, then nice-to-have). Use null for any field not found.
 
-Return a single JSON object with only these keys:
-- descriptionText: string or null
-- industries: array of strings or null
-- hqLocation: string or null
-- sizeRange: string or null
-- foundedYear: number or null
-- fundingStage: string or null
-- publicCompany: boolean or null
-- ticker: string or null
-- remotePolicy: string or null
-- sponsorshipSignals: object or null
-- hiringLocations: array of strings or null
-- techStackHints: array of strings or null
-- jobCountOpen: number or null
+Priority:
+- Must-have (fill these first): ${m}
+- Should-have (then these): ${s}
+- Nice-to-have (then these): ${n}
+
+From the text below (from one page only), extract as many of the above fields as you can. Return a single JSON object with only these keys (null if not found):
+${[
+  ...FIELD_PRIORITY_TIERS.mustHave,
+  ...FIELD_PRIORITY_TIERS.shouldHave,
+  ...FIELD_PRIORITY_TIERS.niceToHave,
+].join(', ')}
 
 TEXT:
 ${text.slice(0, 20000)}
@@ -1287,7 +1643,9 @@ Return only the JSON object.`;
       maxTokens: 1024,
       timeout: Math.min(120_000, timeoutMs),
     });
-    return JSON.parse(response) as DossierPageExtraction;
+    const parsed = JSON.parse(response) as DossierPageExtraction;
+    if (parsed && typeof parsed === 'object') return parsed;
+    return null;
   } catch {
     return null;
   }
@@ -1303,17 +1661,43 @@ async function runOrchestratorStep(
   nextUrls?: string[];
   reason?: string;
 }> {
-  const missing = memory.coverage.missing.join(', ') || 'none';
+  const missing = memory.coverage.missing;
+  const missingStr = missing.join(', ') || 'none';
+  const mustHaveSet = new Set(FIELD_PRIORITY_MUST_HAVE);
+  const missingMustHave = missing.filter((f) =>
+    mustHaveSet.has(f as (typeof FIELD_PRIORITY_MUST_HAVE)[number]),
+  );
+  const tiers =
+    memory.fieldPriorityTiers &&
+    `Priority order for missing fields: must-have first (${memory.fieldPriorityTiers.mustHave.join(', ')}), then should-have, then nice-to-have. You MUST prefer search queries that target missing must-have fields first.`;
+
+  const triedQueries = memory.targetedQueriesTried ?? [];
+  const failedUrls = memory.failedUrls ?? [];
+  const triedSummary =
+    triedQueries.length > 0
+      ? `Targeted queries already tried (you MUST NOT output these exact strings again; if you want to revisit a concept, significantly change the wording or target a different angle/page): ${triedQueries.join('; ')}`
+      : 'No targeted queries have been tried yet.';
+  const failedSummary =
+    failedUrls.length > 0
+      ? `URLs that failed or returned empty content (avoid revisiting these): ${failedUrls.join('; ')}`
+      : 'No failed URLs recorded yet.';
+
   const prompt = `You are the orchestrator for a company research run.
 
 Company: ${companyName}
 Current coverage: ${(memory.coverage.ratio * 100).toFixed(0)}% (target 70%).
-Missing fields: ${missing}
+Missing fields (in priority order): ${missingStr}
+${tiers ? tiers + '\n' : ''}
+${triedSummary}
+${failedSummary}
+STRICT RULE: You must NOT return action "finalize" if any must-have field is still missing. Must-have fields are: ${FIELD_PRIORITY_MUST_HAVE.join(', ')}. Only return "finalize" when all must-have fields are filled OR all fallback URLs for missing fields have been visited (the pipeline will tell you). If any must-have is in the missing list, return "continue" with nextQueries targeting those must-have fields first.
+
 Visited URLs: ${memory.visitedUrls.length}
 
 Decide the next action:
-1. If we can still improve, return action "continue" and provide nextQueries (array of search query strings) and/or nextUrls (array of URLs to fetch).
-2. If we are done or exhausted, return action "finalize" and a short reason.
+1. If any must-have field is still missing, return action "continue" with nextQueries targeting missing must-have fields first.
+2. Otherwise, if we can still improve, return action "continue" and provide nextQueries and/or nextUrls.
+3. Only if we are done or exhausted (and no must-have missing), return action "finalize" with a short reason.
 
 Return ONLY a JSON object:
 { "action": "continue" | "finalize", "nextQueries": string[] | null, "nextUrls": string[] | null, "reason": string | null }`;
@@ -1333,11 +1717,29 @@ Return ONLY a JSON object:
       nextUrls?: string[] | null;
       reason?: string | null;
     };
+    let action: 'continue' | 'finalize' = parsed.action === 'continue' ? 'continue' : 'finalize';
+    let nextQueries = Array.isArray(parsed.nextQueries) ? parsed.nextQueries : undefined;
+    let nextUrls = Array.isArray(parsed.nextUrls) ? parsed.nextUrls : undefined;
+    let reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
+
+    // Strict priority: never finalize while any must-have field is still missing.
+    if (action === 'finalize' && missingMustHave.length > 0) {
+      logIf(
+        log,
+        'info',
+        `Orchestrator returned finalize but must-have fields still missing: ${missingMustHave.join(', ')}. Forcing continue with targeted queries.`,
+      );
+      action = 'continue';
+      nextQueries = targetedQueriesForMissingFields(missingMustHave, companyName).slice(0, 6);
+      nextUrls = undefined;
+      reason = undefined;
+    }
+
     return {
-      action: parsed.action === 'continue' ? 'continue' : 'finalize',
-      nextQueries: Array.isArray(parsed.nextQueries) ? parsed.nextQueries : undefined,
-      nextUrls: Array.isArray(parsed.nextUrls) ? parsed.nextUrls : undefined,
-      reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+      action,
+      nextQueries,
+      nextUrls,
+      reason,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1362,19 +1764,35 @@ async function runFinalSynthesis(
     primaryUrl: memory.visitedUrls[0] ?? input.seedUrl ?? null,
     websiteDomain: primaryHost ?? null,
     descriptionText: null,
+    longCompanyDescription: null,
     industries: null,
-    hqLocation: null,
+    headquartersAndOffices: null,
+    companyStage: null,
     sizeRange: null,
     foundedYear: null,
+    careersPageUrl: null,
+    linkedInCompanyUrl: null,
+    remotePolicy: null,
+    remoteFriendlyLocations: null,
+    sponsorshipSignals: null,
+    workAuthorizationRequirements: null,
+    hiringLocations: null,
+    benefitsHighlights: null,
     fundingStage: null,
     publicCompany: null,
     ticker: null,
-    remotePolicy: null,
-    sponsorshipSignals: null,
-    hiringLocations: null,
+    missionStatement: null,
+    coreValues: null,
+    typicalHiringProcess: null,
+    interviewProcess: null,
+    interviewFormatHints: null,
+    applicationTipsFromCareersPage: null,
+    salaryByLevel: null,
     techStackHints: null,
-    jobCountTotal: null,
     jobCountOpen: null,
+    hiringTrend: null,
+    recentLayoffsOrRestructuring: null,
+    jobCountTotal: null,
     visitedUrls: [...memory.visitedUrls],
     coreFieldCoverage: memory.coverage.ratio,
     missingCoreFields: [...memory.coverage.missing],
@@ -1386,24 +1804,59 @@ async function runFinalSynthesis(
     if (!entry || entry.value === null || entry.value === undefined) continue;
     const v = entry.value;
     if (field === 'descriptionText') draft.descriptionText = typeof v === 'string' ? v : null;
+    else if (field === 'longCompanyDescription')
+      draft.longCompanyDescription = typeof v === 'string' ? v : null;
     else if (field === 'industries') draft.industries = Array.isArray(v) ? v.map(String) : null;
-    else if (field === 'hqLocation') draft.hqLocation = typeof v === 'string' ? v : null;
+    else if (field === 'headquartersAndOffices')
+      draft.headquartersAndOffices = typeof v === 'string' ? v : null;
+    else if (field === 'companyStage') draft.companyStage = typeof v === 'string' ? v : null;
     else if (field === 'sizeRange') draft.sizeRange = typeof v === 'string' ? v : null;
     else if (field === 'foundedYear') draft.foundedYear = typeof v === 'number' ? v : null;
-    else if (field === 'fundingStage') draft.fundingStage = typeof v === 'string' ? v : null;
-    else if (field === 'publicCompany') draft.publicCompany = typeof v === 'boolean' ? v : null;
-    else if (field === 'ticker') draft.ticker = typeof v === 'string' ? v : null;
+    else if (field === 'careersPageUrl') draft.careersPageUrl = typeof v === 'string' ? v : null;
+    else if (field === 'linkedInCompanyUrl')
+      draft.linkedInCompanyUrl = typeof v === 'string' ? v : null;
     else if (field === 'remotePolicy') draft.remotePolicy = typeof v === 'string' ? v : null;
+    else if (field === 'remoteFriendlyLocations')
+      draft.remoteFriendlyLocations = Array.isArray(v) ? v.map(String) : null;
     else if (field === 'sponsorshipSignals')
       draft.sponsorshipSignals =
         v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+    else if (field === 'workAuthorizationRequirements')
+      draft.workAuthorizationRequirements = typeof v === 'string' ? v : null;
     else if (field === 'hiringLocations')
       draft.hiringLocations = Array.isArray(v) ? v.map(String) : null;
+    else if (field === 'benefitsHighlights')
+      draft.benefitsHighlights = typeof v === 'string' ? v : null;
+    else if (field === 'fundingStage') draft.fundingStage = typeof v === 'string' ? v : null;
+    else if (field === 'publicCompany') draft.publicCompany = typeof v === 'boolean' ? v : null;
+    else if (field === 'ticker') draft.ticker = typeof v === 'string' ? v : null;
+    else if (field === 'missionStatement')
+      draft.missionStatement = typeof v === 'string' ? v : null;
+    else if (field === 'coreValues') draft.coreValues = Array.isArray(v) ? v.map(String) : null;
+    else if (field === 'typicalHiringProcess')
+      draft.typicalHiringProcess = typeof v === 'string' ? v : null;
+    else if (field === 'interviewProcess')
+      draft.interviewProcess = typeof v === 'string' ? v : null;
+    else if (field === 'interviewFormatHints')
+      draft.interviewFormatHints = Array.isArray(v) ? v.map(String) : null;
+    else if (field === 'applicationTipsFromCareersPage')
+      draft.applicationTipsFromCareersPage = typeof v === 'string' ? v : null;
+    else if (field === 'salaryByLevel')
+      draft.salaryByLevel =
+        v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
     else if (field === 'techStackHints')
       draft.techStackHints = Array.isArray(v) ? v.map(String) : null;
     else if (field === 'jobCountOpen') draft.jobCountOpen = typeof v === 'number' ? v : null;
+    else if (field === 'hiringTrend') draft.hiringTrend = typeof v === 'string' ? v : null;
+    else if (field === 'recentLayoffsOrRestructuring')
+      draft.recentLayoffsOrRestructuring = typeof v === 'string' ? v : null;
     fieldConfidence[field as CoreField] = entry.confidence;
   }
+
+  // Strict coverage from the draft itself (all CORE_FIELDS) so reported % matches what is actually filled.
+  const { ratio, missing } = computeCoverage(draft);
+  draft.coreFieldCoverage = ratio;
+  draft.missingCoreFields = missing;
 
   return draft;
 }

@@ -15,6 +15,8 @@ import {
   type OutreachMemory,
   type SearchResultTrackingEntry,
 } from './outreach-research-disk';
+
+export type { OutreachMemory } from './outreach-research-disk';
 import { searchWebViaBrowser, cleanHtml, type SearchResult } from '@careersignal/agents';
 import {
   determineContactStrategy,
@@ -23,8 +25,6 @@ import {
   verifyContact,
   selectTopContacts,
   inferEmailPattern,
-  generateDrafts,
-  extractHooks,
   type ContactSearchResult,
   type ContactStrategy,
   type Contact,
@@ -319,7 +319,10 @@ export async function runOutreachResearch(
     };
   }
 
-  const candidates: ContactSearchResult[] = priorityContact ? [priorityContact] : [];
+  /** Candidates may include optional email (e.g. from DB reuse). */
+  const candidates: (ContactSearchResult & { email?: string })[] = priorityContact
+    ? [priorityContact]
+    : [];
   const visitedUrls = new Set<string>(memory.visitedUrls);
 
   // 2b. Fallback: add existing contacts for this company from DB (reuse for this position)
@@ -667,34 +670,15 @@ export async function runOutreachResearch(
   await writeOutreachMemory(runFolderName, memory);
   throwIfAborted();
 
-  // 7. Outreach generation (2–3 variants per contact via outreach writer)
+  // 7. Outreach drafts: not generated in pipeline; user creates on-demand per contact from the UI
   const drafts: unknown[] = [];
-  const candidateName = profile?.name ?? 'Candidate';
-  const candidateSkills = profile?.skills ?? [];
-  for (const c of contactsWithEmail.slice(0, 3)) {
-    const contact = c as Contact;
-    throwIfAborted();
-    try {
-      const hooks = await extractHooks(normalizedJob, contact, candidateSkills);
-      const result = await generateDrafts(
-        normalizedJob,
-        contact,
-        candidateName,
-        candidateSkills,
-        hooks,
-      );
-      if (result.drafts?.length) drafts.push(...result.drafts);
-    } catch {
-      // skip
-    }
-  }
   memory.drafts = drafts;
   memory.steps = {
     ...memory.steps,
     done: {
       step: 'done',
       completedAt: now(),
-      outputSummary: `Contacts: ${contactsWithEmail.length}, Drafts: ${drafts.length}`,
+      outputSummary: `Contacts: ${contactsWithEmail.length}`,
       payload: { contacts: contactsWithEmail, drafts },
     },
   };
@@ -703,7 +687,7 @@ export async function runOutreachResearch(
 
   log({
     level: 'success',
-    message: `Outreach pipeline complete. ${contactsWithEmail.length} contact(s), ${drafts.length} draft(s).`,
+    message: `Outreach pipeline complete. ${contactsWithEmail.length} contact(s). Create drafts on demand from the contacts list.`,
   });
 
   return {

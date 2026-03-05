@@ -145,26 +145,6 @@ export function ContactOutreachPanel() {
     }
   }
 
-  async function handleRun(job: OutreachTestJob) {
-    setSelectedId(job.id);
-    setRunning(true);
-    setLogs([]);
-    setResult(null);
-    try {
-      const res = await fetch('/api/admin/contact-outreach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobUrl: job.jobUrl, jobPostingId: job.id }),
-      });
-      await consumeStream(res);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setResult({ success: false, error: `Request failed: ${msg}` });
-    } finally {
-      setRunning(false);
-    }
-  }
-
   return (
     <Card>
       <CardHeader>

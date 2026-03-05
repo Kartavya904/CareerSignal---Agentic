@@ -31,6 +31,53 @@ const EMPLOYMENT_TYPES = [
 const STRICT_OPTIONS = ['STRICT', 'SEMI_STRICT', 'OFF'] as const;
 const MAX_CONTACTS_OPTIONS = [1, 2, 3, 5] as const;
 
+// Unified tone options for cover letter and cold messages (user wanted same options in both)
+const TONE_OPTIONS = [
+  'Formal',
+  'Professional',
+  'Conversational',
+  'Friendly',
+  'Confident',
+  'Bold',
+  'Warm',
+  'Straightforward',
+  'Polite',
+  'Enthusiastic',
+  'Understated',
+  'Direct',
+  'Personal',
+  'Technical',
+  'Narrative',
+  'Action-oriented',
+  'Modest',
+  'Industry-specific',
+  'Traditional',
+  'Hook-led',
+  'Concise',
+  'Low-key',
+  'Personable',
+] as const;
+
+const COVER_LETTER_LENGTH_OPTIONS = [
+  { value: 'CONCISE', label: 'Concise' },
+  { value: 'DEFAULT', label: 'Default' },
+  { value: 'DETAILED', label: 'Detailed' },
+] as const;
+
+const COLD_MESSAGE_LENGTH_OPTIONS = [
+  { value: 'VERY_SHORT', label: 'Very short' },
+  { value: 'SHORT', label: 'Short' },
+  { value: 'MEDIUM', label: 'Medium' },
+] as const;
+
+const COVER_LETTER_WORD_CHOICE_OPTIONS = [
+  'Action-oriented',
+  'Modest',
+  'Confident',
+  'Jargon-light',
+  'Industry-specific',
+] as const;
+
 const tagPillStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -52,7 +99,7 @@ type ApiPreferences = PreferencesPutBody & {
 };
 
 const defaultForm: PreferencesPutBody = {
-  work_authorization: 'OTHER',
+  work_authorizations: ['OTHER'],
   target_locations: [],
   willing_to_relocate: false,
   has_car: false,
@@ -68,6 +115,16 @@ const defaultForm: PreferencesPutBody = {
   strict_filter_level: 'STRICT',
   max_contacts_per_job: 2,
   outreach_tone: null,
+  cover_letter_tone: [],
+  cover_letter_length: 'DEFAULT',
+  cover_letter_word_choice: [],
+  cover_letter_notes: null,
+  cold_linkedin_tone: [],
+  cold_linkedin_length: 'SHORT',
+  cold_linkedin_notes: null,
+  cold_email_tone: [],
+  cold_email_length: 'SHORT',
+  cold_email_notes: null,
 };
 
 export default function PreferencesPage() {
@@ -86,7 +143,8 @@ export default function PreferencesPage() {
         if (data && typeof data === 'object' && !('error' in data)) {
           const d = data as ApiPreferences;
           setForm({
-            work_authorization: d.work_authorization ?? defaultForm.work_authorization,
+            work_authorizations:
+              (d as ApiPreferences).work_authorizations ?? defaultForm.work_authorizations,
             target_locations: d.target_locations ?? [],
             willing_to_relocate: d.willing_to_relocate ?? false,
             has_car: d.has_car ?? false,
@@ -102,6 +160,16 @@ export default function PreferencesPage() {
             strict_filter_level: d.strict_filter_level ?? 'STRICT',
             max_contacts_per_job: d.max_contacts_per_job ?? 2,
             outreach_tone: d.outreach_tone ?? null,
+            cover_letter_tone: (d as ApiPreferences).cover_letter_tone ?? [],
+            cover_letter_length: (d as ApiPreferences).cover_letter_length ?? 'DEFAULT',
+            cover_letter_word_choice: (d as ApiPreferences).cover_letter_word_choice ?? [],
+            cover_letter_notes: (d as ApiPreferences).cover_letter_notes ?? null,
+            cold_linkedin_tone: (d as ApiPreferences).cold_linkedin_tone ?? [],
+            cold_linkedin_length: (d as ApiPreferences).cold_linkedin_length ?? 'SHORT',
+            cold_linkedin_notes: (d as ApiPreferences).cold_linkedin_notes ?? null,
+            cold_email_tone: (d as ApiPreferences).cold_email_tone ?? [],
+            cold_email_length: (d as ApiPreferences).cold_email_length ?? 'SHORT',
+            cold_email_notes: (d as ApiPreferences).cold_email_notes ?? null,
           });
         }
       })
@@ -203,7 +271,7 @@ export default function PreferencesPage() {
           return;
         }
         setForm({
-          work_authorization: data.work_authorization ?? form.work_authorization,
+          work_authorizations: data.work_authorizations ?? form.work_authorizations,
           target_locations: data.target_locations ?? [],
           willing_to_relocate: data.willing_to_relocate ?? false,
           has_car: data.has_car ?? false,
@@ -219,6 +287,16 @@ export default function PreferencesPage() {
           strict_filter_level: data.strict_filter_level ?? 'STRICT',
           max_contacts_per_job: data.max_contacts_per_job ?? 2,
           outreach_tone: data.outreach_tone ?? null,
+          cover_letter_tone: data.cover_letter_tone ?? [],
+          cover_letter_length: data.cover_letter_length ?? 'DEFAULT',
+          cover_letter_word_choice: data.cover_letter_word_choice ?? [],
+          cover_letter_notes: data.cover_letter_notes ?? null,
+          cold_linkedin_tone: data.cold_linkedin_tone ?? [],
+          cold_linkedin_length: data.cold_linkedin_length ?? 'SHORT',
+          cold_linkedin_notes: data.cold_linkedin_notes ?? null,
+          cold_email_tone: data.cold_email_tone ?? [],
+          cold_email_length: data.cold_email_length ?? 'SHORT',
+          cold_email_notes: data.cold_email_notes ?? null,
         });
         addToast('Preferences filled from profile. Review and save.', 'success');
       })
@@ -276,23 +354,44 @@ export default function PreferencesPage() {
           </h2>
           <div style={{ marginBottom: '1rem' }}>
             <label className="label">Work authorization *</label>
-            <select
-              className="select"
-              value={form.work_authorization}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  work_authorization: e.target.value as typeof f.work_authorization,
-                }))
-              }
-              required
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {WORK_AUTH_OPTIONS.map((o) => {
+                const selected = form.work_authorizations.includes(o);
+                return (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => {
+                      setForm((f) => ({
+                        ...f,
+                        work_authorizations: selected
+                          ? f.work_authorizations.filter((x) => x !== o)
+                          : [...f.work_authorizations, o],
+                      }));
+                    }}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: 8,
+                      border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                      color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.875rem',
+                      fontWeight: selected ? 600 : 500,
+                      cursor: 'pointer',
+                      transition:
+                        'border-color 0.15s ease, background 0.15s ease, color 0.15s ease',
+                    }}
+                  >
+                    {o.replace(/_/g, ' ')}
+                  </button>
+                );
+              })}
+            </div>
+            <p
+              style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginTop: '0.35rem' }}
             >
-              {WORK_AUTH_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
+              Select all that apply. At least one required.
+            </p>
           </div>
           <div>
             <label className="label">Employment types *</label>
@@ -722,6 +821,332 @@ export default function PreferencesPage() {
               onChange={(e) => setForm((f) => ({ ...f, salary_currency: e.target.value || null }))}
               style={{ width: '6rem' }}
             />
+          </div>
+        </div>
+
+        {/* Tone preferences: Cover letter, Cold message (LinkedIn), Cold email */}
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h2
+            className="section-title"
+            style={{ color: 'var(--accent)', textTransform: 'none', letterSpacing: '0' }}
+          >
+            Tone preferences
+          </h2>
+          <p
+            style={{
+              color: 'var(--muted-foreground)',
+              fontSize: '0.9rem',
+              marginBottom: '1.25rem',
+            }}
+          >
+            How you want cover letters and outreach messages to sound. Used by Application
+            Assistant.
+          </p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '1.5rem',
+            }}
+          >
+            {/* 1. Cover letter */}
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                Cover letter
+              </h3>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Tone (multi-select)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {TONE_OPTIONS.map((t) => {
+                    const selected = form.cover_letter_tone.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            cover_letter_tone: selected
+                              ? f.cover_letter_tone.filter((x) => x !== t)
+                              : [...f.cover_letter_tone, t],
+                          }))
+                        }
+                        style={{
+                          padding: '0.35rem 0.65rem',
+                          borderRadius: 6,
+                          border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                          background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                          color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                          fontSize: '0.8rem',
+                          fontWeight: selected ? 600 : 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Length (choose one)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {COVER_LETTER_LENGTH_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, cover_letter_length: value }))}
+                      style={{
+                        padding: '0.35rem 0.65rem',
+                        borderRadius: 6,
+                        border: `1px solid ${form.cover_letter_length === value ? 'var(--accent)' : 'var(--border)'}`,
+                        background:
+                          form.cover_letter_length === value
+                            ? 'var(--accent-muted)'
+                            : 'var(--surface-elevated)',
+                        color:
+                          form.cover_letter_length === value
+                            ? 'var(--accent)'
+                            : 'var(--text-secondary)',
+                        fontSize: '0.8rem',
+                        fontWeight: form.cover_letter_length === value ? 600 : 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Word choice (multi-select)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {COVER_LETTER_WORD_CHOICE_OPTIONS.map((w) => {
+                    const selected = form.cover_letter_word_choice.includes(w);
+                    return (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            cover_letter_word_choice: selected
+                              ? f.cover_letter_word_choice.filter((x) => x !== w)
+                              : [...f.cover_letter_word_choice, w],
+                          }))
+                        }
+                        style={{
+                          padding: '0.35rem 0.65rem',
+                          borderRadius: 6,
+                          border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                          background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                          color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                          fontSize: '0.8rem',
+                          fontWeight: selected ? 600 : 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {w}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="label">
+                  Opening, structure, signature &amp; special requests
+                </label>
+                <textarea
+                  className="input"
+                  placeholder="e.g. Use 'Dear Hiring Team', keep to 3 paragraphs, sign with 'Best regards'..."
+                  value={form.cover_letter_notes ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, cover_letter_notes: e.target.value || null }))
+                  }
+                  rows={3}
+                  style={{ width: '100%', resize: 'vertical', minHeight: '4.5rem' }}
+                />
+                <p
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--muted-foreground)',
+                    marginTop: '0.25rem',
+                  }}
+                >
+                  Optional. We’ll try to keep this structure and closing in the generated cover
+                  letter.
+                </p>
+              </div>
+            </div>
+
+            {/* 2. Cold message (LinkedIn) */}
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                Cold message (LinkedIn)
+              </h3>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Tone (multi-select)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {TONE_OPTIONS.map((t) => {
+                    const selected = form.cold_linkedin_tone.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            cold_linkedin_tone: selected
+                              ? f.cold_linkedin_tone.filter((x) => x !== t)
+                              : [...f.cold_linkedin_tone, t],
+                          }))
+                        }
+                        style={{
+                          padding: '0.35rem 0.65rem',
+                          borderRadius: 6,
+                          border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                          background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                          color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                          fontSize: '0.8rem',
+                          fontWeight: selected ? 600 : 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Length (choose one)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {COLD_MESSAGE_LENGTH_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, cold_linkedin_length: value }))}
+                      style={{
+                        padding: '0.35rem 0.65rem',
+                        borderRadius: 6,
+                        border: `1px solid ${form.cold_linkedin_length === value ? 'var(--accent)' : 'var(--border)'}`,
+                        background:
+                          form.cold_linkedin_length === value
+                            ? 'var(--accent-muted)'
+                            : 'var(--surface-elevated)',
+                        color:
+                          form.cold_linkedin_length === value
+                            ? 'var(--accent)'
+                            : 'var(--text-secondary)',
+                        fontSize: '0.8rem',
+                        fontWeight: form.cold_linkedin_length === value ? 600 : 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="label">Opening, closing &amp; special requests</label>
+                <textarea
+                  className="input"
+                  placeholder="e.g. Open with a one-line hook, no flattery, end with a soft ask..."
+                  value={form.cold_linkedin_notes ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, cold_linkedin_notes: e.target.value || null }))
+                  }
+                  rows={3}
+                  style={{ width: '100%', resize: 'vertical', minHeight: '4.5rem' }}
+                />
+              </div>
+            </div>
+
+            {/* 3. Cold email */}
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                Cold email
+              </h3>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Tone (multi-select)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {TONE_OPTIONS.map((t) => {
+                    const selected = form.cold_email_tone.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            cold_email_tone: selected
+                              ? f.cold_email_tone.filter((x) => x !== t)
+                              : [...f.cold_email_tone, t],
+                          }))
+                        }
+                        style={{
+                          padding: '0.35rem 0.65rem',
+                          borderRadius: 6,
+                          border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                          background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                          color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                          fontSize: '0.8rem',
+                          fontWeight: selected ? 600 : 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="label">Length (choose one)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {COLD_MESSAGE_LENGTH_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, cold_email_length: value }))}
+                      style={{
+                        padding: '0.35rem 0.65rem',
+                        borderRadius: 6,
+                        border: `1px solid ${form.cold_email_length === value ? 'var(--accent)' : 'var(--border)'}`,
+                        background:
+                          form.cold_email_length === value
+                            ? 'var(--accent-muted)'
+                            : 'var(--surface-elevated)',
+                        color:
+                          form.cold_email_length === value
+                            ? 'var(--accent)'
+                            : 'var(--text-secondary)',
+                        fontSize: '0.8rem',
+                        fontWeight: form.cold_email_length === value ? 600 : 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="label">Opening, closing &amp; special requests</label>
+                <textarea
+                  className="input"
+                  placeholder="e.g. Subject line style, sign-off, keep under 150 words..."
+                  value={form.cold_email_notes ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, cold_email_notes: e.target.value || null }))
+                  }
+                  rows={3}
+                  style={{ width: '100%', resize: 'vertical', minHeight: '4.5rem' }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 

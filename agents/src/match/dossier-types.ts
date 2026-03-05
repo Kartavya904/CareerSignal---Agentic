@@ -1,22 +1,64 @@
 /**
  * Types and merge logic for the Deep Company Dossier running memory.
  * Used by the deep-company-research agent; implementation (disk) lives in apps/web.
+ *
+ * Field priority: MUST_HAVE → SHOULD_HAVE → NICE_TO_HAVE.
+ * CORE_FIELDS is built in that order so the pipeline scrapes and fills from top to bottom.
+ * Missing-field fallback searches and coverage reporting use this order.
  */
 
-export const CORE_FIELDS = [
+/** Must-have: essential for job matching and application (careers, remote, locations, sponsorship). */
+export const FIELD_PRIORITY_MUST_HAVE = [
   'descriptionText',
   'industries',
-  'hqLocation',
+  'headquartersAndOffices',
   'sizeRange',
+  'careersPageUrl',
+  'linkedInCompanyUrl',
+  'remotePolicy',
+  'workAuthorizationRequirements',
+  'hiringLocations',
+  'sponsorshipSignals',
+] as const;
+
+/** Should-have: important for interview prep and culture fit. */
+export const FIELD_PRIORITY_SHOULD_HAVE = [
+  'longCompanyDescription',
+  'companyStage',
   'foundedYear',
+  'benefitsHighlights',
+  'missionStatement',
+  'coreValues',
+  'typicalHiringProcess',
+  'interviewProcess',
+  'interviewFormatHints',
+  'applicationTipsFromCareersPage',
+  'remoteFriendlyLocations',
+  'hiringTrend',
+] as const;
+
+/** Nice-to-have: extra context (funding, salary, tech stack, layoffs). */
+export const FIELD_PRIORITY_NICE_TO_HAVE = [
   'fundingStage',
   'publicCompany',
   'ticker',
-  'remotePolicy',
-  'sponsorshipSignals',
-  'hiringLocations',
+  'salaryByLevel',
   'techStackHints',
   'jobCountOpen',
+  'recentLayoffsOrRestructuring',
+] as const;
+
+export const FIELD_PRIORITY_TIERS = {
+  mustHave: [...FIELD_PRIORITY_MUST_HAVE],
+  shouldHave: [...FIELD_PRIORITY_SHOULD_HAVE],
+  niceToHave: [...FIELD_PRIORITY_NICE_TO_HAVE],
+} as const;
+
+/** All fields in scrape order: must-have first, then should-have, then nice-to-have. */
+export const CORE_FIELDS = [
+  ...FIELD_PRIORITY_MUST_HAVE,
+  ...FIELD_PRIORITY_SHOULD_HAVE,
+  ...FIELD_PRIORITY_NICE_TO_HAVE,
 ] as const;
 
 export type CoreField = (typeof CORE_FIELDS)[number];
@@ -39,6 +81,21 @@ export interface DossierMemory {
   /** Fallback: one URL per missing field from "company + missing field" browser search (title contains company). Visited after urlsToVisit. */
   urlsToVisitMissingFields?: string[];
   lastExtractionByUrl?: Record<string, string>;
+  /**
+   * Priority order for scraping: agent must fill must-have first, then should-have, then nice-to-have.
+   * Persisted so the run has an explicit record of what to prioritize.
+   */
+  fieldPriorityTiers?: {
+    mustHave: string[];
+    shouldHave: string[];
+    niceToHave: string[];
+  };
+  /** All targeted search queries we've already tried (normalized strings). */
+  targetedQueriesTried?: string[];
+  /** URLs that have been fetched but failed or returned too little content to use. */
+  failedUrls?: string[];
+  /** How many times we've attempted targeted search for each core field (by name). */
+  targetedAttemptsByField?: Record<string, number>;
 }
 
 export interface DossierRunMetadata {
@@ -55,24 +112,67 @@ export interface DossierRunMetadata {
  */
 export interface DossierPageExtraction {
   descriptionText?: string | null;
+  longCompanyDescription?: string | null;
   industries?: string[] | null;
-  hqLocation?: string | null;
+  headquartersAndOffices?: string | null;
+  companyStage?: string | null;
   sizeRange?: string | null;
   foundedYear?: number | null;
+  careersPageUrl?: string | null;
+  linkedInCompanyUrl?: string | null;
+  remotePolicy?: string | null;
+  remoteFriendlyLocations?: string[] | null;
+  sponsorshipSignals?: Record<string, unknown> | null;
+  workAuthorizationRequirements?: string | null;
+  hiringLocations?: string[] | null;
+  benefitsHighlights?: string | null;
   fundingStage?: string | null;
   publicCompany?: boolean | null;
   ticker?: string | null;
-  remotePolicy?: string | null;
-  sponsorshipSignals?: Record<string, unknown> | null;
-  hiringLocations?: string[] | null;
+  missionStatement?: string | null;
+  coreValues?: string[] | null;
+  typicalHiringProcess?: string | null;
+  interviewProcess?: string | null;
+  interviewFormatHints?: string[] | null;
+  applicationTipsFromCareersPage?: string | null;
+  salaryByLevel?: Record<string, unknown> | null;
   techStackHints?: string[] | null;
   jobCountOpen?: number | null;
+  hiringTrend?: string | null;
+  recentLayoffsOrRestructuring?: string | null;
 }
 
 function hasValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (Array.isArray(value) && value.length === 0) return false;
   if (typeof value === 'string' && value.trim() === '') return false;
+  return true;
+}
+
+/**
+ * Strict "counts for coverage" check. Coverage must consider all CORE_FIELDS;
+ * only real values count — empty objects and metadata-only sponsorshipSignals do not.
+ * Use this for coverage ratio and missing list so reported coverage matches reality.
+ */
+export function hasValueForCoverage(value: unknown, field?: string): boolean {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value) && value.length === 0) return false;
+  if (typeof value === 'string' && value.trim() === '') return false;
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(value instanceof Date)
+  ) {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (keys.length === 0) return false;
+    // sponsorshipSignals: only real H1B/visa evidence counts; run metadata alone does not.
+    if (
+      field === 'sponsorshipSignals' &&
+      keys.every((k) => k === 'coreCoverage' || k === 'missingCoreFields')
+    )
+      return false;
+  }
   return true;
 }
 
@@ -126,7 +226,7 @@ export function mergeExtractionIntoMemory(
   let present = 0;
   const missing: string[] = [];
   for (const field of CORE_FIELDS) {
-    if (hasValue(next.fields[field]?.value)) present++;
+    if (hasValueForCoverage(next.fields[field]?.value, field)) present++;
     else missing.push(field);
   }
   next.coverage = {
@@ -138,7 +238,7 @@ export function mergeExtractionIntoMemory(
 }
 
 /**
- * Create empty memory for a new run.
+ * Create empty memory for a new run. Includes field priority tiers so the agent knows scrape order.
  */
 export function createEmptyDossierMemory(): DossierMemory {
   return {
@@ -147,6 +247,14 @@ export function createEmptyDossierMemory(): DossierMemory {
     fields: {},
     visitedUrls: [],
     lastExtractionByUrl: {},
+    fieldPriorityTiers: {
+      mustHave: [...FIELD_PRIORITY_MUST_HAVE],
+      shouldHave: [...FIELD_PRIORITY_SHOULD_HAVE],
+      niceToHave: [...FIELD_PRIORITY_NICE_TO_HAVE],
+    },
+    targetedQueriesTried: [],
+    failedUrls: [],
+    targetedAttemptsByField: {},
   };
 }
 

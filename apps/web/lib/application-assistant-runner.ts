@@ -14,7 +14,7 @@ import {
   extractJobDetail,
   matchProfileToJob,
   generateResumeSuggestions,
-  generateCoverLetters,
+  generateSingleCoverLetter,
   generateInterviewPrep,
   researchCompanyFromHtml,
   normalizeUrl,
@@ -60,7 +60,7 @@ function toCompanySnapshot(row: {
   url?: string | null;
   descriptionText?: string | null;
   industries?: string[] | null;
-  hqLocation?: string | null;
+  headquartersAndOffices?: string | null;
   sizeRange?: string | null;
   foundedYear?: number | null;
   fundingStage?: string | null;
@@ -81,7 +81,7 @@ function toCompanySnapshot(row: {
     url: row.url ?? null,
     descriptionText: row.descriptionText ?? null,
     industries: row.industries ?? null,
-    hqLocation: row.hqLocation ?? null,
+    headquartersAndOffices: row.headquartersAndOffices ?? null,
     sizeRange: row.sizeRange ?? null,
     foundedYear: row.foundedYear ?? null,
     fundingStage: row.fundingStage ?? null,
@@ -132,9 +132,9 @@ const STEALTH_ARGS = [
 
 /** Application Assistant pipeline timeouts (wrap-up starts before hard deadline). */
 const APP_ASSISTANT_BASE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min default
-const APP_ASSISTANT_DOSSIER_EXTRA_MS = 10 * 60 * 1000; // +10 min when deep dossier runs
+const APP_ASSISTANT_DOSSIER_EXTRA_MS = 15 * 60 * 1000; // +15 min when deep dossier runs
 const APP_ASSISTANT_MAX_TIMEOUT_MS = 40 * 60 * 1000; // cap for future pipelines (e.g. +15 contact)
-const DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS = 10 * 60 * 1000; // 10 min for dossier when run inside assistant
+const DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min for dossier when run inside assistant
 const WRAP_UP_BUFFER_MS = 60 * 1000; // start wrapping up 1 min before deadline
 
 const MAX_RESOLVE_DEPTH = 2;
@@ -790,24 +790,42 @@ export async function runApplicationAssistantPipeline(
             origin: jobOrigin,
             websiteDomain: deepResult.websiteDomain,
             descriptionText: deepResult.descriptionText,
+            longCompanyDescription: deepResult.longCompanyDescription ?? undefined,
             enrichmentSources: { urls: deepResult.visitedUrls },
             industries: deepResult.industries,
-            hqLocation: deepResult.hqLocation,
+            companyStage: deepResult.companyStage ?? undefined,
+            headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
             sizeRange: deepResult.sizeRange,
             foundedYear: deepResult.foundedYear ?? null,
+            careersPageUrl: deepResult.careersPageUrl ?? undefined,
+            linkedInCompanyUrl: deepResult.linkedInCompanyUrl ?? undefined,
+            remotePolicy: deepResult.remotePolicy,
+            remoteFriendlyLocations: deepResult.remoteFriendlyLocations ?? undefined,
+            workAuthorizationRequirements: deepResult.workAuthorizationRequirements ?? undefined,
+            hiringLocations: deepResult.hiringLocations,
+            benefitsHighlights: deepResult.benefitsHighlights ?? undefined,
             fundingStage: deepResult.fundingStage,
             publicCompany: deepResult.publicCompany ?? null,
             ticker: deepResult.ticker,
-            remotePolicy: deepResult.remotePolicy,
+            missionStatement: deepResult.missionStatement ?? undefined,
+            coreValues: deepResult.coreValues ?? undefined,
+            typicalHiringProcess: deepResult.typicalHiringProcess ?? undefined,
+            interviewProcess: deepResult.interviewProcess ?? undefined,
+            interviewFormatHints: deepResult.interviewFormatHints ?? undefined,
+            applicationTipsFromCareersPage: deepResult.applicationTipsFromCareersPage ?? undefined,
+            salaryByLevel: (deepResult.salaryByLevel ?? undefined) as
+              | Record<string, { min?: number; max?: number; currency?: string; period?: string }>
+              | undefined,
+            techStackHints: deepResult.techStackHints,
+            recentLayoffsOrRestructuring: deepResult.recentLayoffsOrRestructuring ?? undefined,
+            hiringTrend: deepResult.hiringTrend ?? undefined,
+            jobCountTotal: deepResult.jobCountTotal ?? undefined,
+            jobCountOpen: deepResult.jobCountOpen ?? undefined,
             sponsorshipSignals: {
               ...(deepResult.sponsorshipSignals ?? {}),
               coreCoverage: deepResult.coreFieldCoverage,
               missingCoreFields: deepResult.missingCoreFields,
             },
-            hiringLocations: deepResult.hiringLocations,
-            techStackHints: deepResult.techStackHints,
-            jobCountTotal: deepResult.jobCountTotal ?? undefined,
-            jobCountOpen: deepResult.jobCountOpen ?? undefined,
             enrichmentStatus: deepResult.coreFieldCoverage >= 0.5 ? 'DONE' : 'ERROR',
           });
 
@@ -981,27 +999,37 @@ export async function runApplicationAssistantPipeline(
         });
 
         throwIfAborted(effectiveSignal);
-        // 12. Cover letters (with company research for tailoring)
-        await dbLog(db, analysisId, 'CoverLetter', 'Generating cover letters (3 styles)...', {
+        // 12. Cover letter (single draft, with company research and user tone preferences)
+        await dbLog(db, analysisId, 'CoverLetter', 'Generating cover letter...', {
           level: 'info',
         });
-        const coverLetters = await generateCoverLetters(profileSnapshot, jobDetail, {
+        const prefs = preferences as {
+          coverLetterTone?: string[];
+          coverLetterLength?: string;
+          coverLetterWordChoice?: string[];
+          coverLetterNotes?: string | null;
+        } | null;
+        const coverLetters = await generateSingleCoverLetter(profileSnapshot, jobDetail, {
           companyResearch: companyResearchText ?? undefined,
+          style:
+            prefs?.coverLetterTone != null || prefs?.coverLetterNotes != null
+              ? {
+                  tone: prefs.coverLetterTone ?? undefined,
+                  length:
+                    (prefs.coverLetterLength as 'CONCISE' | 'DEFAULT' | 'DETAILED') ?? undefined,
+                  wordChoice: prefs.coverLetterWordChoice ?? undefined,
+                  notes: prefs.coverLetterNotes ?? undefined,
+                }
+              : undefined,
         });
-        await dbLog(
-          db,
-          analysisId,
-          'CoverLetter',
-          'Cover letters ready (formal, conversational, bold)',
-          {
-            level: 'success',
-          },
-        );
+        await dbLog(db, analysisId, 'CoverLetter', 'Cover letter ready', {
+          level: 'success',
+        });
 
         const coverLettersEvidence = {
           model: 'GENERAL',
-          summary: 'Cover letters ready (formal, conversational, bold)',
-          styles: ['formal', 'conversational', 'bold'],
+          summary: 'Cover letter ready',
+          singleDraft: true,
         };
         await updateAnalysis(db, analysisId, {
           coverLetters: coverLetters as unknown as Record<string, string>,
@@ -1165,7 +1193,7 @@ export async function runApplicationAssistantPipeline(
           ).length;
           contactsEvidence = {
             model: 'outreach_pipeline',
-            summary: `Contacts: ${contacts.length}, Drafts: ${(outreachResult.drafts ?? []).length}`,
+            summary: `Contacts: ${contacts.length}. Create outreach drafts on demand from the contacts list.`,
             emails,
             linkedIn,
             others: contacts.length - emails - linkedIn,
@@ -1174,7 +1202,7 @@ export async function runApplicationAssistantPipeline(
             db,
             analysisId,
             'OutReachPipeline',
-            `Done. ${contacts.length} contact(s), ${(outreachResult.drafts ?? []).length} draft(s).`,
+            `Done. ${contacts.length} contact(s). Create drafts on demand from the contacts list.`,
             { level: 'success' },
           );
         } catch (err) {

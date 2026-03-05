@@ -15,6 +15,7 @@ export interface UserPreferencesRow {
   id: string;
   userId: string;
   workAuthorization: string;
+  workAuthorizations: string[];
   targetLocations: TargetLocationRow[];
   willingToRelocate: boolean;
   hasCar: boolean;
@@ -30,13 +31,23 @@ export interface UserPreferencesRow {
   strictFilterLevel: StrictFilterLevel;
   maxContactsPerJob: number;
   outreachTone: string | null;
+  coverLetterTone: string[];
+  coverLetterLength: string;
+  coverLetterWordChoice: string[];
+  coverLetterNotes: string | null;
+  coldLinkedinTone: string[];
+  coldLinkedinLength: string;
+  coldLinkedinNotes: string | null;
+  coldEmailTone: string[];
+  coldEmailLength: string;
+  coldEmailNotes: string | null;
   syncedFromProfileAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface UpsertPreferencesInput {
-  workAuthorization: string;
+  workAuthorizations: string[];
   targetLocations: TargetLocationRow[];
   willingToRelocate?: boolean;
   hasCar?: boolean;
@@ -52,6 +63,16 @@ export interface UpsertPreferencesInput {
   strictFilterLevel?: StrictFilterLevel;
   maxContactsPerJob?: MaxContactsPerJob;
   outreachTone?: string | null;
+  coverLetterTone?: string[];
+  coverLetterLength?: string;
+  coverLetterWordChoice?: string[];
+  coverLetterNotes?: string | null;
+  coldLinkedinTone?: string[];
+  coldLinkedinLength?: string;
+  coldLinkedinNotes?: string | null;
+  coldEmailTone?: string[];
+  coldEmailLength?: string;
+  coldEmailNotes?: string | null;
   syncedFromProfileAt?: Date | null;
 }
 
@@ -99,11 +120,17 @@ export async function upsertPreferences(
   type WorkAuth = 'US_CITIZEN' | 'GREEN_CARD' | 'H1B' | 'OPT' | 'EAD' | 'OTHER';
   type RemotePref = 'REMOTE' | 'HYBRID' | 'ONSITE' | 'ANY';
 
+  const workAuths = data.workAuthorizations?.length
+    ? data.workAuthorizations
+    : (['OTHER'] as string[]);
+  const firstWorkAuth = (workAuths[0] ?? 'OTHER') as WorkAuth;
+
   const [row] = await db
     .insert(userPreferencesTable)
     .values({
       userId,
-      workAuthorization: data.workAuthorization as WorkAuth,
+      workAuthorization: firstWorkAuth,
+      workAuthorizations: workAuths,
       targetLocations: data.targetLocations,
       willingToRelocate: data.willingToRelocate ?? false,
       hasCar: data.hasCar ?? false,
@@ -119,12 +146,23 @@ export async function upsertPreferences(
       strictFilterLevel: (data.strictFilterLevel ?? 'STRICT') as 'STRICT' | 'SEMI_STRICT' | 'OFF',
       maxContactsPerJob: maxContacts,
       outreachTone: data.outreachTone ?? 'PROFESSIONAL_CONCISE',
+      coverLetterTone: data.coverLetterTone ?? [],
+      coverLetterLength: data.coverLetterLength ?? 'DEFAULT',
+      coverLetterWordChoice: data.coverLetterWordChoice ?? [],
+      coverLetterNotes: data.coverLetterNotes ?? null,
+      coldLinkedinTone: data.coldLinkedinTone ?? [],
+      coldLinkedinLength: data.coldLinkedinLength ?? 'SHORT',
+      coldLinkedinNotes: data.coldLinkedinNotes ?? null,
+      coldEmailTone: data.coldEmailTone ?? [],
+      coldEmailLength: data.coldEmailLength ?? 'SHORT',
+      coldEmailNotes: data.coldEmailNotes ?? null,
       syncedFromProfileAt: data.syncedFromProfileAt ?? null,
     })
     .onConflictDoUpdate({
       target: userPreferencesTable.userId,
       set: {
-        workAuthorization: data.workAuthorization as WorkAuth,
+        workAuthorization: firstWorkAuth,
+        workAuthorizations: workAuths,
         targetLocations: data.targetLocations,
         willingToRelocate: data.willingToRelocate ?? false,
         hasCar: data.hasCar ?? false,
@@ -140,6 +178,16 @@ export async function upsertPreferences(
         strictFilterLevel: (data.strictFilterLevel ?? 'STRICT') as 'STRICT' | 'SEMI_STRICT' | 'OFF',
         maxContactsPerJob: maxContacts,
         outreachTone: data.outreachTone ?? 'PROFESSIONAL_CONCISE',
+        coverLetterTone: data.coverLetterTone ?? [],
+        coverLetterLength: data.coverLetterLength ?? 'DEFAULT',
+        coverLetterWordChoice: data.coverLetterWordChoice ?? [],
+        coverLetterNotes: data.coverLetterNotes ?? null,
+        coldLinkedinTone: data.coldLinkedinTone ?? [],
+        coldLinkedinLength: data.coldLinkedinLength ?? 'SHORT',
+        coldLinkedinNotes: data.coldLinkedinNotes ?? null,
+        coldEmailTone: data.coldEmailTone ?? [],
+        coldEmailLength: data.coldEmailLength ?? 'SHORT',
+        coldEmailNotes: data.coldEmailNotes ?? null,
         syncedFromProfileAt: data.syncedFromProfileAt ?? null,
         updatedAt: new Date(),
       },

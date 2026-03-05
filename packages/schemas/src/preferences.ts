@@ -17,9 +17,13 @@ export const maxContactsPerJobSchema = z.union([
   z.literal(5),
 ]);
 
+const workAuthOptionSchema = z.enum(['US_CITIZEN', 'GREEN_CARD', 'H1B', 'OPT', 'EAD', 'OTHER']);
+export const coverLetterLengthSchema = z.enum(['CONCISE', 'DEFAULT', 'DETAILED']);
+export const coldMessageLengthSchema = z.enum(['VERY_SHORT', 'SHORT', 'MEDIUM']);
+
 export const preferencesPutBodySchema = z
   .object({
-    work_authorization: z.enum(['US_CITIZEN', 'GREEN_CARD', 'H1B', 'OPT', 'EAD', 'OTHER']),
+    work_authorizations: z.array(workAuthOptionSchema).min(1, 'At least one work authorization'),
     // Locations + mobility
     target_locations: z.array(targetLocationSchema).default([]),
     willing_to_relocate: z.boolean().default(false),
@@ -36,6 +40,19 @@ export const preferencesPutBodySchema = z
     strict_filter_level: strictFilterLevelSchema.default('STRICT'),
     max_contacts_per_job: maxContactsPerJobSchema.default(2),
     outreach_tone: z.string().nullable().optional(),
+    // Tone preferences: cover letter
+    cover_letter_tone: z.array(z.string()).default([]),
+    cover_letter_length: coverLetterLengthSchema.optional().default('DEFAULT'),
+    cover_letter_word_choice: z.array(z.string()).default([]),
+    cover_letter_notes: z.string().nullable().optional(),
+    // Tone preferences: cold message (LinkedIn)
+    cold_linkedin_tone: z.array(z.string()).default([]),
+    cold_linkedin_length: coldMessageLengthSchema.optional().default('SHORT'),
+    cold_linkedin_notes: z.string().nullable().optional(),
+    // Tone preferences: cold email
+    cold_email_tone: z.array(z.string()).default([]),
+    cold_email_length: coldMessageLengthSchema.optional().default('SHORT'),
+    cold_email_notes: z.string().nullable().optional(),
   })
   .strict();
 
