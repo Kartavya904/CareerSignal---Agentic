@@ -112,6 +112,8 @@ export interface UpsertCompanyEnrichmentInput {
   websiteDomain?: string | null;
   descriptionText?: string | null;
   enrichmentSources?: CompanyRow['enrichmentSources'] | null;
+  coreFieldCoverage?: number | null;
+  missingCoreFields?: string[] | null;
   headquartersAndOffices?: string | null;
   foundedYear?: number | null;
   remotePolicy?: string | null;
@@ -146,6 +148,16 @@ export async function upsertCompanyEnrichment(
     const update: Partial<CompanyRow> = {
       descriptionText: input.descriptionText ?? existing.descriptionText,
       enrichmentSources: input.enrichmentSources ?? existing.enrichmentSources,
+      coreFieldCoverage:
+        input.coreFieldCoverage !== undefined
+          ? input.coreFieldCoverage != null
+            ? String(input.coreFieldCoverage)
+            : null
+          : existing.coreFieldCoverage,
+      missingCoreFields:
+        input.missingCoreFields !== undefined
+          ? (input.missingCoreFields ?? null)
+          : existing.missingCoreFields,
       headquartersAndOffices: input.headquartersAndOffices ?? existing.headquartersAndOffices,
       foundedYear: input.foundedYear ?? existing.foundedYear,
       remotePolicy: input.remotePolicy ?? existing.remotePolicy,
@@ -185,6 +197,8 @@ export async function upsertCompanyEnrichment(
       enabledForScraping: false,
       descriptionText: input.descriptionText ?? null,
       enrichmentSources: input.enrichmentSources ?? null,
+      coreFieldCoverage: input.coreFieldCoverage != null ? String(input.coreFieldCoverage) : null,
+      missingCoreFields: input.missingCoreFields ?? null,
       headquartersAndOffices: input.headquartersAndOffices ?? null,
       foundedYear: input.foundedYear ?? null,
       remotePolicy: input.remotePolicy ?? null,

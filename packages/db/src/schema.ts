@@ -416,6 +416,10 @@ export const companies = pgTable(
     enrichmentSources: jsonb('enrichment_sources').$type<{ urls?: string[]; paths?: string[] }>(),
     enrichmentStatus: enrichmentStatusEnum('enrichment_status').default('PENDING'),
     lastEnrichedAt: timestamp('last_enriched_at'),
+    /** 0..1 ratio of core fields filled by dossier pipeline. */
+    coreFieldCoverage: decimal('core_field_coverage', { precision: 4, scale: 3 }),
+    /** Names of missing core fields at last enrichment time. */
+    missingCoreFields: jsonb('missing_core_fields').$type<string[]>(),
     headquartersAndOffices: text('headquarters_and_offices'),
     foundedYear: integer('founded_year'),
     remotePolicy: text('remote_policy'),

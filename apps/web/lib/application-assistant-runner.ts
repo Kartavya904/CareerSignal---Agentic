@@ -28,11 +28,14 @@ import {
   getProfileByUserId,
   getPreferencesByUserId,
   getAnalysisById,
+  getCompanyById,
   updateAnalysis,
   updateAnalysisRunState,
   insertAnalysisLog,
   findCompanyByNameOrDomain,
-  needsCompanyRefresh,
+  getJobListingByDedupeKey,
+  normalizeJobDedupeKey,
+  upsertJobListingByDedupeKey,
   upsertCompanyEnrichment,
 } from '@careersignal/db';
 import { registerLoginWait } from '@/lib/login-wall-state';
@@ -120,10 +123,20 @@ const STEALTH_ARGS = [
   '--ignore-certificate-errors',
 ];
 
-/** Application Assistant pipeline timeouts: 20 min max total. */
-const APP_ASSISTANT_BASE_TIMEOUT_MS = 20 * 60 * 1000; // 20 min total pipeline
-const APP_ASSISTANT_MAX_TIMEOUT_MS = 20 * 60 * 1000; // cap 20 min
-const DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS = 12 * 60 * 1000; // 12 min for dossier when run inside assistant (fits within 20 min)
+/**
+ * Application Assistant pipeline timeouts.
+ *
+ * Base timeout covers the “normal” pipeline (scrape → extract → match → write).
+ * The deadline is dynamically extended when optional sub-pipelines run:
+ * - Deep Company Dossier: +15 min
+ * - Outreach pipeline: +10 min
+ */
+const APP_ASSISTANT_BASE_TIMEOUT_MS = 20 * 60 * 1000; // 20 min base pipeline
+const DOSSIER_EXTRA_MS = 15 * 60 * 1000; // +15 min when dossier runs
+const OUTREACH_EXTRA_MS = 10 * 60 * 1000; // +10 min when outreach runs
+const APP_ASSISTANT_MAX_TIMEOUT_MS =
+  APP_ASSISTANT_BASE_TIMEOUT_MS + DOSSIER_EXTRA_MS + OUTREACH_EXTRA_MS; // cap total growth
+const DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min for dossier when run inside assistant
 const WRAP_UP_BUFFER_MS = 60 * 1000; // start wrapping up 1 min before deadline
 
 const MAX_RESOLVE_DEPTH = 2;
@@ -169,6 +182,24 @@ function urlLooksLikeJobPage(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+type JobListingRemoteType = 'REMOTE' | 'HYBRID' | 'ONSITE' | 'UNKNOWN';
+
+function toJobRemoteType(value: string | null | undefined): JobListingRemoteType {
+  if (!value) return 'UNKNOWN';
+  const v = value.toLowerCase();
+  if (v.includes('hybrid')) return 'HYBRID';
+  if (v.includes('remote')) return 'REMOTE';
+  if (v.includes('on-site') || v.includes('onsite') || v.includes('in-person')) return 'ONSITE';
+  return 'UNKNOWN';
+}
+
+function tryParseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
 }
 
 /** Error message when the user clicks Stop (so we can log a friendly message). */
@@ -261,7 +292,7 @@ export async function runApplicationAssistantPipeline(
   const timings: Record<string, number> = {};
   const t0 = Date.now();
 
-  // Combined abort: user stop OR pipeline timeout (15 min base; +10 min when dossier runs; cap 40 min).
+  // Combined abort: user stop OR pipeline timeout (base + optional extensions).
   const pipelineStart = Date.now();
   let deadlineMs = pipelineStart + APP_ASSISTANT_BASE_TIMEOUT_MS;
   const mergedController = new AbortController();
@@ -273,14 +304,19 @@ export async function runApplicationAssistantPipeline(
 
   const getRemainingMs = () => Math.max(0, deadlineMs - Date.now());
   const isWrappingUp = () => getRemainingMs() < WRAP_UP_BUFFER_MS;
+  let dossierExtended = false;
   const extendDeadlineForDossier = () => {
-    // Keep 20 min cap; dossier runs within the same pipeline deadline.
-    deadlineMs = Math.min(deadlineMs, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
+    if (dossierExtended) return;
+    dossierExtended = true;
+    const newDeadline = deadlineMs + DOSSIER_EXTRA_MS;
+    deadlineMs = Math.min(newDeadline, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => mergedController.abort(), Math.max(0, deadlineMs - Date.now()));
   };
-  const OUTREACH_EXTRA_MS = 10 * 60 * 1000; // +10 min for outreach when run inside assistant
+  let outreachExtended = false;
   const extendDeadlineForOutreach = () => {
+    if (outreachExtended) return;
+    outreachExtended = true;
     const newDeadline = deadlineMs + OUTREACH_EXTRA_MS;
     deadlineMs = Math.min(newDeadline, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
     if (timeoutId) clearTimeout(timeoutId);
@@ -313,357 +349,425 @@ export async function runApplicationAssistantPipeline(
       timings.fetchMs = Date.now() - t0;
       throwIfAborted(effectiveSignal);
 
-      // 1. Launch visible browser
-      await transitionAssistantStep(db, analysisId, 'scraping');
+      const runFolderName = getRunFolderName(userName, userId);
+      const cacheKey = normalizeJobDedupeKey(finalUrl);
+      const cachedJobRow = await getJobListingByDedupeKey(db, cacheKey);
+      const cachedCompany = cachedJobRow?.companyId
+        ? await getCompanyById(db, cachedJobRow.companyId)
+        : null;
+
+      let html = '';
+      let resolvedUrl = finalUrl;
+      let resolvedHtml = '';
+      let cleanedForExtract = cleanHtml('');
+      let jobDetail: Awaited<ReturnType<typeof extractJobDetail>>;
+      let useRag = process.env.DISABLE_JOB_RAG !== '1' && process.env.DISABLE_JOB_RAG !== 'true';
+      let focusedHtml: string | null = null;
+      let extractionSource: 'rag_focused' | 'cleaned_html' | 'raw_html' | 'job_cache' =
+        'cleaned_html';
+
+      // 1. Launch visible browser (used by dossier + outreach even when job is cached)
+      await transitionAssistantStep(db, analysisId, cachedJobRow ? 'extracting' : 'scraping');
       const tBrowserStart = Date.now();
       await dbLog(db, analysisId, 'Browser', 'Launching visible browser...', { level: 'info' });
       throwIfAborted(effectiveSignal);
       browser = await chromium.launch({ headless: false, args: STEALTH_ARGS });
-      const page = await browser.newPage();
-      await page.setViewportSize({ width: 1280, height: 720 });
-      await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
-      throwIfAborted(effectiveSignal);
-
-      // 2. Navigate to URL (allow network idle for SPAs like Citadel)
-      await dbLog(db, analysisId, 'Browser', `Navigating to ${finalUrl}`, { level: 'info' });
-      await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(4000);
-      try {
-        await page.waitForLoadState('networkidle', { timeout: 5000 });
-      } catch {
-        // ignore
-      }
-
-      let html = await page.content();
       timings.browserMs = Date.now() - tBrowserStart;
       throwIfAborted(effectiveSignal);
-      await dbLog(db, analysisId, 'Browser', `Page loaded: ${html.length} chars`, {
-        level: 'success',
-      });
 
-      // 3. Clean + classify
-      const tClassifyStart = Date.now();
-      throwIfAborted(effectiveSignal);
-      const cleanResult = cleanHtml(html);
-      let classification = await classifyPage(cleanResult.html, finalUrl);
-      throwIfAborted(effectiveSignal);
-      dbLog(
-        db,
-        analysisId,
-        'Classifier',
-        `Page type: ${classification.type} (${classification.confidence.toFixed(2)})`,
-        {
-          level: 'info',
-        },
-      );
-      try {
-        const verification = verifyCleaning(html, cleanResult.html);
-        const confidencePct = Math.round(verification.coverageRatio * 100);
+      if (cachedJobRow) {
+        useRag = false;
+        extractionSource = 'job_cache';
+        resolvedUrl = cachedJobRow.applyUrl ?? cachedJobRow.jobUrl ?? finalUrl;
+        resolvedHtml = cachedJobRow.descriptionText ?? '';
+        cleanedForExtract = cleanHtml(resolvedHtml);
+
+        jobDetail = {
+          title: cachedJobRow.title,
+          company: cachedCompany?.name ?? 'Unknown',
+          companyOneLiner: null,
+          location: cachedJobRow.location ?? null,
+          salary: null,
+          description: cachedJobRow.descriptionText ?? '',
+          requirements: [],
+          postedDate: cachedJobRow.postedAt ? cachedJobRow.postedAt.toISOString() : null,
+          deadline: null,
+          employmentType: cachedJobRow.employmentType ?? null,
+          remoteType: cachedJobRow.remoteType ?? null,
+          seniority: cachedJobRow.level ?? null,
+          applyUrl: cachedJobRow.applyUrl ?? resolvedUrl,
+          department: null,
+        };
+
         await dbLog(
           db,
           analysisId,
-          'CleanerVerifier',
-          `Cleaning confidence: ${confidencePct}%` +
-            (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
-          { level: verification.manualReviewRequired ? 'warn' : 'info' },
+          'Extractor',
+          `Using cached job listing (job_listing_id=${cachedJobRow.id}); skipping scraping + extraction.`,
+          { level: 'info' },
         );
-      } catch {
-        await dbLog(
-          db,
-          analysisId,
-          'CleanerVerifier',
-          'Cleaning verification failed (non-fatal).',
-          { level: 'warn' },
-        );
-      }
-
-      // 3b. Persist run to disk for debugging and re-analysis
-      const runFolderName = getRunFolderName(userName, userId);
-      await saveApplicationAssistantRun(runFolderName, html, cleanResult.html, {
-        url: finalUrl,
-        userId,
-        userName,
-        folderName: runFolderName,
-        classificationType: classification.type,
-        classificationConfidence: classification.confidence,
-        timestamp: new Date().toISOString(),
-      })
-        .then(async (dir) => {
-          await dbLog(db, analysisId, 'Pipeline', `Run saved to ${dir}`, { level: 'info' });
-        })
-        .catch(async (err) => {
-          await dbLog(
-            db,
-            analysisId,
-            'Pipeline',
-            `Could not save run to disk: ${err instanceof Error ? err.message : String(err)}`,
-            { level: 'warn' },
-          );
-        });
-      await updateOrchestratorMemory(runFolderName, { currentStep: 'scraping' });
-      // Initial screenshot
-      try {
-        const screenshotPath = path.join(getRunFolderPath(runFolderName), 'screenshot-initial.png');
-        await page.screenshot({ path: screenshotPath, fullPage: true });
-        await dbLog(db, analysisId, 'Browser', `Initial screenshot saved.`, { level: 'info' });
-      } catch {
-        // ignore screenshot failures
-      }
-      timings.classifyMs = Date.now() - tClassifyStart;
-
-      throwIfAborted(effectiveSignal);
-      // 4. Handle login wall
-      if (classification.type === 'login_wall') {
-        await dbLog(
-          db,
-          analysisId,
-          'Browser',
-          'Login required — please log in in the browser window',
-          {
-            level: 'warn',
+        await updateOrchestratorMemory(runFolderName, {
+          currentStep: 'extracting',
+          step: {
+            step: 'extract',
+            completedAt: new Date().toISOString(),
+            model: 'JOB_CACHE',
+            outputSummary: `"${jobDetail.title}" at ${jobDetail.company}`,
+            payload: { jobTitle: jobDetail.title, company: jobDetail.company, cached: true },
           },
-        );
-        await updateAnalysisRunState(db, analysisId, { waitingForLogin: true });
-        const loginHtml = await registerLoginWait(page);
-        await updateAnalysisRunState(db, analysisId, { waitingForLogin: false });
-        await dbLog(db, analysisId, 'Browser', 'Login completed, re-capturing page...', {
-          level: 'success',
         });
-        html = loginHtml;
-        const reclean = cleanHtml(html);
-        classification = await classifyPage(reclean.html, finalUrl);
-        try {
-          const verification = verifyCleaning(loginHtml, reclean.html);
-          const confidencePct = Math.round(verification.coverageRatio * 100);
-          await dbLog(
-            db,
-            analysisId,
-            'CleanerVerifier',
-            `Post-login cleaning confidence: ${confidencePct}%` +
-              (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
-            { level: verification.manualReviewRequired ? 'warn' : 'info' },
-          );
-        } catch {
-          await dbLog(
-            db,
-            analysisId,
-            'CleanerVerifier',
-            'Post-login cleaning verification failed (non-fatal).',
-            { level: 'warn' },
-          );
-        }
-        await dbLog(db, analysisId, 'Classifier', `Post-login type: ${classification.type}`, {
-          level: 'info',
-        });
+      } else {
+        // 2. Navigate to URL (allow network idle for SPAs like Citadel)
+        const page = await browser.newPage();
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         throwIfAborted(effectiveSignal);
-        // Save post-login HTML variant and screenshot
-        try {
-          await saveHtmlVariant(runFolderName, 'post-login', loginHtml, reclean.html);
-          const screenshotPath = path.join(
-            getRunFolderPath(runFolderName),
-            'screenshot-post-login.png',
-          );
-          await page.screenshot({ path: screenshotPath, fullPage: true });
-          await dbLog(db, analysisId, 'Browser', 'Post-login artifacts saved.', { level: 'info' });
-        } catch {
-          // ignore disk/screenshot failures
-        }
-      }
 
-      throwIfAborted(effectiveSignal);
-      // 5. Handle captcha
-      if (classification.type === 'captcha_challenge') {
-        dbLog(
-          db,
-          analysisId,
-          'Browser',
-          'Captcha detected — please solve it in the browser window',
-          { level: 'warn' },
-        );
-        await updateAnalysisRunState(db, analysisId, { waitingForCaptcha: true });
-        const captchaHtml = await registerCaptchaSolve(page);
-        await updateAnalysisRunState(db, analysisId, { waitingForCaptcha: false });
-        await dbLog(db, analysisId, 'Browser', 'Captcha solved, re-capturing page...', {
-          level: 'success',
-        });
-        html = captchaHtml;
-        const reclean = cleanHtml(html);
-        classification = await classifyPage(reclean.html, finalUrl);
+        await dbLog(db, analysisId, 'Browser', `Navigating to ${finalUrl}`, { level: 'info' });
+        await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(4000);
         try {
-          const verification = verifyCleaning(captchaHtml, reclean.html);
-          const confidencePct = Math.round(verification.coverageRatio * 100);
-          await dbLog(
-            db,
-            analysisId,
-            'CleanerVerifier',
-            `Post-captcha cleaning confidence: ${confidencePct}%` +
-              (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
-            { level: verification.manualReviewRequired ? 'warn' : 'info' },
-          );
-        } catch {
-          await dbLog(
-            db,
-            analysisId,
-            'CleanerVerifier',
-            'Post-captcha cleaning verification failed (non-fatal).',
-            { level: 'warn' },
-          );
-        }
-        try {
-          await saveHtmlVariant(runFolderName, 'post-captcha', captchaHtml, reclean.html);
-          const screenshotPath = path.join(
-            getRunFolderPath(runFolderName),
-            'screenshot-post-captcha.png',
-          );
-          await page.screenshot({ path: screenshotPath, fullPage: true });
-          await dbLog(db, analysisId, 'Browser', 'Post-captcha artifacts saved.', {
-            level: 'info',
-          });
+          await page.waitForLoadState('networkidle', { timeout: 5000 });
         } catch {
           // ignore
         }
-      }
 
-      throwIfAborted(effectiveSignal);
-      // 6. URL resolution (depth 2) — only when URL does NOT look like a job page and classifier says not job
-      let resolvedUrl = finalUrl;
-      let resolvedHtml = html;
-      const trustUrlAsJobPage = urlLooksLikeJobPage(url);
-      if (trustUrlAsJobPage) {
+        html = await page.content();
+        throwIfAborted(effectiveSignal);
+        await dbLog(db, analysisId, 'Browser', `Page loaded: ${html.length} chars`, {
+          level: 'success',
+        });
+
+        // 3. Clean + classify
+        const tClassifyStart = Date.now();
+        throwIfAborted(effectiveSignal);
+        const cleanResult = cleanHtml(html);
+        let classification = await classifyPage(cleanResult.html, finalUrl);
+        throwIfAborted(effectiveSignal);
         dbLog(
           db,
           analysisId,
-          'Resolver',
-          'URL looks like a job/application page — using it directly.',
-          { level: 'info' },
-        );
-      } else if (!isJobPage(classification.type)) {
-        await dbLog(
-          db,
-          analysisId,
-          'Resolver',
-          'Page is not a job page. Searching for job links...',
+          'Classifier',
+          `Page type: ${classification.type} (${classification.confidence.toFixed(2)})`,
           {
             level: 'info',
           },
         );
-        const found = await resolveToJobPage(page, html, url, 0, db, analysisId, effectiveSignal);
-        if (found) {
-          resolvedUrl = found.url;
-          resolvedHtml = found.html;
-          await dbLog(db, analysisId, 'Resolver', `Found job page at ${resolvedUrl}`, {
+        try {
+          const verification = verifyCleaning(html, cleanResult.html);
+          const confidencePct = Math.round(verification.coverageRatio * 100);
+          await dbLog(
+            db,
+            analysisId,
+            'CleanerVerifier',
+            `Cleaning confidence: ${confidencePct}%` +
+              (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
+            { level: verification.manualReviewRequired ? 'warn' : 'info' },
+          );
+        } catch {
+          await dbLog(
+            db,
+            analysisId,
+            'CleanerVerifier',
+            'Cleaning verification failed (non-fatal).',
+            { level: 'warn' },
+          );
+        }
+
+        // 3b. Persist run to disk for debugging and re-analysis
+        await saveApplicationAssistantRun(runFolderName, html, cleanResult.html, {
+          url: finalUrl,
+          userId,
+          userName,
+          folderName: runFolderName,
+          classificationType: classification.type,
+          classificationConfidence: classification.confidence,
+          timestamp: new Date().toISOString(),
+        })
+          .then(async (dir) => {
+            await dbLog(db, analysisId, 'Pipeline', `Run saved to ${dir}`, { level: 'info' });
+          })
+          .catch(async (err) => {
+            await dbLog(
+              db,
+              analysisId,
+              'Pipeline',
+              `Could not save run to disk: ${err instanceof Error ? err.message : String(err)}`,
+              { level: 'warn' },
+            );
+          });
+        await updateOrchestratorMemory(runFolderName, { currentStep: 'scraping' });
+        // Initial screenshot
+        try {
+          const screenshotPath = path.join(
+            getRunFolderPath(runFolderName),
+            'screenshot-initial.png',
+          );
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          await dbLog(db, analysisId, 'Browser', `Initial screenshot saved.`, { level: 'info' });
+        } catch {
+          // ignore screenshot failures
+        }
+        timings.classifyMs = Date.now() - tClassifyStart;
+
+        throwIfAborted(effectiveSignal);
+        // 4. Handle login wall
+        if (classification.type === 'login_wall') {
+          await dbLog(
+            db,
+            analysisId,
+            'Browser',
+            'Login required — please log in in the browser window',
+            {
+              level: 'warn',
+            },
+          );
+          await updateAnalysisRunState(db, analysisId, { waitingForLogin: true });
+          const loginHtml = await registerLoginWait(page);
+          await updateAnalysisRunState(db, analysisId, { waitingForLogin: false });
+          await dbLog(db, analysisId, 'Browser', 'Login completed, re-capturing page...', {
             level: 'success',
           });
-        } else {
+          html = loginHtml;
+          const reclean = cleanHtml(html);
+          classification = await classifyPage(reclean.html, finalUrl);
+          try {
+            const verification = verifyCleaning(loginHtml, reclean.html);
+            const confidencePct = Math.round(verification.coverageRatio * 100);
+            await dbLog(
+              db,
+              analysisId,
+              'CleanerVerifier',
+              `Post-login cleaning confidence: ${confidencePct}%` +
+                (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
+              { level: verification.manualReviewRequired ? 'warn' : 'info' },
+            );
+          } catch {
+            await dbLog(
+              db,
+              analysisId,
+              'CleanerVerifier',
+              'Post-login cleaning verification failed (non-fatal).',
+              { level: 'warn' },
+            );
+          }
+          await dbLog(db, analysisId, 'Classifier', `Post-login type: ${classification.type}`, {
+            level: 'info',
+          });
+          throwIfAborted(effectiveSignal);
+          // Save post-login HTML variant and screenshot
+          try {
+            await saveHtmlVariant(runFolderName, 'post-login', loginHtml, reclean.html);
+            const screenshotPath = path.join(
+              getRunFolderPath(runFolderName),
+              'screenshot-post-login.png',
+            );
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            await dbLog(db, analysisId, 'Browser', 'Post-login artifacts saved.', {
+              level: 'info',
+            });
+          } catch {
+            // ignore disk/screenshot failures
+          }
+        }
+
+        throwIfAborted(effectiveSignal);
+        // 5. Handle captcha
+        if (classification.type === 'captcha_challenge') {
+          dbLog(
+            db,
+            analysisId,
+            'Browser',
+            'Captcha detected — please solve it in the browser window',
+            { level: 'warn' },
+          );
+          await updateAnalysisRunState(db, analysisId, { waitingForCaptcha: true });
+          const captchaHtml = await registerCaptchaSolve(page);
+          await updateAnalysisRunState(db, analysisId, { waitingForCaptcha: false });
+          await dbLog(db, analysisId, 'Browser', 'Captcha solved, re-capturing page...', {
+            level: 'success',
+          });
+          html = captchaHtml;
+          const reclean = cleanHtml(html);
+          classification = await classifyPage(reclean.html, finalUrl);
+          try {
+            const verification = verifyCleaning(captchaHtml, reclean.html);
+            const confidencePct = Math.round(verification.coverageRatio * 100);
+            await dbLog(
+              db,
+              analysisId,
+              'CleanerVerifier',
+              `Post-captcha cleaning confidence: ${confidencePct}%` +
+                (verification.manualReviewRequired ? ' (manual review recommended)' : ''),
+              { level: verification.manualReviewRequired ? 'warn' : 'info' },
+            );
+          } catch {
+            await dbLog(
+              db,
+              analysisId,
+              'CleanerVerifier',
+              'Post-captcha cleaning verification failed (non-fatal).',
+              { level: 'warn' },
+            );
+          }
+          try {
+            await saveHtmlVariant(runFolderName, 'post-captcha', captchaHtml, reclean.html);
+            const screenshotPath = path.join(
+              getRunFolderPath(runFolderName),
+              'screenshot-post-captcha.png',
+            );
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            await dbLog(db, analysisId, 'Browser', 'Post-captcha artifacts saved.', {
+              level: 'info',
+            });
+          } catch {
+            // ignore
+          }
+        }
+
+        throwIfAborted(effectiveSignal);
+        // 6. URL resolution (depth 2) — only when URL does NOT look like a job page and classifier says not job
+        const trustUrlAsJobPage = urlLooksLikeJobPage(url);
+        resolvedUrl = finalUrl;
+        resolvedHtml = html;
+        if (trustUrlAsJobPage) {
+          dbLog(
+            db,
+            analysisId,
+            'Resolver',
+            'URL looks like a job/application page — using it directly.',
+            { level: 'info' },
+          );
+        } else if (!isJobPage(classification.type)) {
           await dbLog(
             db,
             analysisId,
             'Resolver',
-            'Could not find a job page within depth 2. Hard-stopping as non-job page.',
+            'Page is not a job page. Searching for job links...',
             {
-              level: 'error',
+              level: 'info',
             },
           );
-          await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
-          return;
+          const found = await resolveToJobPage(page, html, url, 0, db, analysisId, effectiveSignal);
+          if (found) {
+            resolvedUrl = found.url;
+            resolvedHtml = found.html;
+            await dbLog(db, analysisId, 'Resolver', `Found job page at ${resolvedUrl}`, {
+              level: 'success',
+            });
+          } else {
+            await dbLog(
+              db,
+              analysisId,
+              'Resolver',
+              'Could not find a job page within depth 2. Hard-stopping as non-job page.',
+              {
+                level: 'error',
+              },
+            );
+            await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
+            return;
+          }
         }
-      }
 
-      throwIfAborted(effectiveSignal);
-      // 7. Extract job detail (RAG-focused content first when enabled, then cleaned/raw fallback)
-      await transitionAssistantStep(db, analysisId, 'extracting');
-      await dbLog(db, analysisId, 'Extractor', 'Extracting job details...', { level: 'info' });
-      const tExtractStart = Date.now();
-      const cleanedForExtract = cleanHtml(resolvedHtml);
-      let jobDetail: Awaited<ReturnType<typeof extractJobDetail>>;
+        throwIfAborted(effectiveSignal);
+        // 7. Extract job detail (RAG-focused content first when enabled, then cleaned/raw fallback)
+        await transitionAssistantStep(db, analysisId, 'extracting');
+        await dbLog(db, analysisId, 'Extractor', 'Extracting job details...', { level: 'info' });
+        const tExtractStart = Date.now();
+        cleanedForExtract = cleanHtml(resolvedHtml);
 
-      const useRag = process.env.DISABLE_JOB_RAG !== '1' && process.env.DISABLE_JOB_RAG !== 'true';
-      let focusedHtml: string | null = null;
-      let extractionSource: 'rag_focused' | 'cleaned_html' | 'raw_html' = 'cleaned_html';
-      if (useRag) {
-        throwIfAborted(effectiveSignal);
-        const ragResult = await runRagPipeline(runFolderName, resolvedHtml, (msg) =>
-          dbLog(db, analysisId, 'RAG', msg, { level: 'info' }),
-        );
-        throwIfAborted(effectiveSignal);
-        focusedHtml = ragResult.focusedHtml;
-        if (focusedHtml && ragResult.keptCount > 0) {
+        if (useRag) {
+          throwIfAborted(effectiveSignal);
+          const ragResult = await runRagPipeline(runFolderName, resolvedHtml, (msg) =>
+            dbLog(db, analysisId, 'RAG', msg, { level: 'info' }),
+          );
+          throwIfAborted(effectiveSignal);
+          focusedHtml = ragResult.focusedHtml;
+          if (focusedHtml && ragResult.keptCount > 0) {
+            await dbLog(
+              db,
+              analysisId,
+              'RAG',
+              `Using ${ragResult.keptCount} focused chunks for extraction.`,
+              { level: 'info' },
+            );
+          }
+        }
+
+        if (focusedHtml && focusedHtml.length > 100) {
+          jobDetail = await extractJobDetail(focusedHtml, resolvedUrl);
+          if (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') {
+            await dbLog(
+              db,
+              analysisId,
+              'Extractor',
+              'RAG-focused extraction missed; trying full cleaned HTML.',
+              {
+                level: 'info',
+              },
+            );
+            jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+            extractionSource = 'cleaned_html';
+          }
+          if (jobDetail.title !== 'Untitled' && jobDetail.company !== 'Unknown') {
+            extractionSource = 'rag_focused';
+          }
+        } else {
+          jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
+          extractionSource = 'cleaned_html';
+        }
+
+        if (
+          (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') &&
+          resolvedHtml.length > 5000
+        ) {
           await dbLog(
             db,
             analysisId,
-            'RAG',
-            `Using ${ragResult.keptCount} focused chunks for extraction.`,
-            { level: 'info' },
+            'Extractor',
+            'Cleaned HTML yielded little — trying raw HTML.',
+            {
+              level: 'info',
+            },
           );
+          const rawJob = await extractJobDetail(resolvedHtml, resolvedUrl);
+          if (rawJob.title !== 'Untitled' || rawJob.company !== 'Unknown') {
+            jobDetail = rawJob;
+            extractionSource = 'raw_html';
+          }
         }
-      }
-
-      if (focusedHtml && focusedHtml.length > 100) {
-        jobDetail = await extractJobDetail(focusedHtml, resolvedUrl);
         if (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') {
           await dbLog(
             db,
             analysisId,
             'Extractor',
-            'RAG-focused extraction missed; trying full cleaned HTML.',
-            {
-              level: 'info',
-            },
+            'Failed to extract a concrete job (Untitled / Unknown). Stopping analysis.',
+            { level: 'error' },
           );
-          jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
-          extractionSource = 'cleaned_html';
+          timings.extractMs = Date.now() - tExtractStart;
+          await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
+          return;
         }
-        if (jobDetail.title !== 'Untitled' && jobDetail.company !== 'Unknown') {
-          extractionSource = 'rag_focused';
-        }
-      } else {
-        jobDetail = await extractJobDetail(cleanedForExtract.html, resolvedUrl);
-        extractionSource = 'cleaned_html';
-      }
-
-      if (
-        (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') &&
-        resolvedHtml.length > 5000
-      ) {
-        await dbLog(db, analysisId, 'Extractor', 'Cleaned HTML yielded little — trying raw HTML.', {
-          level: 'info',
-        });
-        const rawJob = await extractJobDetail(resolvedHtml, resolvedUrl);
-        if (rawJob.title !== 'Untitled' || rawJob.company !== 'Unknown') {
-          jobDetail = rawJob;
-          extractionSource = 'raw_html';
-        }
-      }
-      if (jobDetail.title === 'Untitled' || jobDetail.company === 'Unknown') {
-        await dbLog(
+        timings.extractMs = Date.now() - tExtractStart;
+        dbLog(
           db,
           analysisId,
           'Extractor',
-          'Failed to extract a concrete job (Untitled / Unknown). Stopping analysis.',
-          { level: 'error' },
+          `Extracted: "${jobDetail.title}" at ${jobDetail.company}`,
+          { level: 'success' },
         );
-        timings.extractMs = Date.now() - tExtractStart;
-        await transitionAssistantStep(db, analysisId, 'error', { runStatusOverride: 'error' });
-        return;
+        await updateOrchestratorMemory(runFolderName, {
+          currentStep: 'extracting',
+          step: {
+            step: 'extract',
+            completedAt: new Date().toISOString(),
+            model: 'GENERAL',
+            outputSummary: `"${jobDetail.title}" at ${jobDetail.company}`,
+            payload: { jobTitle: jobDetail.title, company: jobDetail.company },
+          },
+        });
       }
-      timings.extractMs = Date.now() - tExtractStart;
-      dbLog(
-        db,
-        analysisId,
-        'Extractor',
-        `Extracted: "${jobDetail.title}" at ${jobDetail.company}`,
-        { level: 'success' },
-      );
-      await updateOrchestratorMemory(runFolderName, {
-        currentStep: 'extracting',
-        step: {
-          step: 'extract',
-          completedAt: new Date().toISOString(),
-          model: 'GENERAL',
-          outputSummary: `"${jobDetail.title}" at ${jobDetail.company}`,
-          payload: { jobTitle: jobDetail.title, company: jobDetail.company },
-        },
-      });
 
       throwIfAborted(effectiveSignal);
       // 7b. Company identity resolver (multi-signal, DB-aware at app layer)
@@ -690,6 +794,7 @@ export async function runApplicationAssistantPipeline(
       //    companies; reuses cached record when fresh, refreshes when stale (e.g. >30 days).
       let companyResearchText: string | null = null;
       let companySnapshotData: Record<string, unknown> | null = null;
+      let companyIdForJobListing: string | null = null;
       try {
         throwIfAborted(effectiveSignal);
         await dbLog(
@@ -715,16 +820,17 @@ export async function runApplicationAssistantPipeline(
           websiteDomainHint,
         });
 
-        if (existingCompany && !needsCompanyRefresh(existingCompany)) {
+        if (existingCompany) {
           await dbLog(
             db,
             analysisId,
             'DeepCompanyDossier',
-            `Using existing company record (id=${existingCompany.id}) without refresh.`,
+            `Using existing company record (id=${existingCompany.id}).`,
             { level: 'info' },
           );
           companyResearchText = existingCompany.descriptionText ?? null;
           companySnapshotData = toCompanySnapshot(existingCompany);
+          companyIdForJobListing = existingCompany.id;
         } else if (isWrappingUp()) {
           await dbLog(
             db,
@@ -733,8 +839,8 @@ export async function runApplicationAssistantPipeline(
             'Skipping deep company research (pipeline wrapping up before deadline).',
             { level: 'warn' },
           );
-          companyResearchText = existingCompany?.descriptionText ?? null;
-          companySnapshotData = existingCompany ? toCompanySnapshot(existingCompany) : null;
+          companyResearchText = null;
+          companySnapshotData = null;
         } else {
           extendDeadlineForDossier();
           await dbLog(
@@ -761,7 +867,7 @@ export async function runApplicationAssistantPipeline(
               jobDescriptionText: undefined,
               log: ({ level, message }) =>
                 dbLog(db, analysisId, 'DeepCompanyDossier', message, { level }),
-              hardTimeoutMs: DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS, // 10 min when run inside assistant
+              hardTimeoutMs: DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS, // 15 min when run inside assistant
               browserPage: dossierPage,
               runFolderName: getDossierRunFolderName(companyResolution.canonicalName),
               dossierWriter: createDossierDiskWriter(),
@@ -779,6 +885,8 @@ export async function runApplicationAssistantPipeline(
             websiteDomain: deepResult.websiteDomain,
             descriptionText: deepResult.descriptionText,
             enrichmentSources: { urls: deepResult.visitedUrls },
+            coreFieldCoverage: deepResult.coreFieldCoverage,
+            missingCoreFields: deepResult.missingCoreFields,
             headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
             foundedYear: deepResult.foundedYear ?? null,
             careersPageUrl: deepResult.careersPageUrl ?? undefined,
@@ -803,6 +911,7 @@ export async function runApplicationAssistantPipeline(
 
           companyResearchText = upserted.descriptionText ?? deepResult.descriptionText;
           companySnapshotData = toCompanySnapshot(upserted);
+          companyIdForJobListing = upserted.id;
         }
       } catch (err) {
         dbLog(
@@ -829,6 +938,48 @@ export async function runApplicationAssistantPipeline(
         await saveJsonArtifact(runFolderName, 'job-detail.json', jobDetail);
       } catch {
         // ignore
+      }
+
+      // 9b. Persist canonical job listing (deduped by normalized apply URL)
+      try {
+        const applyUrl = (jobDetail.applyUrl ?? resolvedUrl)?.trim();
+        const dedupeKey = normalizeJobDedupeKey(applyUrl || resolvedUrl);
+        const upsert = await upsertJobListingByDedupeKey(db, {
+          companyId: companyIdForJobListing ?? undefined,
+          title: jobDetail.title,
+          location: jobDetail.location ?? null,
+          remoteType: toJobRemoteType(jobDetail.remoteType),
+          employmentType: jobDetail.employmentType ?? null,
+          level: jobDetail.seniority ?? null,
+          jobUrl: resolvedUrl,
+          applyUrl: applyUrl || resolvedUrl,
+          descriptionText: jobDetail.description ?? null,
+          postedAt: tryParseDate(jobDetail.postedDate),
+          status: 'OPEN',
+          dedupeKey,
+          rawExtract: {
+            ...jobDetail,
+            resolvedUrl,
+            extractionSource,
+            ragEnabled: useRag,
+          } as unknown as Record<string, unknown>,
+          evidencePaths: [`data_application_assistant/${runFolderName}/job-detail.json`],
+        });
+        await dbLog(
+          db,
+          analysisId,
+          'JobListing',
+          `${upsert.created ? 'Inserted' : 'Updated'} job listing (id=${upsert.id}).`,
+          { level: 'info' },
+        );
+      } catch (err) {
+        await dbLog(
+          db,
+          analysisId,
+          'JobListing',
+          `Failed to upsert job listing (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+          { level: 'warn' },
+        );
       }
 
       throwIfAborted(effectiveSignal);
@@ -1200,6 +1351,97 @@ export async function runApplicationAssistantPipeline(
 
       await transitionAssistantStep(db, analysisId, 'done', { runStatusOverride: 'done' });
       await dbLog(db, analysisId, 'Pipeline', 'Analysis complete!', { level: 'success' });
+
+      // Post-pipeline: if company exists but core coverage < 80%, run a short top-up dossier in background.
+      // This is intentionally NOT streamed into the analysis logs/terminal; it's an enrichment job for future runs.
+      try {
+        const companyRow =
+          companyIdForJobListing != null ? await getCompanyById(db, companyIdForJobListing) : null;
+        const coverage =
+          companyRow?.coreFieldCoverage != null ? Number(companyRow.coreFieldCoverage) : null;
+        const shouldTopUp = coverage == null || coverage < 0.8;
+
+        if (companyRow && shouldTopUp) {
+          const companyName = companyRow.name;
+          const seedOrigin = resolvedUrl;
+          void (async () => {
+            let topUpBrowser: Browser | null = null;
+            try {
+              console.log(
+                `[ApplicationAssistant][TopUp] Starting company top-up: ${companyName} (coverage=${coverage ?? 'null'})`,
+              );
+              topUpBrowser = await chromium.launch({ headless: true, args: STEALTH_ARGS });
+              const topUpPage = await topUpBrowser.newPage();
+              try {
+                await topUpPage.setViewportSize({ width: 1280, height: 720 });
+                await topUpPage.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+              } catch {
+                // ignore
+              }
+
+              const deepResult = await deepResearchCompany({
+                companyName,
+                seedUrl: seedOrigin,
+                jobDescriptionText: undefined,
+                log: ({ level, message }) => {
+                  // Keep logs out of analysis terminal; emit only to server console.
+                  const prefix = `[ApplicationAssistant][TopUp][${level}]`;
+                  console.log(`${prefix} ${message}`);
+                },
+                hardTimeoutMs: 10 * 60 * 1000, // 10 min top-up
+                browserPage: topUpPage,
+                runFolderName: getDossierRunFolderName(companyName),
+                dossierWriter: createDossierDiskWriter(),
+                runCompanyPageRag,
+              });
+
+              await upsertCompanyEnrichment(db, {
+                name: deepResult.companyName,
+                normalizedName: deepResult.normalizedName,
+                url: deepResult.primaryUrl ?? seedOrigin,
+                origin: 'ASSISTANT_TOP_UP',
+                websiteDomain: deepResult.websiteDomain,
+                descriptionText: deepResult.descriptionText,
+                enrichmentSources: { urls: deepResult.visitedUrls },
+                coreFieldCoverage: deepResult.coreFieldCoverage,
+                missingCoreFields: deepResult.missingCoreFields,
+                headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
+                foundedYear: deepResult.foundedYear ?? null,
+                careersPageUrl: deepResult.careersPageUrl ?? undefined,
+                linkedInCompanyUrl: deepResult.linkedInCompanyUrl ?? undefined,
+                remotePolicy: deepResult.remotePolicy ?? undefined,
+                sponsorshipRate: deepResult.sponsorshipRate ?? undefined,
+                hiringProcessDescription: deepResult.hiringProcessDescription ?? undefined,
+                hiringLocations: deepResult.hiringLocations ?? undefined,
+                techStackHints: deepResult.techStackHints ?? undefined,
+                enrichmentStatus: deepResult.coreFieldCoverage >= 0.5 ? 'DONE' : 'ERROR',
+              });
+
+              console.log(
+                `[ApplicationAssistant][TopUp] Done: ${companyName} coverage=${(
+                  deepResult.coreFieldCoverage * 100
+                ).toFixed(0)}% missing=${deepResult.missingCoreFields.join(', ')}`,
+              );
+            } catch (err) {
+              console.warn(
+                `[ApplicationAssistant][TopUp] Failed for ${companyName}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            } finally {
+              if (topUpBrowser) {
+                try {
+                  await topUpBrowser.close();
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          })();
+        }
+      } catch {
+        // ignore top-up scheduling errors
+      }
       timings.totalMs = Date.now() - t0;
       // Save timings and a compact summary artifact
       try {

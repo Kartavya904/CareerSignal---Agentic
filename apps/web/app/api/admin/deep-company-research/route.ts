@@ -151,6 +151,8 @@ export async function POST(req: Request) {
         websiteDomain: deepResult.websiteDomain,
         descriptionText: deepResult.descriptionText,
         enrichmentSources: { urls: deepResult.visitedUrls },
+        coreFieldCoverage: deepResult.coreFieldCoverage,
+        missingCoreFields: deepResult.missingCoreFields,
         headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
         foundedYear: deepResult.foundedYear ?? null,
         careersPageUrl: deepResult.careersPageUrl ?? undefined,

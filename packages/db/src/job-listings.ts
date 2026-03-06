@@ -1,14 +1,50 @@
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from './client';
 import { jobListings, companies } from './schema';
 
-function normalizeDedupeKey(url: string): string {
+export type JobRemoteType = 'REMOTE' | 'HYBRID' | 'ONSITE' | 'UNKNOWN';
+export type JobStatus = 'OPEN' | 'CLOSED' | 'UNKNOWN';
+
+export function normalizeJobDedupeKey(url: string): string {
   try {
     const u = new URL(url);
     return u.href.replace(/\/$/, '').toLowerCase();
   } catch {
     return url.replace(/\/$/, '').toLowerCase();
   }
+}
+
+export interface InsertJobListingInput {
+  companyId?: string | null;
+  title: string;
+  location?: string | null;
+  remoteType?: JobRemoteType | null;
+  employmentType?: string | null;
+  level?: string | null;
+  jobUrl?: string | null;
+  applyUrl?: string | null;
+  externalId?: string | null;
+  descriptionText?: string | null;
+  descriptionHtml?: string | null;
+  postedAt?: Date | null;
+  status?: JobStatus | null;
+  dedupeKey: string;
+  rawExtract?: Record<string, unknown> | null;
+  evidencePaths?: string[] | null;
+}
+
+export async function getJobListingById(db: Db, id: string) {
+  const [row] = await db.select().from(jobListings).where(eq(jobListings.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function getJobListingByDedupeKey(db: Db, dedupeKey: string) {
+  const [row] = await db
+    .select()
+    .from(jobListings)
+    .where(eq(jobListings.dedupeKey, dedupeKey))
+    .limit(1);
+  return row ?? null;
 }
 
 export interface JobListingWithCompany {
@@ -33,7 +69,7 @@ export async function getJobListingByApplyUrl(
   db: Db,
   applyUrl: string,
 ): Promise<JobListingWithCompany | null> {
-  const key = normalizeDedupeKey(applyUrl);
+  const key = normalizeJobDedupeKey(applyUrl);
   const rows = await db
     .select({
       id: jobListings.id,
@@ -67,4 +103,72 @@ export async function getJobListingByApplyUrl(
     companyName: row.companyName,
     companyWebsiteDomain: row.companyWebsiteDomain,
   };
+}
+
+export async function insertJobListing(db: Db, input: InsertJobListingInput) {
+  const [row] = await db.insert(jobListings).values(input).returning();
+  return row ?? null;
+}
+
+export async function upsertJobListingByDedupeKey(
+  db: Db,
+  input: InsertJobListingInput,
+): Promise<{ id: string; created: boolean }> {
+  const existing = await getJobListingByDedupeKey(db, input.dedupeKey);
+  const now = new Date();
+
+  if (existing) {
+    await db
+      .update(jobListings)
+      .set({
+        lastSeenAt: now,
+        updatedAt: now,
+        ...(input.title && { title: input.title }),
+        ...(input.location !== undefined && { location: input.location }),
+        ...(input.remoteType !== undefined && { remoteType: input.remoteType }),
+        ...(input.employmentType !== undefined && { employmentType: input.employmentType }),
+        ...(input.level !== undefined && { level: input.level }),
+        ...(input.jobUrl !== undefined && { jobUrl: input.jobUrl }),
+        ...(input.applyUrl !== undefined && { applyUrl: input.applyUrl }),
+        ...(input.externalId !== undefined && { externalId: input.externalId }),
+        ...(input.descriptionText !== undefined && { descriptionText: input.descriptionText }),
+        ...(input.descriptionHtml !== undefined && { descriptionHtml: input.descriptionHtml }),
+        ...(input.postedAt !== undefined && { postedAt: input.postedAt }),
+        ...(input.status !== undefined && { status: input.status }),
+        ...(input.rawExtract !== undefined && { rawExtract: input.rawExtract }),
+        ...(input.evidencePaths !== undefined && { evidencePaths: input.evidencePaths }),
+        ...(input.companyId !== undefined && { companyId: input.companyId }),
+      })
+      .where(eq(jobListings.id, existing.id));
+    return { id: existing.id, created: false };
+  }
+
+  const [inserted] = await db
+    .insert(jobListings)
+    .values({ ...input, firstSeenAt: now, lastSeenAt: now })
+    .returning({ id: jobListings.id });
+  if (!inserted) throw new Error('Failed to insert job listing');
+  return { id: inserted.id, created: true };
+}
+
+export async function listJobListings(
+  db: Db,
+  options?: { companyId?: string; status?: JobStatus; limit?: number; offset?: number },
+) {
+  const conditions = [];
+  if (options?.companyId != null) conditions.push(eq(jobListings.companyId, options.companyId));
+  if (options?.status != null) conditions.push(eq(jobListings.status, options.status));
+
+  const baseQuery =
+    conditions.length > 0
+      ? db
+          .select()
+          .from(jobListings)
+          .where(and(...conditions))
+          .orderBy(desc(jobListings.lastSeenAt))
+      : db.select().from(jobListings).orderBy(desc(jobListings.lastSeenAt));
+
+  if (options?.limit != null) return baseQuery.limit(options.limit);
+  if (options?.offset != null) return baseQuery.offset(options.offset);
+  return baseQuery;
 }
