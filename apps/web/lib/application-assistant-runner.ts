@@ -71,6 +71,11 @@ function toCompanySnapshot(row: {
   jobCountTotal?: number | null;
   jobCountOpen?: number | null;
   websiteDomain?: string | null;
+  careersPageUrl?: string | null;
+  linkedInCompanyUrl?: string | null;
+  hiringProcessDescription?: string | null;
+  coreFieldCoverage?: number | string | null;
+  missingCoreFields?: string[] | null;
   enrichmentSources?: { urls?: string[] } | null;
   lastEnrichedAt?: Date | null;
 }): Record<string, unknown> {
@@ -87,6 +92,11 @@ function toCompanySnapshot(row: {
     jobCountTotal: row.jobCountTotal ?? null,
     jobCountOpen: row.jobCountOpen ?? null,
     websiteDomain: row.websiteDomain ?? null,
+    careersUrl: row.careersPageUrl ?? null,
+    linkedinUrl: row.linkedInCompanyUrl ?? null,
+    hiringProcessDescription: row.hiringProcessDescription ?? null,
+    coreFieldCoverage: row.coreFieldCoverage ?? null,
+    missingCoreFields: row.missingCoreFields ?? null,
     enrichmentSources: row.enrichmentSources ?? null,
     lastEnrichedAt: row.lastEnrichedAt instanceof Date ? row.lastEnrichedAt.toISOString() : null,
   };
@@ -996,6 +1006,9 @@ export async function runApplicationAssistantPipeline(
           seniority: profile.seniority ?? null,
           targetRoles: (profile.targetRoles as string[]) ?? [],
           skills: (profile.skills as string[]) ?? [],
+          linkedinUrl: (profile as { linkedinUrl?: string | null }).linkedinUrl ?? null,
+          githubUrl: (profile as { githubUrl?: string | null }).githubUrl ?? null,
+          portfolioUrl: (profile as { portfolioUrl?: string | null }).portfolioUrl ?? null,
           experience:
             (profile.experience as {
               title: string;
@@ -1159,25 +1172,18 @@ export async function runApplicationAssistantPipeline(
         });
 
         throwIfAborted(effectiveSignal);
-        // 13. Interview prep (with company research)
-        await dbLog(db, analysisId, 'InterviewPrep', 'Generating interview talking points...', {
-          level: 'info',
-        });
-        const interviewBullets = await generateInterviewPrep(profileSnapshot, jobDetail, {
-          companyResearch: companyResearchText ?? undefined,
-        });
+        // 13. Interview prep — temporarily skipped (generator currently yields 0 bullets too often)
         await dbLog(
           db,
           analysisId,
           'InterviewPrep',
-          `${interviewBullets.length} talking points ready`,
-          {
-            level: 'success',
-          },
+          'Skipping interview talking points for later development purposes.',
+          { level: 'info' },
         );
-
         await updateAnalysis(db, analysisId, {
-          interviewPrepBullets: interviewBullets,
+          interviewPrepBullets: [
+            'Skipping interview talking points for later development purposes.',
+          ],
         });
         timings.writingMs = Date.now() - tWritingStart;
 
@@ -1262,6 +1268,8 @@ export async function runApplicationAssistantPipeline(
           // ignore
         }
         try {
+          const maxContactsPerJob =
+            (preferences as { maxContactsPerJob?: number } | null)?.maxContactsPerJob ?? 2;
           const outreachResult = await runOutreachResearch({
             job: {
               title: jobDetail.title,
@@ -1291,6 +1299,7 @@ export async function runApplicationAssistantPipeline(
             browserPage: outreachPage,
             hardTimeoutMs: Math.min(OUTREACH_PIPELINE_TIMEOUT_MS, getRemainingMs() - 5000),
             abortSignal: effectiveSignal,
+            maxRankedContacts: maxContactsPerJob,
           });
           outreachContacts = {
             bestFirst: outreachResult.bestFirst ?? null,

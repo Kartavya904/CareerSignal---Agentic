@@ -33,6 +33,9 @@ function buildProfileCtx(profile: ProfileSnapshot): string {
   return [
     `Name: ${profile.name}`,
     profile.location ? `Location: ${profile.location}` : null,
+    profile.linkedinUrl ? `LinkedIn: ${profile.linkedinUrl}` : null,
+    profile.githubUrl ? `GitHub: ${profile.githubUrl}` : null,
+    profile.portfolioUrl ? `Portfolio: ${profile.portfolioUrl}` : null,
     profile.skills.length > 0 ? `Key skills: ${profile.skills.slice(0, 15).join(', ')}` : null,
     profile.experience.length > 0
       ? `Recent roles: ${profile.experience
@@ -116,6 +119,10 @@ The letter should:
 - Mention the company and role by name
 - Highlight why the candidate is a good fit
 - End with a clear call to action
+
+IMPORTANT:
+- If LinkedIn/GitHub/Portfolio URLs are provided in the candidate profile, you may include them in the signature/contact line.
+- If they are NOT provided, do NOT invent them and do NOT write placeholders like \"Link to portfolio/GitHub\".
 
 Return ONLY the raw cover letter text (no JSON, no key). Start directly with the greeting (e.g. Dear Hiring Manager).`;
 

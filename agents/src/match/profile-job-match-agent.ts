@@ -18,6 +18,9 @@ export interface ProfileSnapshot {
   experience: { title: string; company: string; startDate?: string; endDate?: string }[];
   education: { institution: string; degree?: string; field?: string }[];
   resumeRawText: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  portfolioUrl?: string | null;
   // Optional preference context (V1: may be omitted)
   willingToRelocate?: boolean | null;
   hasCar?: boolean | null;
@@ -116,6 +119,11 @@ ${profileSummary}
 
 JOB POSTING:
 ${jobSummary}
+
+LOCATION SCORING GUIDANCE (important, be precise):
+- If the candidate's target locations include ONLY a country-level preference like "United States" (no state/city), and the job location is in the United States (even if it lists multiple states or multiple US locations), treat location as a STRONG match (score 80-100) unless the job explicitly excludes the candidate's country.
+- If job location is "Remote" and candidate allows remote (remotePreference is ANY/REMOTE), do not penalize location.
+- Do not penalize location just because the job lists multiple possible US states/cities.
 
 Return a JSON object with:
 - overallScore: 0-100 number with up to 2 decimals (e.g. 87.5)

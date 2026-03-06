@@ -101,6 +101,8 @@ export interface RunOutreachResearchOptions {
   ) => Promise<{ focusedHtml: string | null }>;
   /** Optional: called after major steps with current memory; return 'stop' to exit early, 'continue' to proceed (enables brain/retry integration). */
   onProgress?: (phase: string, memory: OutreachMemory) => Promise<OutreachProgressDecision>;
+  /** How many ranked contacts to return (default 15). */
+  maxRankedContacts?: number;
 }
 
 export interface RunOutreachResearchResult {
@@ -604,7 +606,7 @@ export async function runOutreachResearch(
   await writeOutreachMemory(runFolderName, memory);
   throwIfAborted();
 
-  // 5. Contact verifier and ranking (best-first + list max 3)
+  // 5. Contact verifier and ranking (best-first + list)
   const verified: Contact[] = [];
   const archetypeOrder = strategy.targetArchetypes;
   for (const cand of candidates) {
@@ -615,7 +617,8 @@ export async function runOutreachResearch(
       verified.push(contact);
     }
   }
-  const ranked = selectTopContacts(verified, 3);
+  const maxRanked = Math.max(1, Math.min(options.maxRankedContacts ?? 15, verified.length || 15));
+  const ranked = selectTopContacts(verified, maxRanked);
   const bestFirst = ranked[0] ?? null;
   memory.contacts = ranked;
   memory.steps = {

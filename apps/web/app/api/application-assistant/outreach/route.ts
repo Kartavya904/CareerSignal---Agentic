@@ -15,8 +15,9 @@ import {
   findCompanyByNameOrDomain,
   updateAnalysis,
   insertAnalysisLog,
+  getProfileByUserId,
+  getPreferencesByUserId,
 } from '@careersignal/db';
-import { getProfileByUserId } from '@careersignal/db';
 import { getOutreachRunFolderName } from '@/lib/outreach-research-disk';
 import {
   runOutreachResearch,
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
 
     const company = await findCompanyByNameOrDomain(db, { name: companyName });
     const profile = await getProfileByUserId(db, userId);
+    const prefs = await getPreferencesByUserId(db, userId);
 
     const encoder = new TextEncoder();
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -144,6 +146,8 @@ export async function POST(req: Request) {
           },
           browserPage: page,
           hardTimeoutMs: OUTREACH_PIPELINE_TIMEOUT_MS,
+          maxRankedContacts:
+            (prefs as { maxContactsPerJob?: number } | null)?.maxContactsPerJob ?? 2,
           saveHtmlPerUrl: true,
           runRagForVisitedPages: async (outputDir, html, onLog) => {
             const r = await runCompanyPageRag(outputDir, html, onLog);

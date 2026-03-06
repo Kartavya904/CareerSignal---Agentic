@@ -229,6 +229,7 @@ export async function POST(req: Request) {
           writeLogLine(writer, encoder, { ts: new Date().toISOString(), level, message }),
         browserPage: page,
         hardTimeoutMs: OUTREACH_PIPELINE_TIMEOUT_MS,
+        maxRankedContacts: 15,
         existingContactsFromDb,
         saveHtmlPerUrl: true,
         runRagForVisitedPages: async (outputDir, html, onLog) => {

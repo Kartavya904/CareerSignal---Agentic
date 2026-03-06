@@ -147,9 +147,21 @@ export async function generateSingleDraftForContact(
   candidateName: string,
   candidateSkills: string[],
   hooks: PersonalizationHook[],
-  tone: OutreachTone = 'CONCISE',
+  toneOrOptions:
+    | OutreachTone
+    | {
+        tone?: OutreachTone;
+        toneAdjectives?: string[];
+        userInstruction?: string | null;
+      } = 'CONCISE',
 ): Promise<OutreachDraft> {
   const platform: OutreachPlatform = contact.linkedinUrl ? 'LINKEDIN_CONNECTION' : 'EMAIL';
+  const tone =
+    typeof toneOrOptions === 'string' ? toneOrOptions : (toneOrOptions.tone ?? 'CONCISE');
+  const toneAdjectives =
+    typeof toneOrOptions === 'string' ? [] : (toneOrOptions.toneAdjectives ?? []);
+  const userInstruction =
+    typeof toneOrOptions === 'string' ? null : (toneOrOptions.userInstruction ?? null);
   return generateSingleDraft(
     job,
     contact,
@@ -159,6 +171,8 @@ export async function generateSingleDraftForContact(
     platform,
     tone,
     'A',
+    toneAdjectives,
+    userInstruction,
   );
 }
 
@@ -171,6 +185,8 @@ async function generateSingleDraft(
   platform: OutreachPlatform,
   tone: OutreachTone,
   variant: string,
+  toneAdjectives: string[] = [],
+  userInstruction: string | null = null,
 ): Promise<OutreachDraft> {
   const limit = PLATFORM_LIMITS[platform];
   const hooksText = hooks.map((h) => `- ${h.type}: ${h.hook}`).join('\n') || 'None provided';
@@ -193,7 +209,17 @@ async function generateSingleDraft(
     .replace('{toneGuidance}', TONE_PROMPTS[tone])
     .replace(/{limit}/g, String(limit));
 
-  const response = await complete(prompt, 'GENERAL', {
+  const extraStyle =
+    toneAdjectives.length > 0
+      ? `\n\nADDITIONAL TONE ADJECTIVES (apply these too): ${toneAdjectives.join(', ')}`
+      : '';
+  const extraInstruction =
+    userInstruction && userInstruction.trim()
+      ? `\n\nADDITIONAL INSTRUCTION (follow this): ${userInstruction.trim()}`
+      : '';
+  const finalPrompt = `${prompt}${extraStyle}${extraInstruction}`;
+
+  const response = await complete(finalPrompt, 'GENERAL', {
     temperature: 0.7, // Higher creativity for outreach
     maxTokens: 512,
     timeout: 60000,

@@ -1,7 +1,7 @@
 /**
  * POST /api/application-assistant/outreach-draft
  * Create a single outreach draft for one ranked contact (on-demand).
- * Body: { analysisId: string, contactIndex: number }
+ * Body: { analysisId: string, contactIndex: number, userInstruction?: string }
  * Returns: { draft: { platform, variant, body, subject?, tone, ... } }
  * Persists the draft to analysis.contacts.drafts and returns it.
  */
@@ -80,6 +80,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const analysisId = typeof body?.analysisId === 'string' ? body.analysisId.trim() : '';
     const contactIndex = typeof body?.contactIndex === 'number' ? body.contactIndex : 0;
+    const userInstruction =
+      typeof body?.userInstruction === 'string' ? body.userInstruction.trim() : '';
 
     if (!analysisId) {
       return NextResponse.json({ error: 'analysisId is required' }, { status: 400 });
@@ -118,19 +120,29 @@ export async function POST(req: Request) {
 
     const hooks = await extractHooks(normalizedJob, contact, candidateSkills);
     const outreachTone = mapOutreachTone(prefs?.outreachTone ?? undefined);
+
+    const toneAdjectives = contact.linkedinUrl
+      ? ((prefs as { coldLinkedinTone?: string[] | null } | null)?.coldLinkedinTone ?? [])
+      : ((prefs as { coldEmailTone?: string[] | null } | null)?.coldEmailTone ?? []);
+
     const draft = await generateSingleDraftForContact(
       normalizedJob,
       contact,
       candidateName,
       candidateSkills,
       hooks,
-      outreachTone,
+      {
+        tone: outreachTone,
+        toneAdjectives: Array.isArray(toneAdjectives) ? toneAdjectives : [],
+        userInstruction: userInstruction || null,
+      },
     );
 
     const serializedDraft = {
       id: draft.id,
       contactId: contact.id,
       contactName: contact.name,
+      contactIndex,
       platform: draft.platform,
       variant: draft.variant,
       subject: draft.subject,
@@ -138,6 +150,7 @@ export async function POST(req: Request) {
       tone: draft.tone,
       characterCount: draft.characterCount,
       withinLimit: draft.withinLimit,
+      userInstruction: userInstruction || null,
       createdAt: draft.createdAt,
     };
 

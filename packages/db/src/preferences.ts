@@ -30,6 +30,8 @@ export interface UserPreferencesRow {
   salaryCurrency: string | null;
   strictFilterLevel: StrictFilterLevel;
   maxContactsPerJob: number;
+  emailUpdatesEnabled: boolean;
+  emailMinMatchScore: string | null;
   outreachTone: string | null;
   coverLetterTone: string[];
   coverLetterLength: string;
@@ -62,6 +64,8 @@ export interface UpsertPreferencesInput {
   salaryCurrency?: string | null;
   strictFilterLevel?: StrictFilterLevel;
   maxContactsPerJob?: MaxContactsPerJob;
+  emailUpdatesEnabled?: boolean;
+  emailMinMatchScore?: number | null;
   outreachTone?: string | null;
   coverLetterTone?: string[];
   coverLetterLength?: string;
@@ -125,6 +129,8 @@ export async function upsertPreferences(
     : (['OTHER'] as string[]);
   const firstWorkAuth = (workAuths[0] ?? 'OTHER') as WorkAuth;
 
+  const emailMinMatch = data.emailMinMatchScore ?? 60;
+
   const [row] = await db
     .insert(userPreferencesTable)
     .values({
@@ -145,6 +151,8 @@ export async function upsertPreferences(
       salaryCurrency: data.salaryCurrency ?? null,
       strictFilterLevel: (data.strictFilterLevel ?? 'STRICT') as 'STRICT' | 'SEMI_STRICT' | 'OFF',
       maxContactsPerJob: maxContacts,
+      emailUpdatesEnabled: data.emailUpdatesEnabled ?? false,
+      emailMinMatchScore: emailMinMatch != null ? String(emailMinMatch) : null,
       outreachTone: data.outreachTone ?? 'PROFESSIONAL_CONCISE',
       coverLetterTone: data.coverLetterTone ?? [],
       coverLetterLength: data.coverLetterLength ?? 'DEFAULT',
@@ -177,6 +185,8 @@ export async function upsertPreferences(
         salaryCurrency: data.salaryCurrency ?? null,
         strictFilterLevel: (data.strictFilterLevel ?? 'STRICT') as 'STRICT' | 'SEMI_STRICT' | 'OFF',
         maxContactsPerJob: maxContacts,
+        emailUpdatesEnabled: data.emailUpdatesEnabled ?? false,
+        emailMinMatchScore: emailMinMatch != null ? String(emailMinMatch) : null,
         outreachTone: data.outreachTone ?? 'PROFESSIONAL_CONCISE',
         coverLetterTone: data.coverLetterTone ?? [],
         coverLetterLength: data.coverLetterLength ?? 'DEFAULT',

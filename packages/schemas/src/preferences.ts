@@ -39,6 +39,8 @@ export const preferencesPutBodySchema = z
     salary_currency: z.string().nullable().optional(),
     strict_filter_level: strictFilterLevelSchema.default('STRICT'),
     max_contacts_per_job: maxContactsPerJobSchema.default(2),
+    email_updates_enabled: z.boolean().default(false),
+    email_min_match_score: z.number().min(0).max(100).nullable().optional().default(60),
     outreach_tone: z.string().nullable().optional(),
     // Tone preferences: cover letter
     cover_letter_tone: z.array(z.string()).default([]),

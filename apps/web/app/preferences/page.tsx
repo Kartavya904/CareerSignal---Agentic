@@ -114,6 +114,8 @@ const defaultForm: PreferencesPutBody = {
   salary_currency: null,
   strict_filter_level: 'STRICT',
   max_contacts_per_job: 2,
+  email_updates_enabled: false,
+  email_min_match_score: 60,
   outreach_tone: null,
   cover_letter_tone: [],
   cover_letter_length: 'DEFAULT',
@@ -159,6 +161,8 @@ export default function PreferencesPage() {
             salary_currency: d.salary_currency ?? null,
             strict_filter_level: d.strict_filter_level ?? 'STRICT',
             max_contacts_per_job: d.max_contacts_per_job ?? 2,
+            email_updates_enabled: d.email_updates_enabled ?? false,
+            email_min_match_score: d.email_min_match_score ?? null,
             outreach_tone: d.outreach_tone ?? null,
             cover_letter_tone: (d as ApiPreferences).cover_letter_tone ?? [],
             cover_letter_length: (d as ApiPreferences).cover_letter_length ?? 'DEFAULT',
@@ -297,6 +301,8 @@ export default function PreferencesPage() {
           cold_email_tone: data.cold_email_tone ?? [],
           cold_email_length: data.cold_email_length ?? 'SHORT',
           cold_email_notes: data.cold_email_notes ?? null,
+          email_updates_enabled: data.email_updates_enabled ?? false,
+          email_min_match_score: data.email_min_match_score ?? 60,
         });
         addToast('Preferences filled from profile. Review and save.', 'success');
       })
@@ -722,6 +728,51 @@ export default function PreferencesPage() {
           </div>
         </div>
 
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h2
+            className="section-title"
+            style={{ color: 'var(--accent)', textTransform: 'none', letterSpacing: '0' }}
+          >
+            Salary (optional)
+          </h2>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <input
+              type="number"
+              className="input"
+              placeholder="Min"
+              value={form.salary_min ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  salary_min: e.target.value ? Number(e.target.value) : undefined,
+                }))
+              }
+              style={{ width: '6rem' }}
+            />
+            <input
+              type="number"
+              className="input"
+              placeholder="Max"
+              value={form.salary_max ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  salary_max: e.target.value ? Number(e.target.value) : undefined,
+                }))
+              }
+              style={{ width: '6rem' }}
+            />
+            <input
+              type="text"
+              className="input"
+              placeholder="Currency (e.g. USD)"
+              value={form.salary_currency ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, salary_currency: e.target.value || null }))}
+              style={{ width: '6rem' }}
+            />
+          </div>
+        </div>
+
         <div className="card" style={{ marginBottom: '1.25rem' }}>
           <h2
             className="section-title"
@@ -784,43 +835,73 @@ export default function PreferencesPage() {
             className="section-title"
             style={{ color: 'var(--accent)', textTransform: 'none', letterSpacing: '0' }}
           >
-            Salary (optional)
+            Email preferences
           </h2>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <input
-              type="number"
-              className="input"
-              placeholder="Min"
-              value={form.salary_min ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  salary_min: e.target.value ? Number(e.target.value) : undefined,
-                }))
-              }
-              style={{ width: '6rem' }}
-            />
-            <input
-              type="number"
-              className="input"
-              placeholder="Max"
-              value={form.salary_max ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  salary_max: e.target.value ? Number(e.target.value) : undefined,
-                }))
-              }
-              style={{ width: '6rem' }}
-            />
-            <input
-              type="text"
-              className="input"
-              placeholder="Currency (e.g. USD)"
-              value={form.salary_currency ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, salary_currency: e.target.value || null }))}
-              style={{ width: '6rem' }}
-            />
+          <div>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.9rem',
+                color: 'var(--text)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.email_updates_enabled}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, email_updates_enabled: e.target.checked }))
+                }
+              />
+              <span>Send me email updates for each Application Assistant analysis.</span>
+            </label>
+            <p
+              style={{
+                color: 'var(--muted-foreground)',
+                fontSize: '0.8rem',
+                marginTop: '0.35rem',
+              }}
+            >
+              When enabled, a future email agent will summarize the analysis, attach the cover
+              letter, and email it to you — but only when the match score meets your minimum
+              threshold.
+            </p>
+            <div style={{ marginTop: '0.5rem', maxWidth: 220 }}>
+              <label className="label" style={{ display: 'block', marginBottom: '0.25rem' }}>
+                Minimum match score (0–100)
+              </label>
+              <input
+                type="number"
+                className="input"
+                min={0}
+                max={100}
+                step={1}
+                disabled={!form.email_updates_enabled}
+                value={form.email_min_match_score ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) {
+                    setForm((f) => ({ ...f, email_min_match_score: null }));
+                    return;
+                  }
+                  const n = Number(raw);
+                  if (Number.isNaN(n)) return;
+                  const clamped = Math.min(100, Math.max(0, n));
+                  setForm((f) => ({ ...f, email_min_match_score: clamped }));
+                }}
+              />
+              <p
+                style={{
+                  color: 'var(--muted-foreground)',
+                  fontSize: '0.75rem',
+                  marginTop: '0.25rem',
+                }}
+              >
+                The email agent will only send updates for analyses with a match score greater than
+                or equal to this value.
+              </p>
+            </div>
           </div>
         </div>
 

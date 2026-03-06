@@ -150,6 +150,8 @@ export const userPreferences = pgTable('user_preferences', {
   salaryCurrency: varchar('salary_currency', { length: 8 }),
   strictFilterLevel: strictFilterLevelEnum('strict_filter_level').notNull().default('STRICT'),
   maxContactsPerJob: integer('max_contacts_per_job').notNull().default(2),
+  emailUpdatesEnabled: boolean('email_updates_enabled').notNull().default(false),
+  emailMinMatchScore: decimal('email_min_match_score', { precision: 5, scale: 2 }),
   outreachTone: varchar('outreach_tone', { length: 64 }).default('PROFESSIONAL_CONCISE'),
   coverLetterTone: jsonb('cover_letter_tone').$type<string[]>().default([]),
   coverLetterLength: varchar('cover_letter_length', { length: 32 }).default('DEFAULT'),

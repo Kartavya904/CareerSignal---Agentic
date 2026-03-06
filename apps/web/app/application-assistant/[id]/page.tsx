@@ -1,5 +1,5 @@
-import ApplicationAssistantPage from '../page';
+import { ApplicationAssistantClient } from '../page';
 
 export default function ApplicationAssistantAnalysisPage({ params }: { params: { id: string } }) {
-  return <ApplicationAssistantPage initialAnalysisId={params.id} />;
+  return <ApplicationAssistantClient initialAnalysisId={params.id} />;
 }

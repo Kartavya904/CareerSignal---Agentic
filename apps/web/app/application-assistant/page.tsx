@@ -95,7 +95,7 @@ interface Analysis {
   runUpdatedAt?: string | null;
 }
 
-interface ApplicationAssistantPageProps {
+export interface ApplicationAssistantPageProps {
   initialAnalysisId?: string;
 }
 
@@ -131,11 +131,15 @@ function CompanySnapshotCard({
   const publicCompany = snapshot.publicCompany as boolean | null | undefined;
   const ticker = (snapshot.ticker as string) ?? null;
   const remotePolicy = (snapshot.remotePolicy as string) ?? null;
+  const sponsorshipRate = snapshot.sponsorshipRate as string | null | undefined;
+  const hiringProcessDescription = (snapshot.hiringProcessDescription as string) ?? null;
   const hiringLocations = snapshot.hiringLocations as string[] | null | undefined;
   const techStackHints = snapshot.techStackHints as string[] | null | undefined;
   const jobCountTotal = snapshot.jobCountTotal as number | null | undefined;
   const jobCountOpen = snapshot.jobCountOpen as number | null | undefined;
   const websiteDomain = (snapshot.websiteDomain as string) ?? null;
+  const careersUrl = (snapshot.careersUrl as string) ?? null;
+  const linkedinUrl = (snapshot.linkedinUrl as string) ?? null;
 
   const label = (str: string) => (
     <span style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginBottom: 2 }}>
@@ -152,37 +156,12 @@ function CompanySnapshotCard({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ minWidth: 0, flex: '1 1 200px' }}>
-          <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{name}</div>
-          {jobLocation && (
-            <div style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginTop: 2 }}>
-              Job location: {jobLocation}
-            </div>
-          )}
-          {url && (
-            <a
-              href={url.startsWith('http') ? url : `https://${url}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontSize: '0.8rem',
-                color: 'var(--accent)',
-                marginTop: 4,
-                display: 'inline-block',
-              }}
-            >
-              {websiteDomain || url}
-            </a>
-          )}
+      {descriptionText && (
+        <div style={{ minWidth: 0 }}>
+          {label('About')}
+          <p style={{ fontSize: '0.85rem', margin: 0, lineHeight: 1.45 }}>{descriptionText}</p>
         </div>
-        {descriptionText && (
-          <div style={{ minWidth: 0, flex: '1 1 280px' }}>
-            {label('About')}
-            <p style={{ fontSize: '0.85rem', margin: 0, lineHeight: 1.45 }}>{descriptionText}</p>
-          </div>
-        )}
-      </div>
+      )}
       <div
         style={{
           display: 'grid',
@@ -198,6 +177,11 @@ function CompanySnapshotCard({
         {row('Funding', fundingStage)}
         {publicCompany === true && row('Public', ticker ? `${ticker} (public)` : 'Yes')}
         {row('Remote policy', remotePolicy)}
+        {row(
+          'Sponsorship',
+          sponsorshipRate && sponsorshipRate !== 'UNKNOWN' ? sponsorshipRate : null,
+        )}
+        {row('Hiring process', hiringProcessDescription)}
         {hiringLocations?.length
           ? row(
               'Hiring locations',
@@ -239,9 +223,66 @@ function scoreColor(score: number) {
   return '#ef4444';
 }
 
+function HoverDownloadMenu({
+  label,
+  items,
+}: {
+  label: string;
+  items: { label: string; href: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="btn"
+        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', whiteSpace: 'nowrap' }}
+      >
+        {label}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            zIndex: 50,
+            minWidth: 170,
+            background: 'var(--surface-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 10px 28px rgba(0,0,0,0.25)',
+          }}
+        >
+          {items.map((it) => (
+            <a
+              key={it.href}
+              href={it.href}
+              style={{
+                display: 'block',
+                padding: '0.6rem 0.75rem',
+                fontSize: '0.8125rem',
+                color: 'var(--text)',
+                textDecoration: 'none',
+              }}
+            >
+              {it.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
-export default function ApplicationAssistantPage({
+export function ApplicationAssistantClient({
   initialAnalysisId,
 }: ApplicationAssistantPageProps = {}) {
   const router = useRouter();
@@ -276,6 +317,7 @@ export default function ApplicationAssistantPage({
     number | null
   >(null);
   const [outreachDraftModalLoading, setOutreachDraftModalLoading] = useState(false);
+  const [outreachDraftModalInstruction, setOutreachDraftModalInstruction] = useState('');
   const [outreachDraftModalDraft, setOutreachDraftModalDraft] = useState<Record<
     string,
     unknown
@@ -626,6 +668,33 @@ export default function ApplicationAssistantPage({
           : 'idle';
   const currentStep = effectiveStep;
   const currentStepIdx = stepIndex(currentStep);
+
+  const companyName =
+    (analysis?.companySnapshot?.name as string | undefined) ?? analysis?.jobSummary?.company ?? '';
+  const rawCompanyUrl = analysis?.companySnapshot?.url as string | undefined | null;
+  const headerCompanyUrl =
+    rawCompanyUrl && rawCompanyUrl.trim().length > 0
+      ? rawCompanyUrl.startsWith('http')
+        ? rawCompanyUrl
+        : `https://${rawCompanyUrl}`
+      : null;
+  const rawCareersUrl = (analysis?.companySnapshot as any)?.careersUrl as string | undefined | null;
+  const headerCareersUrl =
+    rawCareersUrl && rawCareersUrl.trim().length > 0
+      ? rawCareersUrl.startsWith('http')
+        ? rawCareersUrl
+        : `https://${rawCareersUrl}`
+      : null;
+  const rawLinkedinUrl = (analysis?.companySnapshot as any)?.linkedinUrl as
+    | string
+    | undefined
+    | null;
+  const headerLinkedinUrl =
+    rawLinkedinUrl && rawLinkedinUrl.trim().length > 0
+      ? rawLinkedinUrl.startsWith('http')
+        ? rawLinkedinUrl
+        : `https://${rawLinkedinUrl}`
+      : null;
 
   const currentStepLabel =
     currentStep === 'scraping'
@@ -1406,36 +1475,56 @@ export default function ApplicationAssistantPage({
               padding: '0.75rem 1rem',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <h2 className="section-title" style={{ margin: 0, fontSize: '0.9rem' }}>
-                Company Snapshot
-              </h2>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  fontSize: '0.75rem',
-                  color: 'var(--muted-foreground)',
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background:
-                      isRunning && currentStepIdx < stepIndex('matching')
-                        ? 'var(--accent)'
-                        : 'var(--success)',
-                  }}
-                />
-                <span>
-                  {isRunning && currentStepIdx < stepIndex('matching')
-                    ? 'Building snapshot…'
-                    : 'Snapshot ready'}
-                </span>
-              </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              {companyName && headerCompanyUrl && (
+                <a
+                  href={headerCompanyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="section-title"
+                  style={{ margin: 0, fontSize: '0.9rem', textDecoration: 'underline' }}
+                >
+                  {companyName}
+                </a>
+              )}
+              {companyName && !headerCompanyUrl && (
+                <h2 className="section-title" style={{ margin: 0, fontSize: '0.9rem' }}>
+                  {companyName}
+                </h2>
+              )}
+              {headerCareersUrl && (
+                <>
+                  <span style={{ color: 'var(--muted-foreground)' }}>|</span>
+                  <a
+                    href={headerCareersUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    Careers
+                  </a>
+                </>
+              )}
+              {headerLinkedinUrl && (
+                <>
+                  <span style={{ color: 'var(--muted-foreground)' }}>|</span>
+                  <a
+                    href={headerLinkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    LinkedIn
+                  </a>
+                </>
+              )}
             </div>
             <button
               type="button"
@@ -1468,30 +1557,6 @@ export default function ApplicationAssistantPage({
           </div>
           {!companySnapshotOpen && (
             <div style={{ padding: '0 1rem 0.75rem', borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
-                {analysis.companySnapshot
-                  ? ((analysis.companySnapshot.name as string) ?? analysis.jobSummary.company)
-                  : analysis.jobSummary.company}
-              </div>
-              {analysis.companySnapshot?.url ? (
-                <a
-                  href={
-                    String(analysis.companySnapshot.url).startsWith('http')
-                      ? String(analysis.companySnapshot.url)
-                      : `https://${analysis.companySnapshot.url}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    fontSize: '0.8rem',
-                    color: 'var(--accent)',
-                    marginTop: 4,
-                    display: 'inline-block',
-                  }}
-                >
-                  {String(analysis.companySnapshot?.websiteDomain ?? 'Website')}
-                </a>
-              ) : null}
               <div style={{ fontSize: '0.85rem', marginTop: 4, color: 'var(--text-secondary)' }}>
                 {analysis.companySnapshot?.descriptionText
                   ? String(analysis.companySnapshot.descriptionText).slice(0, 200) +
@@ -1637,131 +1702,115 @@ export default function ApplicationAssistantPage({
       )}
 
       {/* Company/title confirmation gate (Phase 10) */}
-      {analysis?.jobSummary && !autoSkipConfirmGate && !companyManuallyConfirmed && (
-        <div
-          className="card"
-          style={{
-            marginBottom: '1.5rem',
-            borderLeft: mandatoryConfirmGate
-              ? '3px solid var(--danger)'
-              : '3px solid var(--warning)',
-          }}
-        >
-          <h2 className="section-title" style={{ margin: '0 0 0.5rem 0' }}>
-            Confirm job title &amp; company
-          </h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', marginTop: 0 }}>
-            We detected the following from the job page. Please confirm before we rely on it for
-            company research and matching.
-          </p>
+      {analysis?.jobSummary &&
+        !autoSkipConfirmGate &&
+        !companyManuallyConfirmed &&
+        currentStepIdx < stepIndex('matching') && (
           <div
+            className="card"
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-              gap: '0.75rem',
-              marginBottom: '0.75rem',
+              marginBottom: '1.5rem',
+              borderLeft: mandatoryConfirmGate
+                ? '3px solid var(--danger)'
+                : '3px solid var(--warning)',
             }}
           >
-            <div>
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  color: 'var(--muted-foreground)',
-                  marginBottom: 2,
-                }}
-              >
-                Title
-              </div>
-              <div
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  fontSize: '0.85rem',
-                }}
-              >
-                {analysis.jobSummary!.title}
-              </div>
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  color: 'var(--muted-foreground)',
-                  marginBottom: 2,
-                }}
-              >
-                Company
-              </div>
-              <div
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  fontSize: '0.85rem',
-                }}
-              >
-                {analysis.jobSummary!.company}
-              </div>
-            </div>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '0.75rem',
-            }}
-          >
+            <h2 className="section-title" style={{ margin: '0 0 0.5rem 0' }}>
+              Confirm job title &amp; company
+            </h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', marginTop: 0 }}>
+              We detected the following from the job page. Please confirm before we rely on it for
+              company research and matching.
+            </p>
             <div
               style={{
-                fontSize: '0.75rem',
-                color: 'var(--muted-foreground)',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                gap: '0.75rem',
+                marginBottom: '0.75rem',
               }}
             >
-              Resolver confidence: {companyConfidence}% · Cleaning confidence: {cleaningConfidence}%{' '}
-              {mandatoryConfirmGate && (
-                <span style={{ color: 'var(--danger)', fontWeight: 500 }}>
-                  (Manual confirmation required)
-                </span>
-              )}
+              <div>
+                <div
+                  style={{
+                    fontSize: '0.75rem',
+                    textTransform: 'uppercase',
+                    color: 'var(--muted-foreground)',
+                    marginBottom: 2,
+                  }}
+                >
+                  Title
+                </div>
+                <div
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  {analysis.jobSummary!.title}
+                </div>
+              </div>
+              <div>
+                <div
+                  style={{
+                    fontSize: '0.75rem',
+                    textTransform: 'uppercase',
+                    color: 'var(--muted-foreground)',
+                    marginBottom: 2,
+                  }}
+                >
+                  Company
+                </div>
+                <div
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  {analysis.jobSummary!.company}
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ fontSize: '0.8125rem', padding: '0.4rem 0.9rem' }}
-              onClick={() => setCompanyManuallyConfirmed(true)}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+              }}
             >
-              Looks correct — continue
-            </button>
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                }}
+              >
+                Resolver confidence: {companyConfidence}% · Cleaning confidence:{' '}
+                {cleaningConfidence}%{' '}
+                {mandatoryConfirmGate && (
+                  <span style={{ color: 'var(--danger)', fontWeight: 500 }}>
+                    (Manual confirmation required)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ fontSize: '0.8125rem', padding: '0.4rem 0.9rem' }}
+                onClick={() => setCompanyManuallyConfirmed(true)}
+              >
+                Looks correct — continue
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Job summary */}
       {analysis?.jobSummary && <JobSummaryCard job={analysis.jobSummary as JobSummary} />}
-
-      {/* Company research */}
-      {analysis?.companyResearch && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <h2 className="section-title" style={{ margin: '0 0 0.5rem 0' }}>
-            Company Research
-          </h2>
-          <p
-            style={{
-              margin: 0,
-              fontSize: '0.875rem',
-              lineHeight: 1.7,
-              color: 'var(--text-secondary)',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {analysis.companyResearch}
-          </p>
-        </div>
-      )}
 
       {/* Match score */}
       {analysis?.matchScore != null && analysis.matchBreakdown && (
@@ -1827,10 +1876,25 @@ export default function ApplicationAssistantPage({
                 <h2 className="section-title" style={{ margin: 0 }}>
                   Cover Letter
                 </h2>
-                <EvidenceInfoIcon
-                  evidence={analysis.coverLettersEvidence ?? undefined}
-                  cardTitle="Cover Letter"
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <EvidenceInfoIcon
+                    evidence={analysis.coverLettersEvidence ?? undefined}
+                    cardTitle="Cover Letter"
+                  />
+                  <HoverDownloadMenu
+                    label="Download"
+                    items={[
+                      {
+                        label: 'Download DOCX',
+                        href: `/api/application-assistant/cover-letter-download?analysisId=${analysis.id}&format=docx`,
+                      },
+                      {
+                        label: 'Download PDF',
+                        href: `/api/application-assistant/cover-letter-download?analysisId=${analysis.id}&format=pdf`,
+                      },
+                    ]}
+                  />
+                </div>
               </div>
               <div
                 style={{
@@ -1946,73 +2010,260 @@ export default function ApplicationAssistantPage({
         </div>
       )}
 
-      {/* Contacts: show extracted contacts or "Run Deep Outreach Research" to run the agent */}
-      {analysis && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '0.5rem',
-            }}
-          >
-            <h2 className="section-title" style={{ margin: 0 }}>
-              Contacts
-            </h2>
+      {/* Contacts: show only after outreach has completed AND we have ranked contacts */}
+      {analysis &&
+        (analysis.runStatus === 'done' || status?.currentStep === 'done') &&
+        (() => {
+          const c = analysis.contacts as Record<string, unknown> | null | undefined;
+          const ranked = (Array.isArray(c?.ranked) ? c?.ranked : []) as unknown[];
+          const best = c && 'bestFirst' in c ? (c.bestFirst as unknown) : null;
+          return best != null || ranked.length > 0;
+        })() && (
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Contacts
+              </h2>
+              <EvidenceInfoIcon
+                evidence={analysis.contactsEvidence ?? undefined}
+                cardTitle="Contacts"
+              />
+            </div>
             {(() => {
               const c = analysis.contacts as Record<string, unknown> | null | undefined;
-              const hasDrafts = Array.isArray(c?.drafts) && (c.drafts as unknown[]).length > 0;
-              const hasAny =
+              const hasNewShape =
+                c && (c.bestFirst != null || (Array.isArray(c.ranked) && c.ranked.length > 0));
+              const hasLegacyShape =
                 c &&
-                (c.bestFirst != null ||
-                  (Array.isArray(c.ranked) && c.ranked.length > 0) ||
-                  (Array.isArray(c.emails) && c.emails.length > 0) ||
+                ((Array.isArray(c.emails) && c.emails.length > 0) ||
                   (Array.isArray(c.linkedIn) && c.linkedIn.length > 0) ||
-                  hasDrafts);
-              return hasAny ? (
-                <EvidenceInfoIcon
-                  evidence={analysis.contactsEvidence ?? undefined}
-                  cardTitle="Contacts"
-                />
-              ) : null;
-            })()}
-          </div>
-          {(() => {
-            const c = analysis.contacts as Record<string, unknown> | null | undefined;
-            const hasNewShape =
-              c && (c.bestFirst != null || (Array.isArray(c.ranked) && c.ranked.length > 0));
-            const hasLegacyShape =
-              c &&
-              ((Array.isArray(c.emails) && c.emails.length > 0) ||
-                (Array.isArray(c.linkedIn) && c.linkedIn.length > 0) ||
-                (Array.isArray(c.others) && c.others.length > 0));
-            const hasDraftsOnly =
-              Array.isArray(c?.drafts) &&
-              (c.drafts as unknown[]).length > 0 &&
-              !hasNewShape &&
-              !hasLegacyShape;
-            const hasContacts = hasNewShape || hasLegacyShape || hasDraftsOnly;
-            if (hasContacts && c) {
-              const best = c.bestFirst as Record<string, string | undefined> | null | undefined;
-              const ranked = (c.ranked as Record<string, string | undefined>[] | undefined) ?? [];
-              const draftsCount = Array.isArray(c.drafts) ? (c.drafts as unknown[]).length : 0;
-              const evidenceSummary = (analysis.contactsEvidence as { summary?: string })?.summary;
-              if (hasDraftsOnly && ranked.length === 0 && !best) {
+                  (Array.isArray(c.others) && c.others.length > 0));
+              const hasDraftsOnly =
+                Array.isArray(c?.drafts) &&
+                (c.drafts as unknown[]).length > 0 &&
+                !hasNewShape &&
+                !hasLegacyShape;
+              const hasContacts = hasNewShape || hasLegacyShape || hasDraftsOnly;
+              if (hasContacts && c) {
+                const best = c.bestFirst as Record<string, string | undefined> | null | undefined;
+                const ranked = (c.ranked as Record<string, string | undefined>[] | undefined) ?? [];
+                const draftsCount = Array.isArray(c.drafts) ? (c.drafts as unknown[]).length : 0;
+                const evidenceSummary = (analysis.contactsEvidence as { summary?: string })
+                  ?.summary;
+                if (hasDraftsOnly && ranked.length === 0 && !best) {
+                  return (
+                    <>
+                      <p
+                        style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}
+                      >
+                        {evidenceSummary ??
+                          (draftsCount > 0
+                            ? `${draftsCount} outreach draft(s) saved.`
+                            : 'Outreach completed.')}
+                      </p>
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <FeedbackThumbs
+                          analysisId={analysis.id}
+                          component="outreach"
+                          feedbackValue={
+                            (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                              | 'up'
+                              | 'down') ?? null
+                          }
+                          onFeedbackSubmitted={setFeedbackList}
+                        />
+                      </div>
+                    </>
+                  );
+                }
                 return (
                   <>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                      {evidenceSummary ??
-                        (draftsCount > 0
-                          ? `${draftsCount} outreach draft(s) saved.`
-                          : 'Outreach completed.')}
-                    </p>
+                    {best && (
+                      <div
+                        style={{
+                          padding: '1rem',
+                          background: 'var(--surface-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          marginBottom: '0.75rem',
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--muted-foreground)',
+                            marginBottom: '0.25rem',
+                          }}
+                        >
+                          Best contact
+                        </div>
+                        {best.linkedinUrl ? (
+                          <a
+                            href={best.linkedinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontWeight: 600, color: 'var(--accent)' }}
+                          >
+                            {best.name ?? '—'}
+                          </a>
+                        ) : (
+                          <span style={{ fontWeight: 600 }}>{best.name ?? '—'}</span>
+                        )}
+                      </div>
+                    )}
+                    {ranked.length > 0 && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <div
+                          style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--muted-foreground)',
+                            marginBottom: '0.35rem',
+                          }}
+                        >
+                          All ranked contacts — click name for LinkedIn; use ✨ to create an
+                          outreach draft
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
+                          {ranked.map((r: Record<string, string | undefined>, i: number) => (
+                            <li
+                              key={i}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.5rem',
+                                marginBottom: '0.4rem',
+                                padding: '0.35rem 0',
+                                borderBottom:
+                                  i < ranked.length - 1 ? '1px solid var(--border)' : undefined,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  minWidth: 0,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontWeight: 700,
+                                    color: 'var(--muted-foreground)',
+                                    fontSize: '0.8rem',
+                                    flexShrink: 0,
+                                    width: 20,
+                                  }}
+                                >
+                                  {i + 1}
+                                </span>
+                                {r.linkedinUrl ? (
+                                  <a
+                                    href={r.linkedinUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      fontWeight: 600,
+                                      color: 'var(--accent)',
+                                      textOverflow: 'ellipsis',
+                                      overflow: 'hidden',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {r.name ?? '—'}
+                                  </a>
+                                ) : (
+                                  <span style={{ fontWeight: 600 }}>{r.name ?? '—'}</span>
+                                )}
+                                {r.role != null ? (
+                                  <span
+                                    style={{
+                                      fontSize: '0.8125rem',
+                                      color: 'var(--muted-foreground)',
+                                    }}
+                                  >
+                                    · {r.role}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <button
+                                type="button"
+                                title="Create outreach draft for this contact"
+                                onClick={async () => {
+                                  if (!analysis?.id) return;
+                                  setOutreachDraftModalContactIndex(i);
+                                  setOutreachDraftModalOpen(true);
+                                  setOutreachDraftModalLoading(true);
+                                  setOutreachDraftModalInstruction('');
+                                  setOutreachDraftModalDraft(null);
+                                  setOutreachDraftModalError(null);
+                                  try {
+                                    const res = await fetch(
+                                      '/api/application-assistant/outreach-draft',
+                                      {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          analysisId: analysis.id,
+                                          contactIndex: i,
+                                        }),
+                                      },
+                                    );
+                                    const data = await res.json().catch(() => ({}));
+                                    if (!res.ok) {
+                                      setOutreachDraftModalError(
+                                        (data as { error?: string }).error ??
+                                          'Failed to create draft',
+                                      );
+                                      return;
+                                    }
+                                    setOutreachDraftModalDraft(
+                                      (data as { draft?: Record<string, unknown> }).draft ?? null,
+                                    );
+                                    const updated = await fetch(
+                                      `/api/application-assistant/analyses/${analysis.id}`,
+                                    )
+                                      .then((r) => (r.ok ? r.json() : null))
+                                      .catch(() => null);
+                                    if (updated) setAnalysis(updated as Analysis);
+                                  } finally {
+                                    setOutreachDraftModalLoading(false);
+                                  }
+                                }}
+                                style={{
+                                  flexShrink: 0,
+                                  border: 'none',
+                                  background: 'var(--surface-elevated)',
+                                  borderRadius: 6,
+                                  padding: '0.35rem 0.5rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.875rem',
+                                  color: 'var(--accent)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 2,
+                                }}
+                              >
+                                ✨ Draft
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     <div style={{ marginTop: '0.75rem' }}>
                       <FeedbackThumbs
                         analysisId={analysis.id}
-                        component="outreach"
+                        component="contact"
                         feedbackValue={
-                          (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                          (feedbackList?.find((f) => f.component === 'contact')?.value as
                             | 'up'
                             | 'down') ?? null
                         }
@@ -2022,366 +2273,10 @@ export default function ApplicationAssistantPage({
                   </>
                 );
               }
-              return (
-                <>
-                  {best && (
-                    <div
-                      style={{
-                        padding: '1rem',
-                        background: 'var(--surface-elevated)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        marginBottom: '0.75rem',
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: '0.75rem',
-                          color: 'var(--muted-foreground)',
-                          marginBottom: '0.25rem',
-                        }}
-                      >
-                        Best contact
-                      </div>
-                      {best.linkedinUrl ? (
-                        <a
-                          href={best.linkedinUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ fontWeight: 600, color: 'var(--accent)' }}
-                        >
-                          {best.name ?? '—'}
-                        </a>
-                      ) : (
-                        <span style={{ fontWeight: 600 }}>{best.name ?? '—'}</span>
-                      )}
-                    </div>
-                  )}
-                  {ranked.length > 0 && (
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <div
-                        style={{
-                          fontSize: '0.75rem',
-                          color: 'var(--muted-foreground)',
-                          marginBottom: '0.35rem',
-                        }}
-                      >
-                        All ranked contacts — click name for LinkedIn; use ✨ to create an outreach
-                        draft
-                      </div>
-                      <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
-                        {ranked.map((r: Record<string, string | undefined>, i: number) => (
-                          <li
-                            key={i}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '0.5rem',
-                              marginBottom: '0.4rem',
-                              padding: '0.35rem 0',
-                              borderBottom:
-                                i < ranked.length - 1 ? '1px solid var(--border)' : undefined,
-                            }}
-                          >
-                            <span
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                minWidth: 0,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontWeight: 700,
-                                  color: 'var(--muted-foreground)',
-                                  fontSize: '0.8rem',
-                                  flexShrink: 0,
-                                  width: 20,
-                                }}
-                              >
-                                {i + 1}
-                              </span>
-                              {r.linkedinUrl ? (
-                                <a
-                                  href={r.linkedinUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    fontWeight: 600,
-                                    color: 'var(--accent)',
-                                    textOverflow: 'ellipsis',
-                                    overflow: 'hidden',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  {r.name ?? '—'}
-                                </a>
-                              ) : (
-                                <span style={{ fontWeight: 600 }}>{r.name ?? '—'}</span>
-                              )}
-                              {r.role != null ? (
-                                <span
-                                  style={{
-                                    fontSize: '0.8125rem',
-                                    color: 'var(--muted-foreground)',
-                                  }}
-                                >
-                                  · {r.role}
-                                </span>
-                              ) : null}
-                            </span>
-                            <button
-                              type="button"
-                              title="Create outreach draft for this contact"
-                              onClick={async () => {
-                                if (!analysis?.id) return;
-                                setOutreachDraftModalContactIndex(i);
-                                setOutreachDraftModalOpen(true);
-                                setOutreachDraftModalLoading(true);
-                                setOutreachDraftModalDraft(null);
-                                setOutreachDraftModalError(null);
-                                try {
-                                  const res = await fetch(
-                                    '/api/application-assistant/outreach-draft',
-                                    {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        analysisId: analysis.id,
-                                        contactIndex: i,
-                                      }),
-                                    },
-                                  );
-                                  const data = await res.json().catch(() => ({}));
-                                  if (!res.ok) {
-                                    setOutreachDraftModalError(
-                                      (data as { error?: string }).error ??
-                                        'Failed to create draft',
-                                    );
-                                    return;
-                                  }
-                                  setOutreachDraftModalDraft(
-                                    (data as { draft?: Record<string, unknown> }).draft ?? null,
-                                  );
-                                  const updated = await fetch(
-                                    `/api/application-assistant/analyses/${analysis.id}`,
-                                  )
-                                    .then((r) => (r.ok ? r.json() : null))
-                                    .catch(() => null);
-                                  if (updated) setAnalysis(updated as Analysis);
-                                } finally {
-                                  setOutreachDraftModalLoading(false);
-                                }
-                              }}
-                              style={{
-                                flexShrink: 0,
-                                border: 'none',
-                                background: 'var(--surface-elevated)',
-                                borderRadius: 6,
-                                padding: '0.35rem 0.5rem',
-                                cursor: 'pointer',
-                                fontSize: '0.875rem',
-                                color: 'var(--accent)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 2,
-                              }}
-                            >
-                              ✨ Draft
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <FeedbackThumbs
-                      analysisId={analysis.id}
-                      component="contact"
-                      feedbackValue={
-                        (feedbackList?.find((f) => f.component === 'contact')?.value as
-                          | 'up'
-                          | 'down') ?? null
-                      }
-                      onFeedbackSubmitted={setFeedbackList}
-                    />
-                  </div>
-                </>
-              );
-            }
-            return (
-              <div style={{ marginTop: '0.25rem' }}>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: '0.875rem',
-                    color: 'var(--text-secondary)',
-                    marginBottom: '0.75rem',
-                  }}
-                >
-                  No contacts extracted yet.
-                </p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!analysis?.id || runningOutreach) return;
-                    setTerminalOpen(true);
-                    setRunningOutreach(true);
-                    setOutreachLogs([]);
-                    try {
-                      const res = await fetch('/api/application-assistant/outreach', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ analysisId: analysis.id }),
-                      });
-                      if (!res.ok) {
-                        const data = await res.json().catch(() => ({}));
-                        const errMsg =
-                          (data as { error?: string }).error ?? res.statusText ?? 'Request failed';
-                        setOutreachLogs((prev) => [
-                          ...prev,
-                          {
-                            id: `outreach-err-${Date.now()}`,
-                            ts: Date.now(),
-                            agent: 'OutReachPipeline',
-                            level: 'error',
-                            message: errMsg,
-                          },
-                        ]);
-                        setRunningOutreach(false);
-                        return;
-                      }
-                      const reader = res.body?.getReader();
-                      const decoder = new TextDecoder();
-                      if (!reader) {
-                        setOutreachLogs((prev) => [
-                          ...prev,
-                          {
-                            id: `outreach-err-${Date.now()}`,
-                            ts: Date.now(),
-                            agent: 'OutReachPipeline',
-                            level: 'error',
-                            message: 'No response body',
-                          },
-                        ]);
-                        setRunningOutreach(false);
-                        return;
-                      }
-                      let buffer = '';
-                      let logIdx = 0;
-                      try {
-                        while (true) {
-                          const { done, value } = await reader.read();
-                          if (done) break;
-                          buffer += decoder.decode(value, { stream: true });
-                          const lines = buffer.split('\n');
-                          buffer = lines.pop() ?? '';
-                          for (const line of lines) {
-                            const t = line.trim();
-                            if (!t) continue;
-                            try {
-                              const obj = JSON.parse(t) as {
-                                type: string;
-                                ts?: string;
-                                level?: string;
-                                message?: string;
-                                success?: boolean;
-                                contacts?: unknown[];
-                              };
-                              if (obj.type === 'log') {
-                                logIdx += 1;
-                                setOutreachLogs((prev) => [
-                                  ...prev,
-                                  {
-                                    id: `outreach-${logIdx}-${Date.now()}`,
-                                    ts: obj.ts ? new Date(obj.ts).getTime() : Date.now(),
-                                    agent: 'OutReachPipeline',
-                                    level: obj.level ?? 'info',
-                                    message: obj.message ?? '',
-                                  },
-                                ]);
-                              } else if (obj.type === 'result') {
-                                if (obj.success && analysis?.id) {
-                                  const logRes = await fetch(
-                                    `/api/application-assistant/logs?analysisId=${analysis.id}`,
-                                  );
-                                  const d = await (logRes.ok ? logRes.json() : { logs: [] });
-                                  const allLogs = (d.logs || []) as LogEntry[];
-                                  if (allLogs.length > 0) {
-                                    setLogs(allLogs);
-                                    const last = allLogs[allLogs.length - 1];
-                                    if (last) setLastLogId(last.id);
-                                  }
-                                  const analysisRes = await fetch(
-                                    `/api/application-assistant/analyses/${analysis.id}`,
-                                  );
-                                  if (analysisRes.ok) {
-                                    const updated = (await analysisRes.json()) as Analysis;
-                                    setAnalysis(updated);
-                                    setHistory((prev) =>
-                                      prev.map((h) => (h.id === analysis.id ? updated : h)),
-                                    );
-                                  }
-                                  setOutreachLogs([]);
-                                }
-                              }
-                            } catch {
-                              // skip malformed line
-                            }
-                          }
-                        }
-                      } catch (streamErr) {
-                        const msg =
-                          streamErr instanceof Error ? streamErr.message : String(streamErr);
-                        setOutreachLogs((prev) => [
-                          ...prev,
-                          {
-                            id: `outreach-err-${Date.now()}`,
-                            ts: Date.now(),
-                            agent: 'OutReachPipeline',
-                            level: 'error',
-                            message: `Stream error: ${msg}`,
-                          },
-                        ]);
-                      } finally {
-                        setRunningOutreach(false);
-                      }
-                    } catch (err) {
-                      setOutreachLogs((prev) => [
-                        ...prev,
-                        {
-                          id: `outreach-err-${Date.now()}`,
-                          ts: Date.now(),
-                          agent: 'OutReachPipeline',
-                          level: 'error',
-                          message:
-                            err instanceof Error
-                              ? err.message
-                              : 'Run Deep Outreach Research failed',
-                        },
-                      ]);
-                      setRunningOutreach(false);
-                    }
-                  }}
-                  disabled={runningOutreach}
-                  className="btn btn-primary"
-                  style={{
-                    fontSize: '0.875rem',
-                    padding: '0.5rem 1rem',
-                    cursor: runningOutreach ? 'wait' : 'pointer',
-                  }}
-                >
-                  {runningOutreach
-                    ? 'Running Deep Outreach Research…'
-                    : 'Run Deep Outreach Research'}
-                </button>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+              return null;
+            })()}
+          </div>
+        )}
 
       {/* Outreach draft modal — on-demand draft for one contact */}
       {outreachDraftModalOpen && (
@@ -2403,6 +2298,7 @@ export default function ApplicationAssistantPage({
             if (!outreachDraftModalLoading) {
               setOutreachDraftModalOpen(false);
               setOutreachDraftModalContactIndex(null);
+              setOutreachDraftModalInstruction('');
               setOutreachDraftModalDraft(null);
               setOutreachDraftModalError(null);
             }
@@ -2455,8 +2351,29 @@ export default function ApplicationAssistantPage({
                     color: 'var(--muted-foreground)',
                   }}
                 >
-                  {String(outreachDraftModalDraft.platform ?? '')} ·{' '}
-                  {String(outreachDraftModalDraft.tone ?? '')}
+                  {(() => {
+                    const platform = String(outreachDraftModalDraft.platform ?? '');
+                    const contactName = String(outreachDraftModalDraft.contactName ?? '');
+                    const platformLabel =
+                      platform === 'LINKEDIN_CONNECTION'
+                        ? 'LinkedIn connection'
+                        : platform === 'EMAIL'
+                          ? 'Email'
+                          : platform || 'Draft';
+                    return `${platformLabel}${contactName ? ` - ${contactName}` : ''} · ${String(outreachDraftModalDraft.tone ?? '')}`;
+                  })()}
+                </div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label className="label" style={{ marginBottom: '0.35rem', display: 'block' }}>
+                    Change request (optional)
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. Make it warmer, mention my AWS experience, ask for a quick 10 min chat"
+                    value={outreachDraftModalInstruction}
+                    onChange={(e) => setOutreachDraftModalInstruction(e.target.value)}
+                  />
                 </div>
                 {outreachDraftModalDraft.subject != null && (
                   <div style={{ marginBottom: '0.5rem', fontSize: '0.8125rem' }}>
@@ -2493,9 +2410,51 @@ export default function ApplicationAssistantPage({
                   <button
                     type="button"
                     className="btn"
+                    disabled={outreachDraftModalLoading}
+                    onClick={async () => {
+                      if (!analysis?.id || outreachDraftModalContactIndex == null) return;
+                      setOutreachDraftModalLoading(true);
+                      setOutreachDraftModalError(null);
+                      try {
+                        const res = await fetch('/api/application-assistant/outreach-draft', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            analysisId: analysis.id,
+                            contactIndex: outreachDraftModalContactIndex,
+                            userInstruction: outreachDraftModalInstruction.trim() || undefined,
+                          }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                          setOutreachDraftModalError(
+                            (data as { error?: string }).error ?? 'Failed to regenerate draft',
+                          );
+                          return;
+                        }
+                        setOutreachDraftModalDraft(
+                          (data as { draft?: Record<string, unknown> }).draft ?? null,
+                        );
+                        const updated = await fetch(
+                          `/api/application-assistant/analyses/${analysis.id}`,
+                        )
+                          .then((r) => (r.ok ? r.json() : null))
+                          .catch(() => null);
+                        if (updated) setAnalysis(updated as Analysis);
+                      } finally {
+                        setOutreachDraftModalLoading(false);
+                      }
+                    }}
+                  >
+                    Change draft
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
                     onClick={() => {
                       setOutreachDraftModalOpen(false);
                       setOutreachDraftModalContactIndex(null);
+                      setOutreachDraftModalInstruction('');
                       setOutreachDraftModalDraft(null);
                     }}
                   >
@@ -2615,8 +2574,21 @@ export default function ApplicationAssistantPage({
                     }}
                   >
                     <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                      {String(d.platform ?? 'Draft')} · {String(d.variant ?? '')}{' '}
-                      {d.tone != null ? `(${String(d.tone)})` : ''}
+                      {(() => {
+                        const platform = String(d.platform ?? '');
+                        const contactName = String(d.contactName ?? '');
+                        const platformLabel =
+                          platform === 'LINKEDIN_CONNECTION'
+                            ? 'LinkedIn connection'
+                            : platform === 'EMAIL'
+                              ? 'Email'
+                              : platform || 'Draft';
+                        const tone = d.tone != null ? String(d.tone) : '';
+                        const variant = d.variant != null ? String(d.variant) : '';
+                        return `${platformLabel}${contactName ? ` - ${contactName}` : ''}${
+                          variant ? ` · ${variant}` : ''
+                        }${tone ? ` (${tone})` : ''}`;
+                      })()}
                     </span>
                     <button
                       type="button"
@@ -2632,6 +2604,42 @@ export default function ApplicationAssistantPage({
                     >
                       Copy
                     </button>
+                    <HoverDownloadMenu
+                      label="Download"
+                      items={[
+                        {
+                          label: 'Download DOCX',
+                          href: `/api/application-assistant/outreach-draft-download?analysisId=${analysis.id}&draftIndex=${i}&format=docx`,
+                        },
+                        {
+                          label: 'Download PDF',
+                          href: `/api/application-assistant/outreach-draft-download?analysisId=${analysis.id}&draftIndex=${i}&format=pdf`,
+                        },
+                      ]}
+                    />
+                    {d.contactIndex != null && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOutreachDraftModalContactIndex(Number(d.contactIndex));
+                          setOutreachDraftModalInstruction('');
+                          setOutreachDraftModalDraft(d);
+                          setOutreachDraftModalError(null);
+                          setOutreachDraftModalOpen(true);
+                          setOutreachDraftModalLoading(false);
+                        }}
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '0.25rem 0.5rem',
+                          cursor: 'pointer',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          background: 'var(--surface-elevated)',
+                        }}
+                      >
+                        Change
+                      </button>
+                    )}
                   </div>
                   {d.subject != null &&
                     (() => {
@@ -2669,6 +2677,11 @@ export default function ApplicationAssistantPage({
         )}
     </div>
   );
+}
+
+// Next.js page entry (must not accept custom props).
+export default function ApplicationAssistantPage() {
+  return <ApplicationAssistantClient />;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
