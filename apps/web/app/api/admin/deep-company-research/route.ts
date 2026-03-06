@@ -7,7 +7,7 @@ import { complete } from '@careersignal/llm';
 import { getDossierRunFolderName, createDossierDiskWriter } from '@/lib/dossier-disk';
 import { runCompanyPageRag } from '@/lib/application-assistant-rag';
 
-export const maxDuration = 2400; // 40 min for dossier pipeline
+export const maxDuration = 1200; // 20 min for dossier pipeline
 
 const STEALTH_ARGS = [
   '--disable-blink-features=AutomationControlled',
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
             level,
             message,
           }),
-        hardTimeoutMs: 40 * 60 * 1000, // 40 min for full pipeline (all discovered + fallback URLs)
+        hardTimeoutMs: 20 * 60 * 1000, // 20 min max for full pipeline
         browserPage: page,
         runFolderName,
         dossierWriter,
@@ -150,42 +150,16 @@ export async function POST(req: Request) {
         origin: 'ADMIN_DEEP_RESEARCH',
         websiteDomain: deepResult.websiteDomain,
         descriptionText: deepResult.descriptionText,
-        longCompanyDescription: deepResult.longCompanyDescription ?? undefined,
         enrichmentSources: { urls: deepResult.visitedUrls },
-        industries: deepResult.industries,
-        companyStage: deepResult.companyStage ?? undefined,
         headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
-        sizeRange: deepResult.sizeRange,
         foundedYear: deepResult.foundedYear ?? null,
         careersPageUrl: deepResult.careersPageUrl ?? undefined,
         linkedInCompanyUrl: deepResult.linkedInCompanyUrl ?? undefined,
-        remotePolicy: deepResult.remotePolicy,
-        remoteFriendlyLocations: deepResult.remoteFriendlyLocations ?? undefined,
-        workAuthorizationRequirements: deepResult.workAuthorizationRequirements ?? undefined,
-        hiringLocations: deepResult.hiringLocations,
-        benefitsHighlights: deepResult.benefitsHighlights ?? undefined,
-        fundingStage: deepResult.fundingStage,
-        publicCompany: deepResult.publicCompany ?? null,
-        ticker: deepResult.ticker,
-        missionStatement: deepResult.missionStatement ?? undefined,
-        coreValues: deepResult.coreValues ?? undefined,
-        typicalHiringProcess: deepResult.typicalHiringProcess ?? undefined,
-        interviewProcess: deepResult.interviewProcess ?? undefined,
-        interviewFormatHints: deepResult.interviewFormatHints ?? undefined,
-        applicationTipsFromCareersPage: deepResult.applicationTipsFromCareersPage ?? undefined,
-        salaryByLevel: (deepResult.salaryByLevel ?? undefined) as
-          | Record<string, { min?: number; max?: number; currency?: string; period?: string }>
-          | undefined,
-        techStackHints: deepResult.techStackHints,
-        recentLayoffsOrRestructuring: deepResult.recentLayoffsOrRestructuring ?? undefined,
-        hiringTrend: deepResult.hiringTrend ?? undefined,
-        jobCountTotal: deepResult.jobCountTotal ?? undefined,
-        jobCountOpen: deepResult.jobCountOpen ?? undefined,
-        // Only store actual H1B/visa signals; run metadata (coreCoverage, missingCoreFields) is not part of sponsorship_signals.
-        sponsorshipSignals:
-          deepResult.sponsorshipSignals && typeof deepResult.sponsorshipSignals === 'object'
-            ? deepResult.sponsorshipSignals
-            : undefined,
+        remotePolicy: deepResult.remotePolicy ?? undefined,
+        sponsorshipRate: deepResult.sponsorshipRate ?? undefined,
+        hiringProcessDescription: deepResult.hiringProcessDescription ?? undefined,
+        hiringLocations: deepResult.hiringLocations ?? undefined,
+        techStackHints: deepResult.techStackHints ?? undefined,
         enrichmentStatus: deepResult.coreFieldCoverage >= 0.5 ? 'DONE' : 'ERROR',
       });
 
@@ -207,8 +181,7 @@ export async function POST(req: Request) {
               normalizedName: upserted.normalizedName,
               websiteDomain: upserted.websiteDomain,
               headquartersAndOffices: upserted.headquartersAndOffices,
-              sizeRange: upserted.sizeRange,
-              fundingStage: upserted.fundingStage,
+              sponsorshipRate: upserted.sponsorshipRate,
               enrichmentStatus: upserted.enrichmentStatus,
               lastEnrichedAt: upserted.lastEnrichedAt,
               visitedUrlsCount: deepResult.visitedUrls.length,

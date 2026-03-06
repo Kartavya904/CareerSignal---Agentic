@@ -1,6 +1,12 @@
 import { and, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type { Db } from './client';
-import { companies, enrichmentStatusEnum, type CompanyRow, type EnrichmentStatus } from './schema';
+import {
+  companies,
+  enrichmentStatusEnum,
+  type CompanyRow,
+  type EnrichmentStatus,
+  type SponsorshipRate,
+} from './schema';
 
 /** Best-effort normalization for fuzzy company name matching. */
 export function normalizeCompanyName(name: string): string {
@@ -105,34 +111,16 @@ export interface UpsertCompanyEnrichmentInput {
   origin?: string | null;
   websiteDomain?: string | null;
   descriptionText?: string | null;
-  longCompanyDescription?: string | null;
   enrichmentSources?: CompanyRow['enrichmentSources'] | null;
-  industries?: CompanyRow['industries'] | null;
-  companyStage?: string | null;
   headquartersAndOffices?: string | null;
-  sizeRange?: string | null;
   foundedYear?: number | null;
-  fundingStage?: string | null;
-  publicCompany?: boolean | null;
-  ticker?: string | null;
   remotePolicy?: string | null;
-  remoteFriendlyLocations?: CompanyRow['remoteFriendlyLocations'] | null;
   careersPageUrl?: string | null;
   linkedInCompanyUrl?: string | null;
-  coreValues?: CompanyRow['coreValues'] | null;
-  missionStatement?: string | null;
-  benefitsHighlights?: string | null;
-  sponsorshipSignals?: CompanyRow['sponsorshipSignals'] | null;
-  typicalHiringProcess?: string | null;
-  interviewProcess?: string | null;
-  interviewFormatHints?: CompanyRow['interviewFormatHints'] | null;
+  sponsorshipRate?: SponsorshipRate | null;
+  hiringProcessDescription?: string | null;
   hiringLocations?: CompanyRow['hiringLocations'] | null;
-  workAuthorizationRequirements?: string | null;
-  salaryByLevel?: CompanyRow['salaryByLevel'] | null;
-  applicationTipsFromCareersPage?: string | null;
   techStackHints?: CompanyRow['techStackHints'] | null;
-  recentLayoffsOrRestructuring?: string | null;
-  hiringTrend?: string | null;
   jobCountTotal?: number | null;
   jobCountOpen?: number | null;
   enrichmentStatus?: EnrichmentStatus;
@@ -157,38 +145,16 @@ export async function upsertCompanyEnrichment(
   if (existing) {
     const update: Partial<CompanyRow> = {
       descriptionText: input.descriptionText ?? existing.descriptionText,
-      longCompanyDescription: input.longCompanyDescription ?? existing.longCompanyDescription,
       enrichmentSources: input.enrichmentSources ?? existing.enrichmentSources,
-      industries: input.industries ?? existing.industries,
-      companyStage: input.companyStage ?? existing.companyStage,
       headquartersAndOffices: input.headquartersAndOffices ?? existing.headquartersAndOffices,
-      sizeRange: input.sizeRange ?? existing.sizeRange,
       foundedYear: input.foundedYear ?? existing.foundedYear,
-      fundingStage: input.fundingStage ?? existing.fundingStage,
-      publicCompany:
-        input.publicCompany !== undefined ? input.publicCompany : existing.publicCompany,
-      ticker: input.ticker ?? existing.ticker,
       remotePolicy: input.remotePolicy ?? existing.remotePolicy,
-      remoteFriendlyLocations: input.remoteFriendlyLocations ?? existing.remoteFriendlyLocations,
       careersPageUrl: input.careersPageUrl ?? existing.careersPageUrl,
       linkedInCompanyUrl: input.linkedInCompanyUrl ?? existing.linkedInCompanyUrl,
-      coreValues: input.coreValues ?? existing.coreValues,
-      missionStatement: input.missionStatement ?? existing.missionStatement,
-      benefitsHighlights: input.benefitsHighlights ?? existing.benefitsHighlights,
-      sponsorshipSignals: input.sponsorshipSignals ?? existing.sponsorshipSignals,
-      typicalHiringProcess: input.typicalHiringProcess ?? existing.typicalHiringProcess,
-      interviewProcess: input.interviewProcess ?? existing.interviewProcess,
-      interviewFormatHints: input.interviewFormatHints ?? existing.interviewFormatHints,
+      sponsorshipRate: input.sponsorshipRate ?? existing.sponsorshipRate,
+      hiringProcessDescription: input.hiringProcessDescription ?? existing.hiringProcessDescription,
       hiringLocations: input.hiringLocations ?? existing.hiringLocations,
-      workAuthorizationRequirements:
-        input.workAuthorizationRequirements ?? existing.workAuthorizationRequirements,
-      salaryByLevel: input.salaryByLevel ?? existing.salaryByLevel,
-      applicationTipsFromCareersPage:
-        input.applicationTipsFromCareersPage ?? existing.applicationTipsFromCareersPage,
       techStackHints: input.techStackHints ?? existing.techStackHints,
-      recentLayoffsOrRestructuring:
-        input.recentLayoffsOrRestructuring ?? existing.recentLayoffsOrRestructuring,
-      hiringTrend: input.hiringTrend ?? existing.hiringTrend,
       websiteDomain: input.websiteDomain ?? existing.websiteDomain,
       jobCountTotal: input.jobCountTotal ?? existing.jobCountTotal,
       jobCountOpen: input.jobCountOpen ?? existing.jobCountOpen,
@@ -218,34 +184,16 @@ export async function upsertCompanyEnrichment(
       isPriorityTarget: true,
       enabledForScraping: false,
       descriptionText: input.descriptionText ?? null,
-      longCompanyDescription: input.longCompanyDescription ?? null,
       enrichmentSources: input.enrichmentSources ?? null,
-      industries: input.industries ?? null,
-      companyStage: input.companyStage ?? null,
       headquartersAndOffices: input.headquartersAndOffices ?? null,
-      sizeRange: input.sizeRange ?? null,
       foundedYear: input.foundedYear ?? null,
-      fundingStage: input.fundingStage ?? null,
-      publicCompany: input.publicCompany ?? null,
-      ticker: input.ticker ?? null,
       remotePolicy: input.remotePolicy ?? null,
-      remoteFriendlyLocations: input.remoteFriendlyLocations ?? null,
       careersPageUrl: input.careersPageUrl ?? null,
       linkedInCompanyUrl: input.linkedInCompanyUrl ?? null,
-      coreValues: input.coreValues ?? null,
-      missionStatement: input.missionStatement ?? null,
-      benefitsHighlights: input.benefitsHighlights ?? null,
-      sponsorshipSignals: input.sponsorshipSignals ?? null,
-      typicalHiringProcess: input.typicalHiringProcess ?? null,
-      interviewProcess: input.interviewProcess ?? null,
-      interviewFormatHints: input.interviewFormatHints ?? null,
+      sponsorshipRate: input.sponsorshipRate ?? 'UNKNOWN',
+      hiringProcessDescription: input.hiringProcessDescription ?? null,
       hiringLocations: input.hiringLocations ?? null,
-      workAuthorizationRequirements: input.workAuthorizationRequirements ?? null,
-      salaryByLevel: input.salaryByLevel ?? null,
-      applicationTipsFromCareersPage: input.applicationTipsFromCareersPage ?? null,
       techStackHints: input.techStackHints ?? null,
-      recentLayoffsOrRestructuring: input.recentLayoffsOrRestructuring ?? null,
-      hiringTrend: input.hiringTrend ?? null,
       websiteDomain: input.websiteDomain ?? null,
       jobCountTotal: input.jobCountTotal ?? 0,
       jobCountOpen: input.jobCountOpen ?? 0,

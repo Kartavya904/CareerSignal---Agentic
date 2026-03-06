@@ -1,52 +1,26 @@
 /**
  * Types and merge logic for the Deep Company Dossier running memory.
- * Used by the deep-company-research agent; implementation (disk) lives in apps/web.
+ * Minimal schema: only fields we scrape and persist for Application Assistant / Outreach.
  *
  * Field priority: MUST_HAVE → SHOULD_HAVE → NICE_TO_HAVE.
- * CORE_FIELDS is built in that order so the pipeline scrapes and fills from top to bottom.
- * Missing-field fallback searches and coverage reporting use this order.
+ * CORE_FIELDS is built in that order. sponsorshipRate is filled by a single H1B search step.
  */
 
-/** Must-have: essential for job matching and application (careers, remote, locations, sponsorship). */
+/** Must-have: description, careers, LinkedIn, HQ, remote, hiring locations. */
 export const FIELD_PRIORITY_MUST_HAVE = [
   'descriptionText',
-  'industries',
-  'headquartersAndOffices',
-  'sizeRange',
   'careersPageUrl',
   'linkedInCompanyUrl',
+  'headquartersAndOffices',
   'remotePolicy',
-  'workAuthorizationRequirements',
   'hiringLocations',
-  'sponsorshipSignals',
 ] as const;
 
-/** Should-have: important for interview prep and culture fit. */
-export const FIELD_PRIORITY_SHOULD_HAVE = [
-  'longCompanyDescription',
-  'companyStage',
-  'foundedYear',
-  'benefitsHighlights',
-  'missionStatement',
-  'coreValues',
-  'typicalHiringProcess',
-  'interviewProcess',
-  'interviewFormatHints',
-  'applicationTipsFromCareersPage',
-  'remoteFriendlyLocations',
-  'hiringTrend',
-] as const;
+/** Should-have: hiring process (single field), founded year. */
+export const FIELD_PRIORITY_SHOULD_HAVE = ['hiringProcessDescription', 'foundedYear'] as const;
 
-/** Nice-to-have: extra context (funding, salary, tech stack, layoffs). */
-export const FIELD_PRIORITY_NICE_TO_HAVE = [
-  'fundingStage',
-  'publicCompany',
-  'ticker',
-  'salaryByLevel',
-  'techStackHints',
-  'jobCountOpen',
-  'recentLayoffsOrRestructuring',
-] as const;
+/** Nice-to-have: tech stack (fill only if found, do not explicitly search). */
+export const FIELD_PRIORITY_NICE_TO_HAVE = ['techStackHints'] as const;
 
 export const FIELD_PRIORITY_TIERS = {
   mustHave: [...FIELD_PRIORITY_MUST_HAVE],
@@ -54,7 +28,7 @@ export const FIELD_PRIORITY_TIERS = {
   niceToHave: [...FIELD_PRIORITY_NICE_TO_HAVE],
 } as const;
 
-/** All fields in scrape order: must-have first, then should-have, then nice-to-have. */
+/** All fields in scrape order. sponsorshipRate is set by a dedicated H1B step, not from page extraction. */
 export const CORE_FIELDS = [
   ...FIELD_PRIORITY_MUST_HAVE,
   ...FIELD_PRIORITY_SHOULD_HAVE,
@@ -74,27 +48,17 @@ export interface DossierMemory {
   coverage: { ratio: number; missing: string[] };
   fields: Record<string, DossierMemoryField>;
   visitedUrls: string[];
-  /** URLs actually returned by search (browser or API). Only these are used when set; no synthetic paths. */
   discoveredUrls?: string[];
-  /** URLs to visit: one result per browser search (title contains company). */
   urlsToVisit?: string[];
-  /** Fallback: one URL per missing field from "company + missing field" browser search (title contains company). Visited after urlsToVisit. */
   urlsToVisitMissingFields?: string[];
   lastExtractionByUrl?: Record<string, string>;
-  /**
-   * Priority order for scraping: agent must fill must-have first, then should-have, then nice-to-have.
-   * Persisted so the run has an explicit record of what to prioritize.
-   */
   fieldPriorityTiers?: {
     mustHave: string[];
     shouldHave: string[];
     niceToHave: string[];
   };
-  /** All targeted search queries we've already tried (normalized strings). */
   targetedQueriesTried?: string[];
-  /** URLs that have been fetched but failed or returned too little content to use. */
   failedUrls?: string[];
-  /** How many times we've attempted targeted search for each core field (by name). */
   targetedAttemptsByField?: Record<string, number>;
 }
 
@@ -107,39 +71,17 @@ export interface DossierRunMetadata {
   finalStatus?: string | null;
 }
 
-/**
- * Partial extraction result from a single page (same field names as draft; values can be null).
- */
+/** Partial extraction from a single page (minimal schema). */
 export interface DossierPageExtraction {
   descriptionText?: string | null;
-  longCompanyDescription?: string | null;
-  industries?: string[] | null;
   headquartersAndOffices?: string | null;
-  companyStage?: string | null;
-  sizeRange?: string | null;
   foundedYear?: number | null;
   careersPageUrl?: string | null;
   linkedInCompanyUrl?: string | null;
   remotePolicy?: string | null;
-  remoteFriendlyLocations?: string[] | null;
-  sponsorshipSignals?: Record<string, unknown> | null;
-  workAuthorizationRequirements?: string | null;
   hiringLocations?: string[] | null;
-  benefitsHighlights?: string | null;
-  fundingStage?: string | null;
-  publicCompany?: boolean | null;
-  ticker?: string | null;
-  missionStatement?: string | null;
-  coreValues?: string[] | null;
-  typicalHiringProcess?: string | null;
-  interviewProcess?: string | null;
-  interviewFormatHints?: string[] | null;
-  applicationTipsFromCareersPage?: string | null;
-  salaryByLevel?: Record<string, unknown> | null;
+  hiringProcessDescription?: string | null;
   techStackHints?: string[] | null;
-  jobCountOpen?: number | null;
-  hiringTrend?: string | null;
-  recentLayoffsOrRestructuring?: string | null;
 }
 
 function hasValue(value: unknown): boolean {
@@ -149,12 +91,7 @@ function hasValue(value: unknown): boolean {
   return true;
 }
 
-/**
- * Strict "counts for coverage" check. Coverage must consider all CORE_FIELDS;
- * only real values count — empty objects and metadata-only sponsorshipSignals do not.
- * Use this for coverage ratio and missing list so reported coverage matches reality.
- */
-export function hasValueForCoverage(value: unknown, field?: string): boolean {
+export function hasValueForCoverage(value: unknown, _field?: string): boolean {
   if (value === null || value === undefined) return false;
   if (Array.isArray(value) && value.length === 0) return false;
   if (typeof value === 'string' && value.trim() === '') return false;
@@ -164,25 +101,13 @@ export function hasValueForCoverage(value: unknown, field?: string): boolean {
     !Array.isArray(value) &&
     !(value instanceof Date)
   ) {
-    const keys = Object.keys(value as Record<string, unknown>);
-    if (keys.length === 0) return false;
-    // sponsorshipSignals: only real H1B/visa evidence counts; run metadata alone does not.
-    if (
-      field === 'sponsorshipSignals' &&
-      keys.every((k) => k === 'coreCoverage' || k === 'missingCoreFields')
-    )
-      return false;
+    if (Object.keys(value as Record<string, unknown>).length === 0) return false;
   }
   return true;
 }
 
-/** Default confidence when extraction returns a non-null value (no LLM-reported confidence). */
 const DEFAULT_FIELD_CONFIDENCE = 0.85;
 
-/**
- * Merge a single-page extraction into running memory. Keeps higher-confidence value per field;
- * appends sourceUrl to sourceUrls. Updates coverage and visitedUrls.
- */
 export function mergeExtractionIntoMemory(
   memory: DossierMemory,
   extraction: DossierPageExtraction,
@@ -237,9 +162,6 @@ export function mergeExtractionIntoMemory(
   return next;
 }
 
-/**
- * Create empty memory for a new run. Includes field priority tiers so the agent knows scrape order.
- */
 export function createEmptyDossierMemory(): DossierMemory {
   return {
     updatedAt: new Date().toISOString(),
@@ -258,9 +180,6 @@ export function createEmptyDossierMemory(): DossierMemory {
   };
 }
 
-/**
- * Result of running RAG on a single page (e.g. runCompanyPageRag). Used by the agent input callback.
- */
 export interface DossierRagResult {
   focusedHtml: string | null;
   chunksCount: number;
@@ -274,9 +193,6 @@ export type DossierRunCompanyPageRag = (
   onLog?: (msg: string) => void,
 ) => Promise<DossierRagResult>;
 
-/**
- * Disk writer interface for the dossier agent. Implemented in apps/web/lib/dossier-disk.ts.
- */
 export interface DossierDiskWriter {
   getRunFolderPath(folderName: string): string;
   getPageDir(folderName: string, urlSlug: string): string;
@@ -292,9 +208,6 @@ export interface DossierDiskWriter {
   saveMetadata(folderName: string, metadata: DossierRunMetadata): Promise<void>;
 }
 
-/**
- * Produce a filesystem-safe slug from a URL for use as pages/<slug>/.
- */
 export function urlToDossierSlug(url: string, index?: number): string {
   try {
     const u = new URL(url);

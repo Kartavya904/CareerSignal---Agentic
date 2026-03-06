@@ -83,40 +83,16 @@ async function main() {
       origin: row.origin || null,
       websiteDomain: deepResult.websiteDomain,
       descriptionText: deepResult.descriptionText,
-      longCompanyDescription: deepResult.longCompanyDescription ?? undefined,
       enrichmentSources: { urls: deepResult.visitedUrls },
-      industries: deepResult.industries,
-      companyStage: deepResult.companyStage ?? undefined,
       headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
-      sizeRange: deepResult.sizeRange,
       foundedYear: deepResult.foundedYear ?? null,
       careersPageUrl: deepResult.careersPageUrl ?? undefined,
       linkedInCompanyUrl: deepResult.linkedInCompanyUrl ?? undefined,
-      remotePolicy: deepResult.remotePolicy,
-      remoteFriendlyLocations: deepResult.remoteFriendlyLocations ?? undefined,
-      workAuthorizationRequirements: deepResult.workAuthorizationRequirements ?? undefined,
-      hiringLocations: deepResult.hiringLocations,
-      benefitsHighlights: deepResult.benefitsHighlights ?? undefined,
-      fundingStage: deepResult.fundingStage,
-      publicCompany: deepResult.publicCompany ?? null,
-      ticker: deepResult.ticker,
-      missionStatement: deepResult.missionStatement ?? undefined,
-      coreValues: deepResult.coreValues ?? undefined,
-      typicalHiringProcess: deepResult.typicalHiringProcess ?? undefined,
-      interviewProcess: deepResult.interviewProcess ?? undefined,
-      interviewFormatHints: deepResult.interviewFormatHints ?? undefined,
-      applicationTipsFromCareersPage: deepResult.applicationTipsFromCareersPage ?? undefined,
-      salaryByLevel: deepResult.salaryByLevel ?? undefined,
-      techStackHints: deepResult.techStackHints,
-      recentLayoffsOrRestructuring: deepResult.recentLayoffsOrRestructuring ?? undefined,
-      hiringTrend: deepResult.hiringTrend ?? undefined,
-      jobCountTotal: deepResult.jobCountTotal ?? undefined,
-      jobCountOpen: deepResult.jobCountOpen ?? undefined,
-      sponsorshipSignals: {
-        ...(deepResult.sponsorshipSignals ?? {}),
-        coreCoverage: deepResult.coreFieldCoverage,
-        missingCoreFields: deepResult.missingCoreFields,
-      },
+      remotePolicy: deepResult.remotePolicy ?? undefined,
+      sponsorshipRate: deepResult.sponsorshipRate ?? undefined,
+      hiringProcessDescription: deepResult.hiringProcessDescription ?? undefined,
+      hiringLocations: deepResult.hiringLocations ?? undefined,
+      techStackHints: deepResult.techStackHints ?? undefined,
       enrichmentStatus: deepResult.coreFieldCoverage >= 0.5 ? 'DONE' : 'ERROR',
     });
 
@@ -126,9 +102,7 @@ async function main() {
       )}%`,
     );
     console.log(
-      `  headquartersAndOffices=${upserted.headquartersAndOffices ?? 'n/a'}, sizeRange=${
-        upserted.sizeRange ?? 'n/a'
-      }, fundingStage=${upserted.fundingStage ?? 'n/a'}`,
+      `  headquartersAndOffices=${upserted.headquartersAndOffices ?? 'n/a'}, sponsorshipRate=${upserted.sponsorshipRate ?? 'n/a'}`,
     );
     console.log(
       `  remotePolicy=${upserted.remotePolicy ?? 'n/a'}, jobCountOpen=${

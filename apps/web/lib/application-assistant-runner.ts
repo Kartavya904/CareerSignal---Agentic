@@ -54,20 +54,15 @@ import { getDossierRunFolderName, createDossierDiskWriter } from '@/lib/dossier-
 import { getOutreachRunFolderName } from '@/lib/outreach-research-disk';
 import { runOutreachResearch, OUTREACH_PIPELINE_TIMEOUT_MS } from '@/lib/outreach-research-runner';
 
-/** Build a serializable company snapshot for the analysis (all DB company fields for the UI card). */
+/** Build a serializable company snapshot for the analysis (minimal DB company fields for the UI card). */
 function toCompanySnapshot(row: {
   name: string;
   url?: string | null;
   descriptionText?: string | null;
-  industries?: string[] | null;
   headquartersAndOffices?: string | null;
-  sizeRange?: string | null;
   foundedYear?: number | null;
-  fundingStage?: string | null;
-  publicCompany?: boolean | null;
-  ticker?: string | null;
   remotePolicy?: string | null;
-  sponsorshipSignals?: Record<string, unknown> | null;
+  sponsorshipRate?: string | null;
   hiringLocations?: string[] | null;
   techStackHints?: string[] | null;
   jobCountTotal?: number | null;
@@ -80,15 +75,10 @@ function toCompanySnapshot(row: {
     name: row.name ?? null,
     url: row.url ?? null,
     descriptionText: row.descriptionText ?? null,
-    industries: row.industries ?? null,
     headquartersAndOffices: row.headquartersAndOffices ?? null,
-    sizeRange: row.sizeRange ?? null,
     foundedYear: row.foundedYear ?? null,
-    fundingStage: row.fundingStage ?? null,
-    publicCompany: row.publicCompany ?? null,
-    ticker: row.ticker ?? null,
     remotePolicy: row.remotePolicy ?? null,
-    sponsorshipSignals: row.sponsorshipSignals ?? null,
+    sponsorshipRate: row.sponsorshipRate ?? null,
     hiringLocations: row.hiringLocations ?? null,
     techStackHints: row.techStackHints ?? null,
     jobCountTotal: row.jobCountTotal ?? null,
@@ -130,11 +120,10 @@ const STEALTH_ARGS = [
   '--ignore-certificate-errors',
 ];
 
-/** Application Assistant pipeline timeouts (wrap-up starts before hard deadline). */
-const APP_ASSISTANT_BASE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min default
-const APP_ASSISTANT_DOSSIER_EXTRA_MS = 15 * 60 * 1000; // +15 min when deep dossier runs
-const APP_ASSISTANT_MAX_TIMEOUT_MS = 40 * 60 * 1000; // cap for future pipelines (e.g. +15 contact)
-const DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min for dossier when run inside assistant
+/** Application Assistant pipeline timeouts: 20 min max total. */
+const APP_ASSISTANT_BASE_TIMEOUT_MS = 20 * 60 * 1000; // 20 min total pipeline
+const APP_ASSISTANT_MAX_TIMEOUT_MS = 20 * 60 * 1000; // cap 20 min
+const DOSSIER_INSIDE_ASSISTANT_TIMEOUT_MS = 12 * 60 * 1000; // 12 min for dossier when run inside assistant (fits within 20 min)
 const WRAP_UP_BUFFER_MS = 60 * 1000; // start wrapping up 1 min before deadline
 
 const MAX_RESOLVE_DEPTH = 2;
@@ -285,9 +274,8 @@ export async function runApplicationAssistantPipeline(
   const getRemainingMs = () => Math.max(0, deadlineMs - Date.now());
   const isWrappingUp = () => getRemainingMs() < WRAP_UP_BUFFER_MS;
   const extendDeadlineForDossier = () => {
-    const newDeadline =
-      pipelineStart + APP_ASSISTANT_BASE_TIMEOUT_MS + APP_ASSISTANT_DOSSIER_EXTRA_MS;
-    deadlineMs = Math.min(newDeadline, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
+    // Keep 20 min cap; dossier runs within the same pipeline deadline.
+    deadlineMs = Math.min(deadlineMs, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => mergedController.abort(), Math.max(0, deadlineMs - Date.now()));
   };
@@ -790,42 +778,16 @@ export async function runApplicationAssistantPipeline(
             origin: jobOrigin,
             websiteDomain: deepResult.websiteDomain,
             descriptionText: deepResult.descriptionText,
-            longCompanyDescription: deepResult.longCompanyDescription ?? undefined,
             enrichmentSources: { urls: deepResult.visitedUrls },
-            industries: deepResult.industries,
-            companyStage: deepResult.companyStage ?? undefined,
             headquartersAndOffices: deepResult.headquartersAndOffices ?? undefined,
-            sizeRange: deepResult.sizeRange,
             foundedYear: deepResult.foundedYear ?? null,
             careersPageUrl: deepResult.careersPageUrl ?? undefined,
             linkedInCompanyUrl: deepResult.linkedInCompanyUrl ?? undefined,
-            remotePolicy: deepResult.remotePolicy,
-            remoteFriendlyLocations: deepResult.remoteFriendlyLocations ?? undefined,
-            workAuthorizationRequirements: deepResult.workAuthorizationRequirements ?? undefined,
-            hiringLocations: deepResult.hiringLocations,
-            benefitsHighlights: deepResult.benefitsHighlights ?? undefined,
-            fundingStage: deepResult.fundingStage,
-            publicCompany: deepResult.publicCompany ?? null,
-            ticker: deepResult.ticker,
-            missionStatement: deepResult.missionStatement ?? undefined,
-            coreValues: deepResult.coreValues ?? undefined,
-            typicalHiringProcess: deepResult.typicalHiringProcess ?? undefined,
-            interviewProcess: deepResult.interviewProcess ?? undefined,
-            interviewFormatHints: deepResult.interviewFormatHints ?? undefined,
-            applicationTipsFromCareersPage: deepResult.applicationTipsFromCareersPage ?? undefined,
-            salaryByLevel: (deepResult.salaryByLevel ?? undefined) as
-              | Record<string, { min?: number; max?: number; currency?: string; period?: string }>
-              | undefined,
-            techStackHints: deepResult.techStackHints,
-            recentLayoffsOrRestructuring: deepResult.recentLayoffsOrRestructuring ?? undefined,
-            hiringTrend: deepResult.hiringTrend ?? undefined,
-            jobCountTotal: deepResult.jobCountTotal ?? undefined,
-            jobCountOpen: deepResult.jobCountOpen ?? undefined,
-            sponsorshipSignals: {
-              ...(deepResult.sponsorshipSignals ?? {}),
-              coreCoverage: deepResult.coreFieldCoverage,
-              missingCoreFields: deepResult.missingCoreFields,
-            },
+            remotePolicy: deepResult.remotePolicy ?? undefined,
+            sponsorshipRate: deepResult.sponsorshipRate ?? undefined,
+            hiringProcessDescription: deepResult.hiringProcessDescription ?? undefined,
+            hiringLocations: deepResult.hiringLocations ?? undefined,
+            techStackHints: deepResult.techStackHints ?? undefined,
             enrichmentStatus: deepResult.coreFieldCoverage >= 0.5 ? 'DONE' : 'ERROR',
           });
 

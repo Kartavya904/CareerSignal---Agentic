@@ -386,9 +386,15 @@ export const jobRemoteTypeEnum = pgEnum('job_remote_type', [
   'UNKNOWN',
 ]);
 export const jobStatusEnum = pgEnum('job_status', ['OPEN', 'CLOSED', 'UNKNOWN']);
+export const sponsorshipRateEnum = pgEnum('sponsorship_rate', [
+  'H1B_YES',
+  'CITIZEN_OR_RESIDENT_ONLY',
+  'UNKNOWN',
+]);
 
 /** Single table for companies, sources, connector templates, and resources. Type discriminator + optional parent_company_id. */
 export type EnrichmentStatus = (typeof enrichmentStatusEnum.enumValues)[number];
+export type SponsorshipRate = (typeof sponsorshipRateEnum.enumValues)[number];
 
 export type CompanyRow = typeof companies.$inferSelect;
 
@@ -404,42 +410,21 @@ export const companies = pgTable(
     kind: text('kind'),
     isPriorityTarget: boolean('is_priority_target').default(false).notNull(),
     enabledForScraping: boolean('enabled_for_scraping').default(false).notNull(),
-    parentCompanyId: uuid('parent_company_id'), // self-FK added in migration (companies.id)
+    parentCompanyId: uuid('parent_company_id'),
     atsType: atsTypeEnum('ats_type').default('UNKNOWN'),
     descriptionText: text('description_text'),
     enrichmentSources: jsonb('enrichment_sources').$type<{ urls?: string[]; paths?: string[] }>(),
     enrichmentStatus: enrichmentStatusEnum('enrichment_status').default('PENDING'),
     lastEnrichedAt: timestamp('last_enriched_at'),
-    industries: jsonb('industries').$type<string[]>(),
-    companyStage: text('company_stage'),
     headquartersAndOffices: text('headquarters_and_offices'),
-    sizeRange: text('size_range'),
     foundedYear: integer('founded_year'),
-    fundingStage: text('funding_stage'),
-    publicCompany: boolean('public_company'),
-    ticker: text('ticker'),
     remotePolicy: text('remote_policy'),
-    remoteFriendlyLocations: jsonb('remote_friendly_locations').$type<string[]>(),
     careersPageUrl: text('careers_page_url'),
     linkedInCompanyUrl: text('linkedin_company_url'),
-    coreValues: jsonb('core_values').$type<string[]>(),
-    missionStatement: text('mission_statement'),
-    benefitsHighlights: text('benefits_highlights'),
-    sponsorshipSignals: jsonb('sponsorship_signals').$type<Record<string, unknown>>(),
-    typicalHiringProcess: text('typical_hiring_process'),
-    interviewProcess: text('interview_process'),
-    interviewFormatHints: jsonb('interview_format_hints').$type<string[]>(),
+    sponsorshipRate: sponsorshipRateEnum('sponsorship_rate').default('UNKNOWN'),
+    hiringProcessDescription: text('hiring_process_description'),
     hiringLocations: jsonb('hiring_locations').$type<string[]>(),
-    workAuthorizationRequirements: text('work_authorization_requirements'),
-    salaryByLevel:
-      jsonb('salary_by_level').$type<
-        Record<string, { min?: number; max?: number; currency?: string; period?: string }>
-      >(),
-    applicationTipsFromCareersPage: text('application_tips_from_careers_page'),
-    longCompanyDescription: text('long_company_description'),
     techStackHints: jsonb('tech_stack_hints').$type<string[]>(),
-    recentLayoffsOrRestructuring: text('recent_layoffs_or_restructuring'),
-    hiringTrend: text('hiring_trend'),
     websiteDomain: text('website_domain'),
     jobCountTotal: integer('job_count_total').default(0).notNull(),
     jobCountOpen: integer('job_count_open').default(0).notNull(),

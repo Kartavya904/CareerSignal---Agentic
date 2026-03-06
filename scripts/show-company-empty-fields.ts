@@ -67,21 +67,8 @@ async function main() {
         !Array.isArray(v) &&
         !(v instanceof Date) &&
         Object.keys(v).length === 0);
-    // sponsorship_signals should hold H1B/visa evidence; run metadata (coreCoverage, missingCoreFields) alone counts as empty.
-    if (
-      !isEmpty &&
-      k === 'sponsorship_signals' &&
-      typeof v === 'object' &&
-      v !== null &&
-      !Array.isArray(v)
-    ) {
-      const keys = Object.keys(v as Record<string, unknown>);
-      if (
-        keys.length <= 2 &&
-        keys.every((key) => key === 'coreCoverage' || key === 'missingCoreFields')
-      )
-        isEmpty = true;
-    }
+    // sponsorship_rate: UNKNOWN counts as empty for reporting
+    if (!isEmpty && k === 'sponsorship_rate' && v === 'UNKNOWN') isEmpty = true;
 
     if (isEmpty) {
       empty.push(k);
@@ -113,42 +100,17 @@ async function main() {
     console.log('\nEmpty content fields:\n  ' + empty.join('\n  '));
   }
 
-  // Priority order (must → should → nice); matches agents/src/match/dossier-types.ts (snake_case for DB columns).
+  // Minimal schema priority (snake_case for DB columns).
   const MUST_HAVE = [
     'description_text',
-    'industries',
-    'headquarters_and_offices',
-    'size_range',
     'careers_page_url',
     'linkedin_company_url',
+    'headquarters_and_offices',
     'remote_policy',
-    'work_authorization_requirements',
     'hiring_locations',
-    'sponsorship_signals',
   ];
-  const SHOULD_HAVE = [
-    'long_company_description',
-    'company_stage',
-    'founded_year',
-    'benefits_highlights',
-    'mission_statement',
-    'core_values',
-    'typical_hiring_process',
-    'interview_process',
-    'interview_format_hints',
-    'application_tips_from_careers_page',
-    'remote_friendly_locations',
-    'hiring_trend',
-  ];
-  const NICE_TO_HAVE = [
-    'funding_stage',
-    'public_company',
-    'ticker',
-    'salary_by_level',
-    'tech_stack_hints',
-    'job_count_open',
-    'recent_layoffs_or_restructuring',
-  ];
+  const SHOULD_HAVE = ['hiring_process_description', 'founded_year'];
+  const NICE_TO_HAVE = ['tech_stack_hints', 'sponsorship_rate'];
   const emptySet = new Set(empty);
   const missingMust = MUST_HAVE.filter((k) => emptySet.has(k));
   const missingShould = SHOULD_HAVE.filter((k) => emptySet.has(k));
