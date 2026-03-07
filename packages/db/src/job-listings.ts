@@ -172,3 +172,57 @@ export async function listJobListings(
   if (options?.offset != null) return baseQuery.offset(options.offset);
   return baseQuery;
 }
+
+export interface JobListingWithCompanyRow {
+  id: string;
+  title: string;
+  location: string | null;
+  jobUrl: string | null;
+  applyUrl: string | null;
+  dedupeKey: string;
+  status: string | null;
+  companyName: string | null;
+}
+
+/** List recent job listings with company name for dashboard. */
+export async function listJobListingsWithCompany(
+  db: Db,
+  options?: { status?: JobStatus; limit?: number },
+): Promise<JobListingWithCompanyRow[]> {
+  const limit = options?.limit ?? 30;
+  const conditions = [];
+  if (options?.status != null) conditions.push(eq(jobListings.status, options.status));
+  const rows = await (conditions.length > 0
+    ? db
+        .select({
+          id: jobListings.id,
+          title: jobListings.title,
+          location: jobListings.location,
+          jobUrl: jobListings.jobUrl,
+          applyUrl: jobListings.applyUrl,
+          dedupeKey: jobListings.dedupeKey,
+          status: jobListings.status,
+          companyName: companies.name,
+        })
+        .from(jobListings)
+        .leftJoin(companies, eq(jobListings.companyId, companies.id))
+        .where(and(...conditions))
+        .orderBy(desc(jobListings.lastSeenAt))
+        .limit(limit)
+    : db
+        .select({
+          id: jobListings.id,
+          title: jobListings.title,
+          location: jobListings.location,
+          jobUrl: jobListings.jobUrl,
+          applyUrl: jobListings.applyUrl,
+          dedupeKey: jobListings.dedupeKey,
+          status: jobListings.status,
+          companyName: companies.name,
+        })
+        .from(jobListings)
+        .leftJoin(companies, eq(jobListings.companyId, companies.id))
+        .orderBy(desc(jobListings.lastSeenAt))
+        .limit(limit));
+  return rows as unknown as JobListingWithCompanyRow[];
+}

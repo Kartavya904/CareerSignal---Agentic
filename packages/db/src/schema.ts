@@ -537,3 +537,38 @@ export const contacts = pgTable(
     contactsStatusIdx: index('contacts_status_idx').on(table.status),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Admin: Deep company research runs + logs (persisted for reactive UI / return-to-page)
+// ---------------------------------------------------------------------------
+
+export const deepCompanyResearchRunStatusEnum = pgEnum('deep_company_research_run_status', [
+  'running',
+  'completed',
+  'failed',
+]);
+
+export const deepCompanyResearchRuns = pgTable('deep_company_research_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  status: deepCompanyResearchRunStatusEnum('status').notNull().default('running'),
+  companyName: text('company_name').notNull(),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const deepCompanyResearchAdminLogs = pgTable(
+  'deep_company_research_admin_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => deepCompanyResearchRuns.id, { onDelete: 'cascade' }),
+    ts: timestamp('ts').notNull(),
+    level: varchar('level', { length: 16 }).notNull(),
+    message: text('message').notNull(),
+  },
+  (table) => ({
+    runIdIdx: index('deep_company_research_admin_logs_run_id_idx').on(table.runId),
+  }),
+);

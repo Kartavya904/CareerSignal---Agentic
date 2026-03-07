@@ -14,3 +14,4 @@ export * from './application-assistant-analysis-logs';
 export * from './application-assistant-feedback';
 export * from './contacts';
 export * from './job-listings';
+export * from './deep-company-research-runs';

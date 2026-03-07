@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useToast } from '../components/ToastContext';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -57,6 +57,7 @@ interface ResumeSuggestions {
 interface ChecklistItem {
   item: string;
   done: boolean;
+  userActionNeeded?: boolean;
 }
 
 interface StrictFilterReject {
@@ -95,7 +96,7 @@ interface Analysis {
   runUpdatedAt?: string | null;
 }
 
-export interface ApplicationAssistantPageProps {
+interface ApplicationAssistantPageProps {
   initialAnalysisId?: string;
 }
 
@@ -146,13 +147,33 @@ function CompanySnapshotCard({
       {str}
     </span>
   );
-  const row = (l: string, v: React.ReactNode) =>
+  const cell = (l: string, v: React.ReactNode) =>
     v != null && v !== '' && v !== false ? (
       <div key={l} style={{ marginBottom: '0.5rem' }}>
         {label(l)}
         <div style={{ fontSize: '0.85rem' }}>{v}</div>
       </div>
     ) : null;
+  const fullRow = (l: string, v: React.ReactNode) =>
+    v != null && v !== '' && v !== false ? (
+      <div key={l} style={{ marginBottom: '0.75rem' }}>
+        {label(l)}
+        <div style={{ fontSize: '0.85rem', lineHeight: 1.45 }}>{v}</div>
+      </div>
+    ) : null;
+
+  const hiringLocationsStr = hiringLocations?.length
+    ? hiringLocations.slice(0, 5).join(', ') + (hiringLocations.length > 5 ? '…' : '')
+    : null;
+
+  const sponsorshipDisplay =
+    sponsorshipRate && sponsorshipRate !== ''
+      ? sponsorshipRate === 'H1B_YES'
+        ? 'H1B yes'
+        : sponsorshipRate === 'CITIZEN_OR_RESIDENT_ONLY'
+          ? 'Citizen / resident only'
+          : sponsorshipRate
+      : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -162,42 +183,47 @@ function CompanySnapshotCard({
           <p style={{ fontSize: '0.85rem', margin: 0, lineHeight: 1.45 }}>{descriptionText}</p>
         </div>
       )}
+      {/* Row 1: Founded, HQ, Hiring locations, Sponsorship (H1B) */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+          gridTemplateColumns: 'repeat(4, 1fr)',
           gap: '0.75rem 1rem',
           fontSize: '0.8rem',
         }}
       >
-        {row('Industries', industries?.length ? industries.join(', ') : null)}
-        {row('HQ', headquartersAndOffices)}
-        {row('Size', sizeRange)}
-        {foundedYear != null && row('Founded', String(foundedYear))}
-        {row('Funding', fundingStage)}
-        {publicCompany === true && row('Public', ticker ? `${ticker} (public)` : 'Yes')}
-        {row('Remote policy', remotePolicy)}
-        {row(
-          'Sponsorship',
-          sponsorshipRate && sponsorshipRate !== 'UNKNOWN' ? sponsorshipRate : null,
-        )}
-        {row('Hiring process', hiringProcessDescription)}
-        {hiringLocations?.length
-          ? row(
-              'Hiring locations',
-              hiringLocations.slice(0, 5).join(', ') + (hiringLocations.length > 5 ? '…' : ''),
-            )
-          : null}
+        {foundedYear != null && cell('Founded', String(foundedYear))}
+        {cell('Headquarter', headquartersAndOffices)}
+        {hiringLocationsStr && cell('Hiring locations', hiringLocationsStr)}
+        {cell('Sponsorship (H1B)', sponsorshipDisplay)}
+      </div>
+      {/* Row 2: Remote policy (full width) */}
+      {fullRow('Remote policy', remotePolicy)}
+      {/* Row 3: Hiring process (full width) */}
+      {fullRow('Hiring process', hiringProcessDescription)}
+      {/* Other short fields in one row */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+          gap: '0.75rem 1rem',
+          fontSize: '0.8rem',
+        }}
+      >
+        {cell('Industries', industries?.length ? industries.join(', ') : null)}
+        {cell('Size', sizeRange)}
+        {cell('Funding', fundingStage)}
+        {publicCompany === true && cell('Public', ticker ? `${ticker} (public)` : 'Yes')}
         {techStackHints?.length
-          ? row(
+          ? cell(
               'Tech stack',
               techStackHints.slice(0, 6).join(', ') + (techStackHints.length > 6 ? '…' : ''),
             )
           : null}
         {jobCountOpen != null && jobCountOpen > 0
-          ? row('Open roles', String(jobCountOpen))
+          ? cell('Open roles', String(jobCountOpen))
           : jobCountTotal != null && jobCountTotal > 0
-            ? row('Roles', String(jobCountTotal))
+            ? cell('Roles', String(jobCountTotal))
             : null}
       </div>
     </div>
@@ -282,10 +308,9 @@ function HoverDownloadMenu({
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export function ApplicationAssistantClient({
-  initialAnalysisId,
-}: ApplicationAssistantPageProps = {}) {
+function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantPageProps = {}) {
   const router = useRouter();
+  const params = useParams<{ id?: string }>();
   const { addToast } = useToast();
   const [url, setUrl] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -303,6 +328,10 @@ export function ApplicationAssistantClient({
   const terminalRef = useRef<HTMLDivElement>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [companySnapshotOpen, setCompanySnapshotOpen] = useState(false);
+  const [jobSummaryOpen, setJobSummaryOpen] = useState(false);
+  const [profileMatchOpen, setProfileMatchOpen] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [outreachDraftsOpen, setOutreachDraftsOpen] = useState(false);
   const [autoConfirmCompanyTitle, setAutoConfirmCompanyTitle] = useState(false);
   const [companyManuallyConfirmed, setCompanyManuallyConfirmed] = useState(false);
   const [historySortBy, setHistorySortBy] = useState<'date' | 'score' | 'company'>('date');
@@ -512,12 +541,15 @@ export function ApplicationAssistantClient({
     await fetch('/api/application-assistant/stop', { method: 'POST' });
   };
 
+  const effectiveInitialAnalysisId =
+    initialAnalysisId ?? (typeof params?.id === 'string' ? params.id : undefined);
+
   // If we land on /application-assistant/[id], hydrate that analysis once (no live run)
   useEffect(() => {
-    if (!initialAnalysisId) return;
-    if (analysis && analysis.id === initialAnalysisId) return;
+    if (!effectiveInitialAnalysisId) return;
+    if (analysis && analysis.id === effectiveInitialAnalysisId) return;
     if (status?.running) return;
-    fetch(`/api/application-assistant/analyses/${initialAnalysisId}`)
+    fetch(`/api/application-assistant/analyses/${effectiveInitialAnalysisId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return;
@@ -526,7 +558,7 @@ export function ApplicationAssistantClient({
         setShowHistory(false);
       })
       .catch(() => {});
-  }, [initialAnalysisId, status?.running, analysis?.id]);
+  }, [effectiveInitialAnalysisId, status?.running, analysis?.id]);
 
   const handleDeleteAnalysis = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1407,9 +1439,9 @@ export function ApplicationAssistantClient({
         </div>
       )}
 
-      {/* Application Checklist — right below Agent Terminal */}
+      {/* Application Checklist — right below Agent Terminal; full row clickable so chevron always works */}
       {analysis?.applicationChecklist && analysis.applicationChecklist.length > 0 && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div className="card" style={{ marginBottom: '1.5rem', padding: 0 }}>
           <button
             type="button"
             onClick={() => setChecklistOpen(!checklistOpen)}
@@ -1422,43 +1454,74 @@ export function ApplicationAssistantClient({
               border: 'none',
               color: 'var(--text)',
               cursor: 'pointer',
-              padding: 0,
+              padding: '0.75rem 1rem',
+              textAlign: 'left',
             }}
+            aria-label={checklistOpen ? 'Collapse checklist' : 'Expand checklist'}
           >
             <h2 className="section-title" style={{ margin: 0 }}>
               Application Checklist
             </h2>
-            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
-              {checklistOpen ? 'Collapse' : 'Expand'}
+            <span
+              style={{
+                display: 'inline-block',
+                flexShrink: 0,
+                minWidth: 20,
+                transform: checklistOpen ? 'rotate(90deg)' : 'rotate(180deg)',
+                transition: 'transform 0.15s ease-out',
+                fontSize: '0.75rem',
+                color: 'var(--muted-foreground)',
+              }}
+            >
+              ▶
             </span>
           </button>
           {checklistOpen && (
             <div
               style={{
-                marginTop: '0.75rem',
+                padding: '0 1rem 1rem',
+                borderTop: '1px solid var(--border)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.4rem',
               }}
             >
-              {analysis.applicationChecklist.map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    fontSize: '0.8125rem',
-                  }}
-                >
-                  <span style={{ color: item.done ? 'var(--success)' : 'var(--muted-foreground)' }}>
-                    {item.done ? '\u2713' : '\u25CB'}
-                  </span>
-                  <span style={{ color: item.done ? 'var(--text-secondary)' : 'var(--text)' }}>
-                    {item.item}
-                  </span>
-                </div>
-              ))}
+              {analysis.applicationChecklist.map((item, i) => {
+                const done = item.done === true;
+                const userActionNeeded = item.userActionNeeded === true && !done;
+                const icon = done ? '\u2713' : userActionNeeded ? '\u26A0' : '\u25CB';
+                const iconColor = done
+                  ? 'var(--success)'
+                  : userActionNeeded
+                    ? 'var(--warning, #eab308)'
+                    : 'var(--muted-foreground)';
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.8125rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: iconColor,
+                        fontSize: userActionNeeded ? '0.9em' : undefined,
+                      }}
+                      title={
+                        userActionNeeded ? 'Your turn — tailor your resume to this role' : undefined
+                      }
+                    >
+                      {icon}
+                    </span>
+                    <span style={{ color: done ? 'var(--text-secondary)' : 'var(--text)' }}>
+                      {item.item}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1559,11 +1622,9 @@ export function ApplicationAssistantClient({
             <div style={{ padding: '0 1rem 0.75rem', borderTop: '1px solid var(--border)' }}>
               <div style={{ fontSize: '0.85rem', marginTop: 4, color: 'var(--text-secondary)' }}>
                 {analysis.companySnapshot?.descriptionText
-                  ? String(analysis.companySnapshot.descriptionText).slice(0, 200) +
-                    (String(analysis.companySnapshot.descriptionText).length > 200 ? '…' : '')
+                  ? String(analysis.companySnapshot.descriptionText)
                   : analysis.companyResearch
-                    ? analysis.companyResearch.slice(0, 200) +
-                      (analysis.companyResearch.length > 200 ? '…' : '')
+                    ? analysis.companyResearch
                     : String(analysis.jobSummary.companyOneLiner ?? '—')}
               </div>
             </div>
@@ -1809,8 +1870,92 @@ export function ApplicationAssistantClient({
           </div>
         )}
 
-      {/* Job summary */}
-      {analysis?.jobSummary && <JobSummaryCard job={analysis.jobSummary as JobSummary} />}
+      {/* Job summary — collapsed by default; compact header with title link (accent) + company */}
+      {analysis?.jobSummary && (
+        <div className="card" style={{ marginBottom: '1.5rem', padding: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.75rem 1rem',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 className="section-title" style={{ margin: 0, marginBottom: '0.25rem' }}>
+                Job Summary
+              </h2>
+              {!jobSummaryOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <a
+                    href={analysis.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontWeight: 600,
+                      color: 'var(--accent)',
+                      fontSize: '0.95rem',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    {(analysis.jobSummary as JobSummary).title}
+                  </a>
+                  <div
+                    style={{
+                      fontSize: '0.875rem',
+                      color: 'var(--muted-foreground)',
+                      marginTop: 2,
+                    }}
+                  >
+                    {(analysis.jobSummary as JobSummary).company}
+                    {(analysis.jobSummary as JobSummary).companyOneLiner && (
+                      <span style={{ fontStyle: 'italic' }}>
+                        {' '}
+                        — {(analysis.jobSummary as JobSummary).companyOneLiner}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setJobSummaryOpen((o) => !o)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: '0.15rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label={jobSummaryOpen ? 'Collapse job summary' : 'Expand job summary'}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  transform: jobSummaryOpen ? 'rotate(90deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.15s ease-out',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                }}
+              >
+                ▶
+              </span>
+            </button>
+          </div>
+          {jobSummaryOpen && (
+            <div style={{ padding: '1rem 1rem 1rem', borderTop: '1px solid var(--border)' }}>
+              <JobSummaryCard
+                job={analysis.jobSummary as JobSummary}
+                showHeading={false}
+                jobUrl={analysis.url}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Match score */}
       {analysis?.matchScore != null && analysis.matchBreakdown && (
@@ -1826,6 +1971,8 @@ export function ApplicationAssistantClient({
               (feedbackList?.find((f) => f.component === 'match')?.value as 'up' | 'down') ?? null
             }
             onFeedbackSubmitted={setFeedbackList}
+            expanded={profileMatchOpen}
+            onToggle={() => setProfileMatchOpen((o) => !o)}
           />
           {analysis.strictFilterRejects && analysis.strictFilterRejects.length > 0 && (
             <StrictFilterRejectsSection rejects={analysis.strictFilterRejects} />
@@ -2010,7 +2157,7 @@ export function ApplicationAssistantClient({
         </div>
       )}
 
-      {/* Contacts: show only after outreach has completed AND we have ranked contacts */}
+      {/* Contacts: show only after outreach has completed AND we have ranked contacts — collapsed by default */}
       {analysis &&
         (analysis.runStatus === 'done' || status?.currentStep === 'done') &&
         (() => {
@@ -2018,265 +2165,339 @@ export function ApplicationAssistantClient({
           const ranked = (Array.isArray(c?.ranked) ? c?.ranked : []) as unknown[];
           const best = c && 'bestFirst' in c ? (c.bestFirst as unknown) : null;
           return best != null || ranked.length > 0;
-        })() && (
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '0.5rem',
-              }}
-            >
-              <h2 className="section-title" style={{ margin: 0 }}>
-                Contacts
-              </h2>
-              <EvidenceInfoIcon
-                evidence={analysis.contactsEvidence ?? undefined}
-                cardTitle="Contacts"
-              />
-            </div>
-            {(() => {
-              const c = analysis.contacts as Record<string, unknown> | null | undefined;
-              const hasNewShape =
-                c && (c.bestFirst != null || (Array.isArray(c.ranked) && c.ranked.length > 0));
-              const hasLegacyShape =
-                c &&
-                ((Array.isArray(c.emails) && c.emails.length > 0) ||
-                  (Array.isArray(c.linkedIn) && c.linkedIn.length > 0) ||
-                  (Array.isArray(c.others) && c.others.length > 0));
-              const hasDraftsOnly =
-                Array.isArray(c?.drafts) &&
-                (c.drafts as unknown[]).length > 0 &&
-                !hasNewShape &&
-                !hasLegacyShape;
-              const hasContacts = hasNewShape || hasLegacyShape || hasDraftsOnly;
-              if (hasContacts && c) {
-                const best = c.bestFirst as Record<string, string | undefined> | null | undefined;
-                const ranked = (c.ranked as Record<string, string | undefined>[] | undefined) ?? [];
-                const draftsCount = Array.isArray(c.drafts) ? (c.drafts as unknown[]).length : 0;
-                const evidenceSummary = (analysis.contactsEvidence as { summary?: string })
-                  ?.summary;
-                if (hasDraftsOnly && ranked.length === 0 && !best) {
-                  return (
-                    <>
-                      <p
-                        style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}
+        })() &&
+        (() => {
+          const c = analysis!.contacts as Record<string, unknown> | null | undefined;
+          const hasNewShape =
+            c && (c.bestFirst != null || (Array.isArray(c.ranked) && c.ranked.length > 0));
+          const hasLegacyShape =
+            c &&
+            ((Array.isArray(c.emails) && c.emails.length > 0) ||
+              (Array.isArray(c.linkedIn) && c.linkedIn.length > 0) ||
+              (Array.isArray(c.others) && c.others.length > 0));
+          const hasDraftsOnly =
+            Array.isArray(c?.drafts) &&
+            (c.drafts as unknown[]).length > 0 &&
+            !hasNewShape &&
+            !hasLegacyShape;
+          const hasContacts = hasNewShape || hasLegacyShape || hasDraftsOnly;
+          const bestContact = c?.bestFirst as Record<string, string | undefined> | null | undefined;
+          const rankedList = (c?.ranked as Record<string, string | undefined>[] | undefined) ?? [];
+          const draftsCount = Array.isArray(c?.drafts) ? (c.drafts as unknown[]).length : 0;
+          const evidenceSummary = (analysis!.contactsEvidence as { summary?: string })?.summary;
+          if (!hasContacts || !c) return null;
+          if (hasDraftsOnly && rankedList.length === 0 && !bestContact) {
+            return (
+              <div className="card" style={{ marginBottom: '1.5rem' }}>
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  Contacts
+                </h2>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  {evidenceSummary ??
+                    (draftsCount > 0
+                      ? `${draftsCount} outreach draft(s) saved.`
+                      : 'Outreach completed.')}
+                </p>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <FeedbackThumbs
+                    analysisId={analysis!.id}
+                    component="outreach"
+                    feedbackValue={
+                      (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                        | 'up'
+                        | 'down') ?? null
+                    }
+                    onFeedbackSubmitted={setFeedbackList}
+                  />
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div className="card" style={{ marginBottom: '1.5rem', padding: 0 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem 1rem',
+                }}
+              >
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  Contacts
+                  {rankedList.length > 0 && (
+                    <span style={{ fontWeight: 500, color: 'var(--muted-foreground)' }}>
+                      {' '}
+                      · Ranked top {rankedList.length}
+                    </span>
+                  )}
+                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <EvidenceInfoIcon
+                    evidence={analysis!.contactsEvidence ?? undefined}
+                    cardTitle="Contacts"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setContactsOpen((o) => !o)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: '0.25rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                    aria-label={contactsOpen ? 'Collapse contacts' : 'Expand contacts'}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        transform: contactsOpen ? 'rotate(90deg)' : 'rotate(180deg)',
+                        transition: 'transform 0.15s ease-out',
+                        fontSize: '0.75rem',
+                        color: 'var(--muted-foreground)',
+                      }}
+                    >
+                      ▶
+                    </span>
+                  </button>
+                </div>
+              </div>
+              {!contactsOpen && bestContact && (
+                <div
+                  style={{
+                    padding: '0.75rem 1rem 0.75rem',
+                    borderTop: '1px solid var(--border)',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '1rem',
+                      background: 'var(--surface-elevated)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--muted-foreground)',
+                        marginBottom: '0.25rem',
+                      }}
+                    >
+                      Best contact
+                    </div>
+                    {bestContact.linkedinUrl ? (
+                      <a
+                        href={bestContact.linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontWeight: 600, color: 'var(--accent)' }}
                       >
-                        {evidenceSummary ??
-                          (draftsCount > 0
-                            ? `${draftsCount} outreach draft(s) saved.`
-                            : 'Outreach completed.')}
-                      </p>
-                      <div style={{ marginTop: '0.75rem' }}>
-                        <FeedbackThumbs
-                          analysisId={analysis.id}
-                          component="outreach"
-                          feedbackValue={
-                            (feedbackList?.find((f) => f.component === 'outreach')?.value as
-                              | 'up'
-                              | 'down') ?? null
-                          }
-                          onFeedbackSubmitted={setFeedbackList}
-                        />
-                      </div>
-                    </>
-                  );
-                }
-                return (
-                  <>
-                    {best && (
+                        {bestContact.name ?? '—'}
+                      </a>
+                    ) : (
+                      <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {contactsOpen && (
+                <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid var(--border)' }}>
+                  {bestContact && (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        background: 'var(--surface-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        marginBottom: '0.75rem',
+                        marginTop: '0.75rem',
+                      }}
+                    >
                       <div
                         style={{
-                          padding: '1rem',
-                          background: 'var(--surface-elevated)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
-                          marginBottom: '0.75rem',
+                          fontSize: '0.75rem',
+                          color: 'var(--muted-foreground)',
+                          marginBottom: '0.25rem',
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: '0.75rem',
-                            color: 'var(--muted-foreground)',
-                            marginBottom: '0.25rem',
-                          }}
-                        >
-                          Best contact
-                        </div>
-                        {best.linkedinUrl ? (
-                          <a
-                            href={best.linkedinUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontWeight: 600, color: 'var(--accent)' }}
-                          >
-                            {best.name ?? '—'}
-                          </a>
-                        ) : (
-                          <span style={{ fontWeight: 600 }}>{best.name ?? '—'}</span>
-                        )}
+                        Best contact
                       </div>
-                    )}
-                    {ranked.length > 0 && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <div
-                          style={{
-                            fontSize: '0.75rem',
-                            color: 'var(--muted-foreground)',
-                            marginBottom: '0.35rem',
-                          }}
+                      {bestContact.linkedinUrl ? (
+                        <a
+                          href={bestContact.linkedinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontWeight: 600, color: 'var(--accent)' }}
                         >
-                          All ranked contacts — click name for LinkedIn; use ✨ to create an
-                          outreach draft
-                        </div>
-                        <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
-                          {ranked.map((r: Record<string, string | undefined>, i: number) => (
-                            <li
-                              key={i}
+                          {bestContact.name ?? '—'}
+                        </a>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}</span>
+                      )}
+                    </div>
+                  )}
+                  {rankedList.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--muted-foreground)',
+                          marginBottom: '0.35rem',
+                        }}
+                      >
+                        All ranked contacts — click name for LinkedIn; use ✨ to create an outreach
+                        draft
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
+                        {rankedList.map((r: Record<string, string | undefined>, i: number) => (
+                          <li
+                            key={i}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem',
+                              marginBottom: '0.4rem',
+                              padding: '0.35rem 0',
+                              borderBottom:
+                                i < rankedList.length - 1 ? '1px solid var(--border)' : undefined,
+                            }}
+                          >
+                            <span
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'space-between',
                                 gap: '0.5rem',
-                                marginBottom: '0.4rem',
-                                padding: '0.35rem 0',
-                                borderBottom:
-                                  i < ranked.length - 1 ? '1px solid var(--border)' : undefined,
+                                minWidth: 0,
                               }}
                             >
                               <span
                                 style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.5rem',
-                                  minWidth: 0,
+                                  fontWeight: 700,
+                                  color: 'var(--muted-foreground)',
+                                  fontSize: '0.8rem',
+                                  flexShrink: 0,
+                                  width: 20,
                                 }}
                               >
-                                <span
+                                {i + 1}
+                              </span>
+                              {r.linkedinUrl ? (
+                                <a
+                                  href={r.linkedinUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   style={{
-                                    fontWeight: 700,
-                                    color: 'var(--muted-foreground)',
-                                    fontSize: '0.8rem',
-                                    flexShrink: 0,
-                                    width: 20,
+                                    fontWeight: 600,
+                                    color: 'var(--accent)',
+                                    textOverflow: 'ellipsis',
+                                    overflow: 'hidden',
+                                    whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {i + 1}
+                                  {r.name ?? '—'}
+                                </a>
+                              ) : (
+                                <span style={{ fontWeight: 600 }}>{r.name ?? '—'}</span>
+                              )}
+                              {r.role != null ? (
+                                <span
+                                  style={{
+                                    fontSize: '0.8125rem',
+                                    color: 'var(--muted-foreground)',
+                                  }}
+                                >
+                                  · {r.role}
                                 </span>
-                                {r.linkedinUrl ? (
-                                  <a
-                                    href={r.linkedinUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      fontWeight: 600,
-                                      color: 'var(--accent)',
-                                      textOverflow: 'ellipsis',
-                                      overflow: 'hidden',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {r.name ?? '—'}
-                                  </a>
-                                ) : (
-                                  <span style={{ fontWeight: 600 }}>{r.name ?? '—'}</span>
-                                )}
-                                {r.role != null ? (
-                                  <span
-                                    style={{
-                                      fontSize: '0.8125rem',
-                                      color: 'var(--muted-foreground)',
-                                    }}
-                                  >
-                                    · {r.role}
-                                  </span>
-                                ) : null}
-                              </span>
-                              <button
-                                type="button"
-                                title="Create outreach draft for this contact"
-                                onClick={async () => {
-                                  if (!analysis?.id) return;
-                                  setOutreachDraftModalContactIndex(i);
-                                  setOutreachDraftModalOpen(true);
-                                  setOutreachDraftModalLoading(true);
-                                  setOutreachDraftModalInstruction('');
-                                  setOutreachDraftModalDraft(null);
-                                  setOutreachDraftModalError(null);
-                                  try {
-                                    const res = await fetch(
-                                      '/api/application-assistant/outreach-draft',
-                                      {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          analysisId: analysis.id,
-                                          contactIndex: i,
-                                        }),
-                                      },
+                              ) : null}
+                            </span>
+                            <button
+                              type="button"
+                              title="Create outreach draft for this contact"
+                              onClick={async () => {
+                                if (!analysis?.id) return;
+                                setOutreachDraftModalContactIndex(i);
+                                setOutreachDraftModalOpen(true);
+                                setOutreachDraftModalLoading(true);
+                                setOutreachDraftModalInstruction('');
+                                setOutreachDraftModalDraft(null);
+                                setOutreachDraftModalError(null);
+                                try {
+                                  const res = await fetch(
+                                    '/api/application-assistant/outreach-draft',
+                                    {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        analysisId: analysis.id,
+                                        contactIndex: i,
+                                      }),
+                                    },
+                                  );
+                                  const data = await res.json().catch(() => ({}));
+                                  if (!res.ok) {
+                                    setOutreachDraftModalError(
+                                      (data as { error?: string }).error ??
+                                        'Failed to create draft',
                                     );
-                                    const data = await res.json().catch(() => ({}));
-                                    if (!res.ok) {
-                                      setOutreachDraftModalError(
-                                        (data as { error?: string }).error ??
-                                          'Failed to create draft',
-                                      );
-                                      return;
-                                    }
-                                    setOutreachDraftModalDraft(
-                                      (data as { draft?: Record<string, unknown> }).draft ?? null,
-                                    );
-                                    const updated = await fetch(
-                                      `/api/application-assistant/analyses/${analysis.id}`,
-                                    )
-                                      .then((r) => (r.ok ? r.json() : null))
-                                      .catch(() => null);
-                                    if (updated) setAnalysis(updated as Analysis);
-                                  } finally {
-                                    setOutreachDraftModalLoading(false);
+                                    return;
                                   }
-                                }}
-                                style={{
-                                  flexShrink: 0,
-                                  border: 'none',
-                                  background: 'var(--surface-elevated)',
-                                  borderRadius: 6,
-                                  padding: '0.35rem 0.5rem',
-                                  cursor: 'pointer',
-                                  fontSize: '0.875rem',
-                                  color: 'var(--accent)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 2,
-                                }}
-                              >
-                                ✨ Draft
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <FeedbackThumbs
-                        analysisId={analysis.id}
-                        component="contact"
-                        feedbackValue={
-                          (feedbackList?.find((f) => f.component === 'contact')?.value as
-                            | 'up'
-                            | 'down') ?? null
-                        }
-                        onFeedbackSubmitted={setFeedbackList}
-                      />
+                                  setOutreachDraftModalDraft(
+                                    (data as { draft?: Record<string, unknown> }).draft ?? null,
+                                  );
+                                  const updated = await fetch(
+                                    `/api/application-assistant/analyses/${analysis.id}`,
+                                  )
+                                    .then((r) => (r.ok ? r.json() : null))
+                                    .catch(() => null);
+                                  if (updated) setAnalysis(updated as Analysis);
+                                } finally {
+                                  setOutreachDraftModalLoading(false);
+                                }
+                              }}
+                              style={{
+                                flexShrink: 0,
+                                border: 'none',
+                                background: 'var(--surface-elevated)',
+                                borderRadius: 6,
+                                padding: '0.35rem 0.5rem',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                color: 'var(--accent)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2,
+                              }}
+                            >
+                              ✨ Draft
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  </>
-                );
-              }
-              return null;
-            })()}
-          </div>
-        )}
+                  )}
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <FeedbackThumbs
+                      analysisId={analysis.id}
+                      component="contact"
+                      feedbackValue={
+                        (feedbackList?.find((f) => f.component === 'contact')?.value as
+                          | 'up'
+                          | 'down') ?? null
+                      }
+                      onFeedbackSubmitted={setFeedbackList}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       {/* Outreach draft modal — on-demand draft for one contact */}
       {outreachDraftModalOpen && (
@@ -2521,158 +2742,189 @@ export function ApplicationAssistantClient({
         </div>
       )}
 
-      {/* Outreach drafts (from Deep Outreach Research pipeline) */}
+      {/* Outreach drafts (from Deep Outreach Research pipeline) — collapsed by default */}
       {analysis &&
         (analysis.runStatus === 'done' || status?.currentStep === 'done') &&
         Array.isArray((analysis.contacts as Record<string, unknown>)?.drafts) &&
         ((analysis.contacts as Record<string, unknown>).drafts as unknown[]).length > 0 && (
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <div
+          <div className="card" style={{ marginBottom: '1.5rem', padding: 0 }}>
+            <button
+              type="button"
+              onClick={() => setOutreachDraftsOpen((o) => !o)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: '0.75rem',
+                width: '100%',
+                padding: '0.75rem 1rem',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text)',
+                cursor: 'pointer',
+                textAlign: 'left',
               }}
+              aria-label={
+                outreachDraftsOpen ? 'Collapse outreach drafts' : 'Expand outreach drafts'
+              }
             >
               <h2 className="section-title" style={{ margin: 0 }}>
                 Outreach drafts
               </h2>
-              <EvidenceInfoIcon
-                evidence={analysis.contactsEvidence ?? undefined}
-                cardTitle="Outreach"
-              />
-            </div>
-            <p
-              style={{
-                margin: '0 0 0.75rem 0',
-                fontSize: '0.875rem',
-                color: 'var(--muted-foreground)',
-              }}
-            >
-              Copy a draft below for LinkedIn connection, LinkedIn DM, or email.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {(
-                (analysis.contacts as Record<string, unknown>).drafts as Record<string, unknown>[]
-              ).map((d: Record<string, unknown>, i: number) => (
-                <div
-                  key={i}
+              <span
+                style={{
+                  display: 'inline-block',
+                  transform: outreachDraftsOpen ? 'rotate(90deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.15s ease-out',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                }}
+              >
+                ▶
+              </span>
+            </button>
+            {outreachDraftsOpen && (
+              <div
+                style={{
+                  padding: '0 1rem 1rem',
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <p
                   style={{
-                    padding: '1rem',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
+                    margin: '0.75rem 0 0.75rem 0',
+                    fontSize: '0.875rem',
+                    color: 'var(--muted-foreground)',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '0.5rem',
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                      {(() => {
-                        const platform = String(d.platform ?? '');
-                        const contactName = String(d.contactName ?? '');
-                        const platformLabel =
-                          platform === 'LINKEDIN_CONNECTION'
-                            ? 'LinkedIn connection'
-                            : platform === 'EMAIL'
-                              ? 'Email'
-                              : platform || 'Draft';
-                        const tone = d.tone != null ? String(d.tone) : '';
-                        const variant = d.variant != null ? String(d.variant) : '';
-                        return `${platformLabel}${contactName ? ` - ${contactName}` : ''}${
-                          variant ? ` · ${variant}` : ''
-                        }${tone ? ` (${tone})` : ''}`;
-                      })()}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(String(d.body ?? ''), `outreach-${i}`)}
+                  Copy a draft below for LinkedIn connection, LinkedIn DM, or email.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {(
+                    (analysis.contacts as Record<string, unknown>).drafts as Record<
+                      string,
+                      unknown
+                    >[]
+                  ).map((d: Record<string, unknown>, i: number) => (
+                    <div
+                      key={i}
                       style={{
-                        fontSize: '0.75rem',
-                        padding: '0.25rem 0.5rem',
-                        cursor: 'pointer',
+                        padding: '1rem',
+                        background: 'var(--bg)',
                         border: '1px solid var(--border)',
-                        borderRadius: 4,
-                        background: 'var(--surface-elevated)',
+                        borderRadius: 8,
                       }}
                     >
-                      Copy
-                    </button>
-                    <HoverDownloadMenu
-                      label="Download"
-                      items={[
-                        {
-                          label: 'Download DOCX',
-                          href: `/api/application-assistant/outreach-draft-download?analysisId=${analysis.id}&draftIndex=${i}&format=docx`,
-                        },
-                        {
-                          label: 'Download PDF',
-                          href: `/api/application-assistant/outreach-draft-download?analysisId=${analysis.id}&draftIndex=${i}&format=pdf`,
-                        },
-                      ]}
-                    />
-                    {d.contactIndex != null && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOutreachDraftModalContactIndex(Number(d.contactIndex));
-                          setOutreachDraftModalInstruction('');
-                          setOutreachDraftModalDraft(d);
-                          setOutreachDraftModalError(null);
-                          setOutreachDraftModalOpen(true);
-                          setOutreachDraftModalLoading(false);
-                        }}
+                      <div
                         style={{
-                          fontSize: '0.75rem',
-                          padding: '0.25rem 0.5rem',
-                          cursor: 'pointer',
-                          border: '1px solid var(--border)',
-                          borderRadius: 4,
-                          background: 'var(--surface-elevated)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: '0.5rem',
                         }}
                       >
-                        Change
-                      </button>
-                    )}
-                  </div>
-                  {d.subject != null &&
-                    (() => {
-                      const subj: string = String(d.subject ?? '');
-                      return (
-                        <div style={{ fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
-                          <strong>Subject:</strong> {subj}
-                        </div>
-                      );
-                    })()}
-                  <div
-                    style={{
-                      fontSize: '0.875rem',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {String(d.body ?? '')}
-                  </div>
+                        <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                          {(() => {
+                            const platform = String(d.platform ?? '');
+                            const contactName = String(d.contactName ?? '');
+                            const platformLabel =
+                              platform === 'LINKEDIN_CONNECTION'
+                                ? 'LinkedIn connection'
+                                : platform === 'EMAIL'
+                                  ? 'Email'
+                                  : platform || 'Draft';
+                            const tone = d.tone != null ? String(d.tone) : '';
+                            const variant = d.variant != null ? String(d.variant) : '';
+                            return `${platformLabel}${contactName ? ` - ${contactName}` : ''}${
+                              variant ? ` · ${variant}` : ''
+                            }${tone ? ` (${tone})` : ''}`;
+                          })()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(String(d.body ?? ''), `outreach-${i}`)}
+                          style={{
+                            fontSize: '0.75rem',
+                            padding: '0.25rem 0.5rem',
+                            cursor: 'pointer',
+                            border: '1px solid var(--border)',
+                            borderRadius: 4,
+                            background: 'var(--surface-elevated)',
+                          }}
+                        >
+                          Copy
+                        </button>
+                        <HoverDownloadMenu
+                          label="Download"
+                          items={[
+                            {
+                              label: 'Download DOCX',
+                              href: `/api/application-assistant/outreach-draft-download?analysisId=${analysis.id}&draftIndex=${i}&format=docx`,
+                            },
+                            {
+                              label: 'Download PDF',
+                              href: `/api/application-assistant/outreach-draft-download?analysisId=${analysis.id}&draftIndex=${i}&format=pdf`,
+                            },
+                          ]}
+                        />
+                        {d.contactIndex != null && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOutreachDraftModalContactIndex(Number(d.contactIndex));
+                              setOutreachDraftModalInstruction('');
+                              setOutreachDraftModalDraft(d);
+                              setOutreachDraftModalError(null);
+                              setOutreachDraftModalOpen(true);
+                              setOutreachDraftModalLoading(false);
+                            }}
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '0.25rem 0.5rem',
+                              cursor: 'pointer',
+                              border: '1px solid var(--border)',
+                              borderRadius: 4,
+                              background: 'var(--surface-elevated)',
+                            }}
+                          >
+                            Change
+                          </button>
+                        )}
+                      </div>
+                      {d.subject != null &&
+                        (() => {
+                          const subj: string = String(d.subject ?? '');
+                          return (
+                            <div style={{ fontSize: '0.8125rem', marginBottom: '0.25rem' }}>
+                              <strong>Subject:</strong> {subj}
+                            </div>
+                          );
+                        })()}
+                      <div
+                        style={{
+                          fontSize: '0.875rem',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {String(d.body ?? '')}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div style={{ marginTop: '0.75rem' }}>
-              <FeedbackThumbs
-                analysisId={analysis.id}
-                component="outreach"
-                feedbackValue={
-                  (feedbackList?.find((f) => f.component === 'outreach')?.value as 'up' | 'down') ??
-                  null
-                }
-                onFeedbackSubmitted={setFeedbackList}
-              />
-            </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <FeedbackThumbs
+                    analysisId={analysis.id}
+                    component="outreach"
+                    feedbackValue={
+                      (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                        | 'up'
+                        | 'down') ?? null
+                    }
+                    onFeedbackSubmitted={setFeedbackList}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
     </div>
@@ -2686,18 +2938,51 @@ export default function ApplicationAssistantPage() {
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function JobSummaryCard({ job }: { job: JobSummary }) {
+function JobSummaryCard({
+  job,
+  showHeading = true,
+  jobUrl,
+}: {
+  job: JobSummary;
+  showHeading?: boolean;
+  jobUrl?: string;
+}) {
+  const titleEl =
+    jobUrl != null ? (
+      <a
+        href={jobUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          fontSize: '1.25rem',
+          fontWeight: 700,
+          color: 'var(--accent)',
+          lineHeight: 1.3,
+          textDecoration: 'underline',
+        }}
+      >
+        {job.title}
+      </a>
+    ) : (
+      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>
+        {job.title}
+      </div>
+    );
   return (
-    <div className="card" style={{ marginBottom: '1.5rem' }}>
-      <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
-        Job Summary
-      </h2>
+    <div
+      style={{
+        marginBottom: showHeading ? '1.5rem' : 0,
+        ...(showHeading ? {} : { padding: 0, background: 'none', border: 'none', borderRadius: 0 }),
+      }}
+      className={showHeading ? 'card' : undefined}
+    >
+      {showHeading && (
+        <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
+          Job Summary
+        </h2>
+      )}
       <div style={{ marginBottom: '0.75rem' }}>
-        <div
-          style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}
-        >
-          {job.title}
-        </div>
+        {titleEl}
         <div
           style={{ fontSize: '0.9375rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}
         >
@@ -3009,6 +3294,8 @@ function MatchCard({
   analysisId,
   feedbackValue,
   onFeedbackSubmitted,
+  expanded = true,
+  onToggle,
 }: {
   score: number;
   grade: string;
@@ -3018,6 +3305,8 @@ function MatchCard({
   analysisId?: string;
   feedbackValue?: 'up' | 'down' | null;
   onFeedbackSubmitted?: (list: { component: string; value: string }[]) => void;
+  expanded?: boolean;
+  onToggle?: () => void;
 }) {
   const [sending, setSending] = useState(false);
   const color = scoreColor(score);
@@ -3062,7 +3351,37 @@ function MatchCard({
         <h2 className="section-title" style={{ margin: 0 }}>
           Profile Match
         </h2>
-        <EvidenceInfoIcon evidence={matchEvidence} cardTitle="Profile Match" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <EvidenceInfoIcon evidence={matchEvidence} cardTitle="Profile Match" />
+          {onToggle && (
+            <button
+              type="button"
+              onClick={onToggle}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: '0.15rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label={expanded ? 'Collapse breakdown' : 'Expand breakdown'}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  transform: expanded ? 'rotate(90deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.15s ease-out',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                }}
+              >
+                ▶
+              </span>
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '1rem' }}>
         {/* Score circle */}
@@ -3158,53 +3477,55 @@ function MatchCard({
         </div>
       </div>
 
-      {/* Breakdown bars */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {categories.map((cat) => (
-          <div key={cat.label} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span
-              style={{
-                width: 80,
-                fontSize: '0.75rem',
-                color: 'var(--muted-foreground)',
-                textAlign: 'right',
-                flexShrink: 0,
-              }}
-            >
-              {cat.label}
-            </span>
-            <div
-              style={{
-                flex: 1,
-                height: 8,
-                background: 'var(--bg)',
-                borderRadius: 4,
-                overflow: 'hidden',
-              }}
-            >
+      {/* Breakdown bars — only when expanded */}
+      {expanded && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {categories.map((cat) => (
+            <div key={cat.label} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span
+                style={{
+                  width: 80,
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                  textAlign: 'right',
+                  flexShrink: 0,
+                }}
+              >
+                {cat.label}
+              </span>
               <div
                 style={{
-                  width: `${cat.value}%`,
-                  height: '100%',
-                  background: scoreColor(cat.value),
+                  flex: 1,
+                  height: 8,
+                  background: 'var(--bg)',
                   borderRadius: 4,
-                  transition: 'width 0.5s ease',
+                  overflow: 'hidden',
                 }}
-              />
+              >
+                <div
+                  style={{
+                    width: `${cat.value}%`,
+                    height: '100%',
+                    background: scoreColor(cat.value),
+                    borderRadius: 4,
+                    transition: 'width 0.5s ease',
+                  }}
+                />
+              </div>
+              <span
+                style={{
+                  width: 30,
+                  fontSize: '0.7rem',
+                  color: 'var(--muted-foreground)',
+                  textAlign: 'right',
+                }}
+              >
+                {cat.value}
+              </span>
             </div>
-            <span
-              style={{
-                width: 30,
-                fontSize: '0.7rem',
-                color: 'var(--muted-foreground)',
-                textAlign: 'right',
-              }}
-            >
-              {cat.value}
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1203,10 +1203,20 @@ export async function runApplicationAssistantPipeline(
         }
 
         // 15. Application checklist (simple)
+        // Company researched = we have snapshot or research text; job scraped well = we have title + description/requirements
+        const companyResearched = !!(companySnapshotData ?? companyResearchText);
+        const jobScrapedWell =
+          jobDetail.title &&
+          jobDetail.title !== 'Untitled' &&
+          ((jobDetail.description?.trim().length ?? 0) > 0 || jobDetail.requirements.length > 0);
         const checklist = [
-          { item: 'Resume tailored to this role', done: false },
+          {
+            item: 'Resume tailored to this role',
+            done: false,
+            userActionNeeded: true,
+          },
           { item: 'Cover letter prepared', done: true },
-          { item: 'Review job requirements', done: false },
+          { item: 'Review job requirements', done: jobScrapedWell },
           ...(jobDetail.requirements.length > 0
             ? [
                 {
@@ -1215,7 +1225,7 @@ export async function runApplicationAssistantPipeline(
                 },
               ]
             : []),
-          { item: 'Research the company', done: false },
+          { item: 'Research the company', done: companyResearched },
           { item: 'Prepare for interview questions', done: true },
         ];
 
@@ -1357,6 +1367,13 @@ export async function runApplicationAssistantPipeline(
           payload: contactsEvidence,
         },
       });
+
+      // Email pipeline (future): only announce if preference is enabled.
+      if ((preferences as { emailUpdatesEnabled?: boolean } | null)?.emailUpdatesEnabled) {
+        await dbLog(db, analysisId, 'EmailAgent', 'Email Agent not implemented yet, skipping.', {
+          level: 'info',
+        });
+      }
 
       await transitionAssistantStep(db, analysisId, 'done', { runStatusOverride: 'done' });
       await dbLog(db, analysisId, 'Pipeline', 'Analysis complete!', { level: 'success' });

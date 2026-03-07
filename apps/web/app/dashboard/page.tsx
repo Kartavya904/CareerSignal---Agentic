@@ -1,8 +1,13 @@
 import Link from 'next/link';
 import { getSessionUser } from '@/lib/auth';
-import { getDb } from '@careersignal/db';
-import { getProfileByUserId, getPreferencesByUserId } from '@careersignal/db';
-import { listAnalysesByUser } from '@careersignal/db';
+import {
+  getDb,
+  getProfileByUserId,
+  getPreferencesByUserId,
+  listAnalysesByUser,
+  listJobListingsWithCompany,
+  normalizeJobDedupeKey,
+} from '@careersignal/db';
 import { ParsingStatusBadge } from '../components/ParsingStatusBadge';
 import { ApplicationAssistantStatusBadge } from '../components/ApplicationAssistantStatusBadge';
 
@@ -23,11 +28,31 @@ export default async function DashboardPage() {
   }
 
   const db = getDb();
-  const [profile, preferences, analyses] = await Promise.all([
+  const [profile, preferences, analyses, jobListings] = await Promise.all([
     getProfileByUserId(db, user.id),
     getPreferencesByUserId(db, user.id),
     listAnalysesByUser(db, user.id),
+    listJobListingsWithCompany(db, { status: 'OPEN', limit: 30 }),
   ]);
+
+  // Map normalized analysis URL -> { id, matchScore, matchGrade, company } so we can show score and company when a listing was analyzed
+  const analysisByUrl = new Map<
+    string,
+    { id: string; matchScore: number | null; matchGrade: string | null; company: string | null }
+  >();
+  for (const a of analyses ?? []) {
+    const key = normalizeJobDedupeKey(a.url);
+    if (!analysisByUrl.has(key)) {
+      const js = (a.jobSummary as { company?: string } | null) ?? {};
+      const snap = (a.companySnapshot as { name?: string } | null) ?? {};
+      analysisByUrl.set(key, {
+        id: a.id,
+        matchScore: a.matchScore != null ? Number(a.matchScore) : null,
+        matchGrade: a.matchGrade ?? null,
+        company: js.company ?? snap.name ?? null,
+      });
+    }
+  }
 
   const hasProfile = !!profile?.name && !!profile?.resumeRawText;
   const hasPreferences = !!preferences;
@@ -122,43 +147,123 @@ export default async function DashboardPage() {
           padding: '1.25rem 1.5rem',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '0.75rem',
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: '1.05rem',
-              fontWeight: 600,
-              color: 'var(--text)',
-            }}
-          >
-            Job positions you might like
-          </h2>
-          <span
-            style={{
-              fontSize: '0.8rem',
-              color: 'var(--muted-foreground)',
-            }}
-          >
-            Placeholder carousel (coming soon)
-          </span>
-        </div>
-        <p
+        <h2
           style={{
             margin: 0,
-            fontSize: '0.9rem',
-            color: 'var(--muted-foreground)',
+            marginBottom: '0.75rem',
+            fontSize: '1.05rem',
+            fontWeight: 600,
+            color: 'var(--text)',
           }}
         >
-          Once Application Assistant saves job postings, this will surface a carousel of roles that
-          match your profile and preferences.
-        </p>
+          Job positions you might like
+        </h2>
+        {(() => {
+          const jobsToShow =
+            jobListings && jobListings.length > 0
+              ? jobListings.map((job) => {
+                  const keyApply = job.applyUrl ? normalizeJobDedupeKey(job.applyUrl) : null;
+                  const keyJob = job.jobUrl ? normalizeJobDedupeKey(job.jobUrl) : null;
+                  const analysis =
+                    (keyApply && analysisByUrl.get(keyApply)) ??
+                    (keyJob && analysisByUrl.get(keyJob)) ??
+                    null;
+                  return {
+                    title: job.title,
+                    company: analysis?.company ?? job.companyName ?? 'Company',
+                    location: job.location,
+                    href: analysis
+                      ? `/application-assistant/${analysis.id}`
+                      : (job.jobUrl ?? job.applyUrl ?? '/application-assistant'),
+                    score: analysis?.matchScore ?? null,
+                    grade: analysis?.matchGrade ?? null,
+                  };
+                })
+              : (analyses ?? []).map((a) => {
+                  const js = (a.jobSummary as { title?: string; company?: string } | null) ?? {};
+                  const snap = (a.companySnapshot as { name?: string } | null) ?? {};
+                  return {
+                    title: js.title ?? 'Job',
+                    company: js.company ?? snap.name ?? 'Company',
+                    location: null as string | null,
+                    href: `/application-assistant/${a.id}`,
+                    score: a.matchScore != null ? Number(a.matchScore) : null,
+                    grade: a.matchGrade ?? null,
+                  };
+                });
+          if (jobsToShow.length === 0) {
+            return (
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '0.9rem',
+                  color: 'var(--muted-foreground)',
+                }}
+              >
+                No job positions yet. Use Application Assistant to analyze a job URL — analyzed
+                roles will appear here with your match score.
+              </p>
+            );
+          }
+          return (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
+            >
+              {jobsToShow.map((job, i) => (
+                <Link
+                  key={i}
+                  href={job.href}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    padding: '0.6rem 0.75rem',
+                    background: 'var(--surface-elevated)',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{job.title}</span>
+                    <span style={{ color: 'var(--muted-foreground)' }}>
+                      {' · '}
+                      {job.company}
+                    </span>
+                    {job.location && (
+                      <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
+                        {' · '}
+                        {job.location}
+                      </span>
+                    )}
+                  </div>
+                  {job.score != null && (
+                    <span
+                      className="badge"
+                      style={{
+                        flexShrink: 0,
+                        background: 'var(--accent-muted)',
+                        color: 'var(--accent)',
+                        fontSize: '0.8rem',
+                        padding: '0.2rem 0.5rem',
+                      }}
+                    >
+                      {Number(job.score).toFixed(1)}
+                      {job.grade ? ` · ${job.grade}` : ''}
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       <div

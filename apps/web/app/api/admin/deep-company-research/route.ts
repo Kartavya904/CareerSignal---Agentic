@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import { getSessionUser } from '@/lib/auth';
-import { getDb, upsertCompanyEnrichment } from '@careersignal/db';
+import {
+  getDb,
+  upsertCompanyEnrichment,
+  insertDeepCompanyResearchRun,
+  updateDeepCompanyResearchRunStatus,
+  insertDeepCompanyResearchAdminLog,
+  getLatestDeepCompanyResearchRunWithLogs,
+} from '@careersignal/db';
 import { deepResearchCompany } from '@careersignal/agents';
 import { complete } from '@careersignal/llm';
 import { getDossierRunFolderName, createDossierDiskWriter } from '@/lib/dossier-disk';
@@ -29,6 +36,17 @@ function writeLogLine(
   writer.write(encoder.encode(JSON.stringify({ type: 'log', ...entry }) + '\n')).catch(() => {});
 }
 
+/** Write log to stream and persist to DB for reactive admin UI when returning to the page. */
+async function writeLogLineAndPersist(
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  encoder: TextEncoder,
+  entry: LogEntry,
+  persist: (entry: LogEntry) => Promise<void>,
+): Promise<void> {
+  writeLogLine(writer, encoder, entry);
+  await persist(entry).catch(() => {});
+}
+
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) {
@@ -54,53 +72,104 @@ export async function POST(req: Request) {
   (async () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
     const t0 = Date.now();
+    const db = getDb();
+    const runRow = await insertDeepCompanyResearchRun(db, companyName);
+    const runId = runRow.id;
+    const persist = async (entry: LogEntry) => {
+      await insertDeepCompanyResearchAdminLog(db, {
+        runId,
+        ts: new Date(entry.ts),
+        level: entry.level,
+        message: entry.message,
+      });
+    };
+
+    const log = (entry: LogEntry) => {
+      writeLogLine(writer, encoder, entry);
+      persist(entry).catch(() => {});
+    };
 
     try {
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'info',
-        message: `[Admin] Starting deep company research for: "${companyName}"`,
-      });
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'info',
-        message: '[Admin] Using browser-based search (DuckDuckGo); no API key required.',
-      });
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'info',
-        message: '[Admin] Launching visible browser...',
-      });
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'info',
+          message: `[Admin] Starting deep company research for: "${companyName}"`,
+        },
+        persist,
+      );
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'info',
+          message: '[Admin] Using browser-based search (DuckDuckGo); no API key required.',
+        },
+        persist,
+      );
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'info',
+          message: '[Admin] Launching visible browser...',
+        },
+        persist,
+      );
 
       browser = await chromium.launch({ headless: false, args: STEALTH_ARGS });
       const page = await browser.newPage();
       await page.setViewportSize({ width: 1280, height: 720 });
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'info',
-        message: '[Admin] Browser ready; running discovery and enrichment...',
-      });
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'info',
+          message: '[Admin] Browser ready; running discovery and enrichment...',
+        },
+        persist,
+      );
 
       // Pre-warm the GENERAL (32B) model so Ollama loads it before the pipeline.
       try {
-        writeLogLine(writer, encoder, {
-          ts: new Date().toISOString(),
-          level: 'info',
-          message: '[Admin] Pre-warming GENERAL model (may take 1–2 min on first run)...',
-        });
+        await writeLogLineAndPersist(
+          writer,
+          encoder,
+          {
+            ts: new Date().toISOString(),
+            level: 'info',
+            message: '[Admin] Pre-warming GENERAL model (may take 1–2 min on first run)...',
+          },
+          persist,
+        );
         await complete('Reply with exactly: OK', 'GENERAL', { maxTokens: 5, timeout: 300_000 });
-        writeLogLine(writer, encoder, {
-          ts: new Date().toISOString(),
-          level: 'info',
-          message: '[Admin] Model ready.',
-        });
+        await writeLogLineAndPersist(
+          writer,
+          encoder,
+          {
+            ts: new Date().toISOString(),
+            level: 'info',
+            message: '[Admin] Model ready.',
+          },
+          persist,
+        );
       } catch (e) {
-        writeLogLine(writer, encoder, {
-          ts: new Date().toISOString(),
-          level: 'warn',
-          message: `[Admin] Pre-warm skipped or failed: ${e instanceof Error ? e.message : String(e)}`,
-        });
+        await writeLogLineAndPersist(
+          writer,
+          encoder,
+          {
+            ts: new Date().toISOString(),
+            level: 'warn',
+            message: `[Admin] Pre-warm skipped or failed: ${e instanceof Error ? e.message : String(e)}`,
+          },
+          persist,
+        );
       }
 
       const runFolderName = getDossierRunFolderName(companyName);
@@ -111,7 +180,7 @@ export async function POST(req: Request) {
         seedUrl: undefined,
         jobDescriptionText: undefined,
         log: ({ level, message }) =>
-          writeLogLine(writer, encoder, {
+          log({
             ts: new Date().toISOString(),
             level,
             message,
@@ -123,25 +192,39 @@ export async function POST(req: Request) {
         runCompanyPageRag,
       });
 
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'info',
-        message: `[Admin] Agent finished. Visited ${deepResult.visitedUrls.length} URLs, core coverage ${(deepResult.coreFieldCoverage * 100).toFixed(0)}%`,
-      });
-      if (deepResult.missingCoreFields.length > 0) {
-        writeLogLine(writer, encoder, {
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
           ts: new Date().toISOString(),
           level: 'info',
-          message: `[Admin] Missing core fields: ${deepResult.missingCoreFields.join(', ')}`,
-        });
+          message: `[Admin] Agent finished. Visited ${deepResult.visitedUrls.length} URLs, core coverage ${(deepResult.coreFieldCoverage * 100).toFixed(0)}%`,
+        },
+        persist,
+      );
+      if (deepResult.missingCoreFields.length > 0) {
+        await writeLogLineAndPersist(
+          writer,
+          encoder,
+          {
+            ts: new Date().toISOString(),
+            level: 'info',
+            message: `[Admin] Missing core fields: ${deepResult.missingCoreFields.join(', ')}`,
+          },
+          persist,
+        );
       }
 
-      const db = getDb();
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'info',
-        message: '[Admin] Upserting company to database...',
-      });
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'info',
+          message: '[Admin] Upserting company to database...',
+        },
+        persist,
+      );
 
       const upserted = await upsertCompanyEnrichment(db, {
         name: deepResult.companyName,
@@ -166,12 +249,18 @@ export async function POST(req: Request) {
       });
 
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'success',
-        message: `[Admin] Done. Company id=${upserted.id}, elapsed=${elapsed}s`,
-      });
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'success',
+          message: `[Admin] Done. Company id=${upserted.id}, elapsed=${elapsed}s`,
+        },
+        persist,
+      );
 
+      await updateDeepCompanyResearchRunStatus(db, runId, 'completed');
       await writer.write(
         encoder.encode(
           JSON.stringify({
@@ -196,11 +285,17 @@ export async function POST(req: Request) {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      writeLogLine(writer, encoder, {
-        ts: new Date().toISOString(),
-        level: 'error',
-        message: `[Admin] Fatal: ${msg}`,
-      });
+      await writeLogLineAndPersist(
+        writer,
+        encoder,
+        {
+          ts: new Date().toISOString(),
+          level: 'error',
+          message: `[Admin] Fatal: ${msg}`,
+        },
+        persist,
+      ).catch(() => {});
+      await updateDeepCompanyResearchRunStatus(db, runId, 'failed').catch(() => {});
       await writer.write(
         encoder.encode(JSON.stringify({ type: 'result', success: false, error: msg }) + '\n'),
       );
@@ -218,5 +313,42 @@ export async function POST(req: Request) {
 
   return new Response(readable, {
     headers: { 'Content-Type': 'application/x-ndjson' },
+  });
+}
+
+/** Returns latest run + logs so the admin panel can restore state when returning to the page. */
+export async function GET() {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!user.admin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const db = getDb();
+  const data = await getLatestDeepCompanyResearchRunWithLogs(db);
+  if (!data) {
+    return NextResponse.json({ run: null, logs: [] });
+  }
+
+  return NextResponse.json({
+    run: {
+      id: data.run.id,
+      status: data.run.status,
+      companyName: data.run.companyName,
+      startedAt:
+        data.run.startedAt instanceof Date ? data.run.startedAt.toISOString() : data.run.startedAt,
+      completedAt: data.run.completedAt
+        ? data.run.completedAt instanceof Date
+          ? data.run.completedAt.toISOString()
+          : data.run.completedAt
+        : null,
+    },
+    logs: data.logs.map((l) => ({
+      ts: l.ts instanceof Date ? l.ts.toISOString() : l.ts,
+      level: l.level,
+      message: l.message,
+    })),
   });
 }

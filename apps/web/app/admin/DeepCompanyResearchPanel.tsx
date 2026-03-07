@@ -47,10 +47,52 @@ export function DeepCompanyResearchPanel() {
   const [unresearchedCount, setUnresearchedCount] = useState<number>(0);
   const [continueBatch, setContinueBatch] = useState(false);
   const continueBatchRef = useRef(false);
+  const streamingRef = useRef(false);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
+
+  /** Load latest run + logs from DB so state is restored when returning to the page. */
+  async function fetchStatus(opts?: { fromPoll?: boolean }) {
+    try {
+      const res = await fetch('/api/admin/deep-company-research');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.run) {
+        const run = data.run as {
+          id: string;
+          status: string;
+          companyName: string;
+          startedAt: string;
+          completedAt: string | null;
+        };
+        const logEntries = (data.logs ?? []) as { ts: string; level: string; message: string }[];
+        if (!opts?.fromPoll || !streamingRef.current) {
+          setLogs(logEntries);
+        }
+        setCompanyName(run.companyName);
+        if (run.status === 'running') {
+          setRunning(true);
+        } else {
+          setRunning(false);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  /** Poll for status and new logs while a run is in progress (e.g. user returned to page). */
+  useEffect(() => {
+    if (!running) return;
+    const interval = setInterval(() => fetchStatus({ fromPoll: true }), 2500);
+    return () => clearInterval(interval);
+  }, [running]);
 
   async function fetchUnresearchedCount() {
     try {
@@ -114,6 +156,7 @@ export function DeepCompanyResearchPanel() {
     if (!name) return;
     if (nameOverride) setCompanyName(name);
     setRunning(true);
+    streamingRef.current = true;
     if (!opts?.partOfBatch) {
       setLogs([]);
       setResult(null);
@@ -227,6 +270,7 @@ export function DeepCompanyResearchPanel() {
       ]);
       setResult({ success: false, error: msg });
     } finally {
+      streamingRef.current = false;
       setRunning(false);
       await fetchUnresearchedCount();
       if (continueBatchRef.current) {
@@ -336,7 +380,6 @@ export function DeepCompanyResearchPanel() {
             <Button
               variant="outline"
               onClick={handleStopBatch}
-              disabled={running}
               title="After the current run finishes, no more will start automatically"
             >
               Stop batch {running ? `(after current)` : ''}
