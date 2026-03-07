@@ -269,9 +269,42 @@ export const applicationAssistantAnalyses = pgTable('application_assistant_analy
   waitingForLogin: boolean('waiting_for_login').default(false),
   waitingForCaptcha: boolean('waiting_for_captcha').default(false),
   runUpdatedAt: timestamp('run_updated_at'),
+  /** 'single' = one-off URL; 'batch' = from CSV automated queue. */
+  runSource: varchar('run_source', { length: 16 }).default('single'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+/** Queue for CSV-uploaded job URLs: one row per URL per user, processed in order. */
+export const applicationAnalysisQueueStatusEnum = pgEnum('application_analysis_queue_status', [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+]);
+
+export const applicationAnalysisQueue = pgTable(
+  'application_analysis_queue',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    status: applicationAnalysisQueueStatusEnum('status').notNull().default('pending'),
+    sequence: integer('sequence').notNull().default(0),
+    analysisId: uuid('analysis_id').references(() => applicationAssistantAnalyses.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    queueUserStatusIdx: index('application_analysis_queue_user_status_idx').on(
+      table.userId,
+      table.status,
+    ),
+  }),
+);
 
 /** Log lines for an Application Assistant run (persisted for live view and history). */
 export const applicationAssistantAnalysisLogs = pgTable('application_assistant_analysis_logs', {

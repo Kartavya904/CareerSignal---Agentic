@@ -38,6 +38,7 @@ export interface AnalysisRow {
   waitingForLogin: boolean | null;
   waitingForCaptcha: boolean | null;
   runUpdatedAt: Date | null;
+  runSource: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +46,7 @@ export interface AnalysisRow {
 export interface InsertAnalysisData {
   userId: string;
   url: string;
+  runSource?: 'single' | 'batch' | null;
   jobSummary?: Record<string, unknown> | null;
   matchScore?: number | null;
   matchGrade?: string | null;
@@ -104,6 +106,7 @@ export async function insertAnalysis(db: Db, data: InsertAnalysisData): Promise<
       waitingForLogin: data.waitingForLogin ?? false,
       waitingForCaptcha: data.waitingForCaptcha ?? false,
       runUpdatedAt: new Date(),
+      runSource: data.runSource ?? 'single',
     })
     .returning();
   return row as unknown as AnalysisRow;

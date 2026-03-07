@@ -7,6 +7,7 @@
  */
 
 import { chromium, type Browser, type Page } from 'playwright';
+import { complete } from '@careersignal/llm';
 import {
   cleanHtml,
   classifyPage,
@@ -387,6 +388,16 @@ export async function runApplicationAssistantPipeline(
       throwIfAborted(effectiveSignal);
       browser = await chromium.launch({ headless: false, args: STEALTH_ARGS });
       timings.browserMs = Date.now() - tBrowserStart;
+      throwIfAborted(effectiveSignal);
+
+      // Pre-warm the GENERAL (32B) model so Ollama loads it before the pipeline times out
+      try {
+        await dbLog(db, analysisId, 'Pipeline', 'Pre-warming GENERAL model (may take 1–2 min on first run)...', { level: 'info' });
+        await complete('Reply with exactly: OK', 'GENERAL', { maxTokens: 5, timeout: 300_000 });
+        await dbLog(db, analysisId, 'Pipeline', 'Model ready.', { level: 'info' });
+      } catch (e) {
+        await dbLog(db, analysisId, 'Pipeline', `Pre-warm skipped or failed: ${e instanceof Error ? e.message : String(e)}`, { level: 'warn' });
+      }
       throwIfAborted(effectiveSignal);
 
       if (cachedJobRow) {
@@ -1464,6 +1475,7 @@ export async function runApplicationAssistantPipeline(
           strengths?: string[];
           gaps?: string[];
         } | null;
+        const snapshot = analysisRow?.companySnapshot as Record<string, unknown> | null | undefined;
         const result = await sendAnalysisSummaryEmail({
           db,
           userId,
@@ -1472,6 +1484,9 @@ export async function runApplicationAssistantPipeline(
           company: jobDetail.company ?? 'Company',
           location: jobDetail.location ?? null,
           applyUrl: (jobDetail as { applyUrl?: string }).applyUrl ?? resolvedUrl,
+          companyUrl: (snapshot?.url as string | null | undefined) ?? null,
+          careersUrl: (snapshot?.careersUrl as string | null | undefined) ?? null,
+          linkedInUrl: (snapshot?.linkedinUrl as string | null | undefined) ?? null,
           matchScore: analysisRow?.matchScore != null ? Number(analysisRow.matchScore) : null,
           matchGrade: analysisRow?.matchGrade ?? null,
           matchRationale: analysisRow?.matchRationale ?? null,

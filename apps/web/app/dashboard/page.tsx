@@ -165,8 +165,8 @@ export default async function DashboardPage() {
                   const keyApply = job.applyUrl ? normalizeJobDedupeKey(job.applyUrl) : null;
                   const keyJob = job.jobUrl ? normalizeJobDedupeKey(job.jobUrl) : null;
                   const analysis =
-                    (keyApply && analysisByUrl.get(keyApply)) ??
-                    (keyJob && analysisByUrl.get(keyJob)) ??
+                    (keyApply ? analysisByUrl.get(keyApply) : null) ??
+                    (keyJob ? analysisByUrl.get(keyJob) : null) ??
                     null;
                   return {
                     title: job.title,

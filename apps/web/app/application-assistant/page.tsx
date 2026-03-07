@@ -94,6 +94,7 @@ interface Analysis {
   createdAt: string;
   runStatus?: string | null;
   runUpdatedAt?: string | null;
+  runSource?: string | null;
 }
 
 interface ApplicationAssistantPageProps {
@@ -353,6 +354,18 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
   > | null>(null);
   const [outreachDraftModalError, setOutreachDraftModalError] = useState<string | null>(null);
 
+  const [automateModalOpen, setAutomateModalOpen] = useState(false);
+  const [queueStatus, setQueueStatus] = useState<{
+    running: boolean;
+    current: number;
+    total: number;
+    pending: number;
+    completed: number;
+    failed: number;
+  } | null>(null);
+  const [queueUploading, setQueueUploading] = useState(false);
+  const [queueStopRequested, setQueueStopRequested] = useState(false);
+
   // Poll status (from DB: running state and progress persist across refresh/tabs)
   useEffect(() => {
     const poll = () => {
@@ -363,6 +376,19 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
     };
     poll();
     const interval = setInterval(poll, 1500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll queue status (for "Automated analysis running: X of Y" and Hard stop)
+  useEffect(() => {
+    const poll = () => {
+      fetch('/api/application-assistant/queue/status')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => d && setQueueStatus(d))
+        .catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -800,6 +826,22 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                 New analysis
               </button>
             )}
+            {!params?.id && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8125rem', padding: '0.35rem 0.75rem' }}
+                disabled={isRunning || (queueStatus?.running ?? false)}
+                title={
+                  queueStatus?.running
+                    ? 'Automated analysis in progress'
+                    : 'Upload a CSV of job URLs to run analyses in the background'
+                }
+                onClick={() => setAutomateModalOpen(true)}
+              >
+                Automate analysis
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary"
@@ -834,7 +876,149 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
           Paste a job or application page URL. We&apos;ll open it in a browser (you can log in if
           needed), then show a job summary, how you match, resume tips, and cover letter drafts.
         </p>
+
+        {queueStatus?.running && (
+          <div
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.5rem 0.75rem',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+            }}
+          >
+            <span style={{ fontSize: '0.875rem' }}>
+              Automated analysis running: {queueStatus.current} of {queueStatus.total}
+              {queueStatus.pending > 0 && ` (${queueStatus.pending} pending)`}
+            </span>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: '0.8125rem', padding: '0.35rem 0.75rem' }}
+              disabled={queueStopRequested}
+              onClick={async () => {
+                setQueueStopRequested(true);
+                try {
+                  await fetch('/api/application-assistant/queue/stop', { method: 'POST' });
+                  addToast?.(
+                    'Stop requested. The current job will finish, then the queue will stop.',
+                  );
+                } catch {
+                  addToast?.('Failed to request stop.');
+                } finally {
+                  setQueueStopRequested(false);
+                }
+              }}
+            >
+              {queueStopRequested ? 'Stopping…' : 'Hard stop'}
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Automate analysis modal */}
+      {automateModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="automate-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={(e) => e.target === e.currentTarget && setAutomateModalOpen(false)}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 420,
+              width: '90%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="automate-modal-title" className="section-title" style={{ marginTop: 0 }}>
+              Automate analysis
+            </h2>
+            <p
+              style={{
+                color: 'var(--muted-foreground)',
+                fontSize: '0.875rem',
+                marginBottom: '1rem',
+              }}
+            >
+              Upload a CSV with one job URL per row (optional header row). Analyses run in order in
+              the background. Results appear in History. An admin must start the queue for your
+              account from the Admin page.
+            </p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
+                const file = fileInput?.files?.[0];
+                if (!file) {
+                  addToast?.('Please select a CSV file.');
+                  return;
+                }
+                setQueueUploading(true);
+                try {
+                  const formData = new FormData();
+                  formData.set('file', file);
+                  const res = await fetch('/api/application-assistant/queue/upload', {
+                    method: 'POST',
+                    body: formData,
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    addToast?.(data?.error ?? 'Upload failed.');
+                    return;
+                  }
+                  addToast?.(`Added ${data.added ?? 0} URL(s) to your queue.`);
+                  setAutomateModalOpen(false);
+                  fileInput.value = '';
+                  const statusRes = await fetch('/api/application-assistant/queue/status');
+                  if (statusRes.ok) {
+                    const next = await statusRes.json();
+                    setQueueStatus(next);
+                  }
+                } finally {
+                  setQueueUploading(false);
+                }
+              }}
+            >
+              <input
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                style={{ marginBottom: '1rem', display: 'block' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setAutomateModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={queueUploading}>
+                  {queueUploading ? 'Uploading…' : 'Submit'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* History panel */}
       {showHistory && (
@@ -995,14 +1179,34 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                         color: 'var(--muted-foreground)',
                         fontSize: '0.75rem',
                         marginTop: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      {new Date(h.createdAt).toLocaleString()} —{' '}
-                      {(h as Analysis).runStatus === 'running'
-                        ? 'Running…'
-                        : h.matchScore != null
-                          ? `${h.matchScore}/100`
-                          : 'No match'}
+                      <span>
+                        {new Date(h.createdAt).toLocaleString()} —{' '}
+                        {(h as Analysis).runStatus === 'running'
+                          ? 'Running…'
+                          : h.matchScore != null
+                            ? `${h.matchScore}/100`
+                            : 'No match'}
+                      </span>
+                      {(h as Analysis).runSource === 'batch' && (
+                        <span
+                          style={{
+                            fontSize: '0.65rem',
+                            padding: '0.1rem 0.35rem',
+                            borderRadius: 4,
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            color: 'var(--muted-foreground)',
+                          }}
+                        >
+                          From batch
+                        </span>
+                      )}
                     </div>
                   </button>
                   <button
@@ -2613,7 +2817,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                     borderRadius: 8,
                   }}
                 >
-                  {String(outreachDraftModalDraft.body ?? '')}
+                  {String(outreachDraftModalDraft.body ?? '').replace(/\n{3,}/g, '\n\n')}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
@@ -2621,7 +2825,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                     className="btn btn-primary"
                     onClick={() => {
                       copyToClipboard(
-                        String(outreachDraftModalDraft.body ?? ''),
+                        String(outreachDraftModalDraft.body ?? '').replace(/\n{3,}/g, '\n\n'),
                         'outreach-draft-modal',
                       );
                     }}
@@ -2841,7 +3045,12 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                         </span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(String(d.body ?? ''), `outreach-${i}`)}
+                          onClick={() =>
+                            copyToClipboard(
+                              String(d.body ?? '').replace(/\n{3,}/g, '\n\n'),
+                              `outreach-${i}`,
+                            )
+                          }
                           style={{
                             fontSize: '0.75rem',
                             padding: '0.25rem 0.5rem',
@@ -2906,7 +3115,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                           wordBreak: 'break-word',
                         }}
                       >
-                        {String(d.body ?? '')}
+                        {String(d.body ?? '').replace(/\n{3,}/g, '\n\n')}
                       </div>
                     </div>
                   ))}

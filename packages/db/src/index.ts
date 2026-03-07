@@ -15,3 +15,4 @@ export * from './application-assistant-feedback';
 export * from './contacts';
 export * from './job-listings';
 export * from './deep-company-research-runs';
+export * from './application-analysis-queue';

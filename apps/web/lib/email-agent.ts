@@ -22,6 +22,12 @@ export interface SendAnalysisSummaryEmailInput {
   company: string;
   location: string | null;
   applyUrl: string | null;
+  /** Company homepage / main URL. If set, company name on next line links here. */
+  companyUrl?: string | null;
+  /** Careers page URL. Shown pipe-separated after company line when present. */
+  careersUrl?: string | null;
+  /** Company LinkedIn URL. Shown pipe-separated after company line when present. */
+  linkedInUrl?: string | null;
   matchScore: number | null;
   matchGrade: string | null;
   matchRationale: string | null;
@@ -89,6 +95,9 @@ export async function sendAnalysisSummaryEmail(
     company,
     location,
     applyUrl,
+    companyUrl,
+    careersUrl,
+    linkedInUrl,
     matchScore,
     matchGrade,
     matchRationale,
@@ -131,6 +140,19 @@ export async function sendAnalysisSummaryEmail(
   const analysisLink = `${baseUrl.replace(/\/$/, '')}/application-assistant/${analysisId}`;
   const applyLink = applyUrl?.trim() || analysisLink;
 
+  const companyUrlTrim = companyUrl?.trim();
+  const careersUrlTrim = careersUrl?.trim();
+  const linkedInUrlTrim = linkedInUrl?.trim();
+  const companyLineParts: string[] = [];
+  if (companyUrlTrim) {
+    companyLineParts.push(`${company}: ${companyUrlTrim}`);
+  } else {
+    companyLineParts.push(company);
+  }
+  if (careersUrlTrim) companyLineParts.push(`Careers: ${careersUrlTrim}`);
+  if (linkedInUrlTrim) companyLineParts.push(`LinkedIn: ${linkedInUrlTrim}`);
+  const companyLine = companyLineParts.join(' | ');
+
   const subject = `Apply for ${cleanTitleForSubject(jobTitle)} at ${company}${SUBJECT_SUFFIX}`;
 
   const strengthsText = strengths.length > 0 ? strengths.join(' ') : 'See analysis for details.';
@@ -143,10 +165,14 @@ export async function sendAnalysisSummaryEmail(
       ? rankedContacts.map((c) => contactLink(c)).join('\n')
       : 'No contacts discovered for this run.';
 
+  // Collapse excessive newlines in embedded draft so email isn't overly spaced
+  const normalizedDraftBody = bestContactDraft?.body?.replace(/\n{3,}/g, '\n\n') ?? '';
+
   // Plain-text fallback
   const bodyText = [
     `Our analysis for ${jobTitle} at ${company}${locationPart}.`,
     `Apply now: ${applyLink}`,
+    companyLine,
     '',
     `This role has been ranked for you. You scored ${score} out of 100 (${gradeDisplay}). Here is a brief overview.`,
     '',
@@ -160,12 +186,12 @@ export async function sendAnalysisSummaryEmail(
     '',
     'Best people to reach out to:',
     contactsList,
-    bestContactDraft?.body
+    normalizedDraftBody
       ? [
           '',
           'A draft of the message you should send:',
-          bestContactDraft.subject ? `Subject: ${bestContactDraft.subject}` : '',
-          bestContactDraft.body,
+          bestContactDraft?.subject ? `Subject: ${bestContactDraft.subject}` : '',
+          normalizedDraftBody,
         ]
           .filter(Boolean)
           .join('\n')
@@ -183,16 +209,25 @@ export async function sendAnalysisSummaryEmail(
     rankedContacts.length > 0
       ? rankedContacts.map((c) => escapeHtml(contactLink(c))).join('<br>\n')
       : 'No contacts discovered for this run.';
+  const hrefEsc = (u: string) =>
+    u.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const companyHtml = companyUrlTrim
+    ? `<a href="${hrefEsc(companyUrlTrim)}">${escapeHtml(company)}</a>`
+    : escapeHtml(company);
+  const careersPart = careersUrlTrim && ` | <a href="${hrefEsc(careersUrlTrim)}">Careers</a>`;
+  const linkedInPart = linkedInUrlTrim && ` | <a href="${hrefEsc(linkedInUrlTrim)}">LinkedIn</a>`;
+  const companyLineHtml = `<p>${companyHtml}${careersPart ?? ''}${linkedInPart ?? ''}</p>`;
   const bodyHtml = `
 <p>Our analysis for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(company)}</strong>${locationPart ? ` (<strong>${escapeHtml(location!.trim())}</strong>)` : ''}.</p>
 <p><a href="${applyLink}">Apply now</a></p>
+${companyLineHtml}
 <p>This role has been ranked for you. You scored <strong>${score}</strong> out of 100 (<strong>${escapeHtml(gradeDisplay)}</strong>). Here is a brief overview.</p>
 <p><strong>Score and match:</strong> ${escapeHtml(rationaleLine)}</p>
 <p><strong>What matches:</strong> ${escapeHtml(strengthsText)}</p>
 <p><strong>What to improve:</strong> ${escapeHtml(gapsText)}</p>
 <p>Download the attached cover letter (PDF) to apply to this job.</p>
 <p><strong>Best people to reach out to:</strong><br>\n${contactsListHtml}</p>
-${bestContactDraft?.body ? `<p><strong>A draft of the message you should send:</strong></p>${bestContactDraft.subject ? `<p><strong>Subject:</strong> ${escapeHtml(bestContactDraft.subject)}</p>` : ''}<p>${escapeHtml(bestContactDraft.body).replace(/\n/g, '<br>\n')}</p>` : ''}
+${normalizedDraftBody ? `<p><strong>A draft of the message you should send:</strong></p>${bestContactDraft?.subject ? `<p><strong>Subject:</strong> ${escapeHtml(bestContactDraft.subject)}</p>` : ''}<p>${escapeHtml(normalizedDraftBody).replace(/\n/g, '<br>\n')}</p>` : ''}
 <p><a href="${analysisLink}">View full analysis</a></p>
 `.trim();
 
