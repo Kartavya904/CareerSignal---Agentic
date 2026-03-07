@@ -10,6 +10,7 @@ export interface ContactRow {
   companyId: string;
   name: string;
   role: string | null;
+  contactRole: string | null;
   email: string | null;
   linkedinUrl: string | null;
   archetype: string | null;
@@ -27,6 +28,7 @@ export interface InsertContactInput {
   companyId: string;
   name: string;
   role?: string | null;
+  contactRole?: string | null;
   email?: string | null;
   linkedinUrl?: string | null;
   archetype?: string | null;
@@ -45,6 +47,7 @@ export async function insertContact(db: Db, input: InsertContactInput): Promise<
       companyId: input.companyId,
       name: input.name,
       role: input.role ?? null,
+      contactRole: input.contactRole ?? null,
       email: input.email ?? null,
       linkedinUrl: input.linkedinUrl ?? null,
       archetype: input.archetype ?? null,

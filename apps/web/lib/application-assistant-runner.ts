@@ -332,7 +332,7 @@ export async function runApplicationAssistantPipeline(
   const extendDeadlineForOutreach = () => {
     if (outreachExtended) return;
     outreachExtended = true;
-    const newDeadline = deadlineMs + OUTREACH_EXTRA_MS;
+    const newDeadline = Date.now() + OUTREACH_EXTRA_MS;
     deadlineMs = Math.min(newDeadline, pipelineStart + APP_ASSISTANT_MAX_TIMEOUT_MS);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => mergedController.abort(), Math.max(0, deadlineMs - Date.now()));
@@ -1302,6 +1302,7 @@ export async function runApplicationAssistantPipeline(
               description: jobDetail.description ?? undefined,
               sourceUrl: resolvedUrl,
               applyUrl: resolvedUrl,
+              location: jobDetail.location,
             },
             company: companyForOutreach
               ? {

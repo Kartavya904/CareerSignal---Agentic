@@ -554,6 +554,7 @@ export const contacts = pgTable(
       .references(() => companies.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     role: text('role'),
+    contactRole: text('contact_role'),
     email: text('email'),
     linkedinUrl: text('linkedin_url'),
     archetype: varchar('archetype', { length: 32 }), // HIRING_MANAGER, TECH_RECRUITER, etc.

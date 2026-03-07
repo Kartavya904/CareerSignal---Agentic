@@ -2501,10 +2501,10 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                         rel="noopener noreferrer"
                         style={{ fontWeight: 600, color: 'var(--accent)' }}
                       >
-                        {bestContact.name ?? '—'}
+                        {bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}
                       </a>
                     ) : (
-                      <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}</span>
+                      <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}</span>
                     )}
                   </div>
                 </div>
@@ -2538,10 +2538,10 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                           rel="noopener noreferrer"
                           style={{ fontWeight: 600, color: 'var(--accent)' }}
                         >
-                          {bestContact.name ?? '—'}
+                          {bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}
                         </a>
                       ) : (
-                        <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}</span>
+                        <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}</span>
                       )}
                     </div>
                   )}
@@ -2591,35 +2591,25 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                               >
                                 {i + 1}
                               </span>
-                              {r.linkedinUrl ? (
-                                <a
-                                  href={r.linkedinUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    fontWeight: 600,
-                                    color: 'var(--accent)',
-                                    textOverflow: 'ellipsis',
-                                    overflow: 'hidden',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  {r.name ?? '—'}
-                                </a>
-                              ) : (
-                                <span style={{ fontWeight: 600 }}>{r.name ?? '—'}</span>
-                              )}
-                              {r.role != null ? (
-                                <span
-                                  style={{
-                                    fontSize: '0.8125rem',
-                                    color: 'var(--muted-foreground)',
-                                  }}
-                                >
-                                  · {r.role}
-                                </span>
-                              ) : null}
-                            </span>
+                                {r.linkedinUrl ? (
+                                  <a
+                                    href={r.linkedinUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      fontWeight: 600,
+                                      color: 'var(--accent)',
+                                      textOverflow: 'ellipsis',
+                                      overflow: 'hidden',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {r.name ?? '—'}{ (r.contactRole || r.role) ? ` [${r.contactRole || r.role}]` : ''}
+                                  </a>
+                                ) : (
+                                  <span style={{ fontWeight: 600 }}>{r.name ?? '—'}{ (r.contactRole || r.role) ? ` [${r.contactRole || r.role}]` : ''}</span>
+                                )}
+                              </span>
                             <button
                               type="button"
                               title="Create outreach draft for this contact"

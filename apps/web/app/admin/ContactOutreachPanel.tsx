@@ -191,21 +191,34 @@ export function ContactOutreachPanel() {
                       Contacts ({result.contacts.length}):
                     </p>
                     {result.contacts.length > 0 && (
-                      <div className="mt-2 text-xs bg-black/10 dark:bg-black/20 p-2 rounded max-h-64 overflow-auto font-mono whitespace-pre-wrap">
-                        {JSON.stringify(
-                          result.contacts.map((c: any) => ({
-                            rank: c.rank,
-                            name: c.name,
-                            role: c.role,
-                            archetype: c.archetype,
-                            email: c.email,
-                            linkedinUrl: c.linkedinUrl,
-                            evidenceUrl: c.evidenceUrl,
-                            source: c.source
-                          })),
-                          null,
-                          2
-                        )}
+                      <div className="mt-2 space-y-1">
+                        {result.contacts.map((c: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-sm border-b border-muted/50 pb-1 last:border-0">
+                            <span className="text-muted-foreground font-mono w-4">{i + 1}</span>
+                            {c.linkedinUrl ? (
+                              <a
+                                href={c.linkedinUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline font-medium"
+                              >
+                                {c.name ?? '—'}
+                              </a>
+                            ) : (
+                              <span className="font-medium">{c.name ?? '—'}</span>
+                            )}
+                            {(c.contactRole || c.role) && (
+                              <span className="text-muted-foreground">
+                                [{c.contactRole || c.role}]
+                              </span>
+                            )}
+                            {c.email && (
+                              <span className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground ml-auto">
+                                {c.email}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

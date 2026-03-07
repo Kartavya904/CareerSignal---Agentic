@@ -69,6 +69,7 @@ export async function verifyContact(
     jobId: job.id,
     name: candidate.name,
     role: candidate.role,
+    contactRole: candidate.contactRole || candidate.role,
     company: candidate.company,
     archetype,
     evidenceUrls: [candidate.evidenceUrl],

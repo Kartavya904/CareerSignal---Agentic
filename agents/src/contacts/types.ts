@@ -25,6 +25,7 @@ export const ContactSchema = z.object({
   jobId: z.string(),
   name: z.string(),
   role: z.string().optional(),
+  contactRole: z.string().optional(),
   company: z.string(),
   archetype: ContactArchetypeSchema,
   evidenceUrls: z.array(z.string()).default([]),
@@ -44,6 +45,7 @@ export type Contact = z.infer<typeof ContactSchema>;
 export const ContactSearchResultSchema = z.object({
   name: z.string(),
   role: z.string().optional(),
+  contactRole: z.string().optional(),
   company: z.string(),
   linkedinUrl: z.string().optional(),
   evidenceUrl: z.string(),

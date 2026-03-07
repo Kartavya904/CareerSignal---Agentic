@@ -32,6 +32,7 @@ import {
 } from '@careersignal/agents';
 import {
   extractFromTeamPage,
+  extractFromLinkedInProfile,
   filterByArchetype,
   type ContactStrategy,
 } from '@careersignal/agents';
@@ -63,6 +64,7 @@ export interface OutreachJobInput {
   sourceUrl: string;
   applyUrl?: string;
   id?: string;
+  location?: string | null;
 }
 
 export interface OutreachCompanyInput {
@@ -166,6 +168,7 @@ function toNormalizedJob(job: OutreachJobInput, runFolderName: string): Normaliz
     sourceUrl: job.sourceUrl,
     description: job.description,
     applyUrl: job.applyUrl ?? job.sourceUrl,
+    location: job.location ?? undefined,
     dedupeKey: job.sourceUrl,
     createdAt: t,
     updatedAt: t,
@@ -352,7 +355,7 @@ export async function runOutreachResearch(
   }
 
   /** Candidates may include optional email or location. */
-  const candidates: (ContactSearchResult & { email?: string; location?: string })[] = priorityContact
+  const candidates: (ContactSearchResult & { email?: string; location?: string; contactRole?: string })[] = priorityContact
     ? [priorityContact]
     : [];
   const visitedUrls = new Set<string>(memory.visitedUrls);
@@ -524,9 +527,32 @@ export async function runOutreachResearch(
         level: 'info',
         message: `LinkedIn discovery complete: ${totalLinkedIn} profile(s) found across ${archetypes.length} contact types.`,
       });
-      memory.discoveredUrls = [...discoveredUrlsList];
-      memory.visitedUrls = Array.from(visitedUrls);
       await writeOutreachMemory(runFolderName, memory);
+
+      // 3.1 Refined LinkedIn extraction: visit top 6 LinkedIn profiles to extract clean name and role
+      const linkedinCandidates = candidates.filter(c => c.source?.startsWith('linkedin_') && c.linkedinUrl);
+      if (browserPage && linkedinCandidates.length > 0) {
+        const top6 = linkedinCandidates.slice(0, 6);
+        log({ level: 'info', message: `Refining names and roles for top ${top6.length} LinkedIn profiles...` });
+        for (const cand of top6) {
+          throwIfAborted();
+          if (Date.now() >= contactDiscoveryDeadline) break;
+          try {
+             const key = normalizeUrlForDedupe(cand.linkedinUrl!);
+             // Profile was already counted as "discovered", now we visit to "extract"
+             await browserPage.goto(cand.linkedinUrl!, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+             const rawHtml = await browserPage.content();
+             const refined = await extractFromLinkedInProfile(rawHtml, cand.linkedinUrl!, job.companyName);
+             if (refined) {
+               cand.name = refined.name;
+               cand.contactRole = refined.role;
+               log({ level: 'info', message: `  └ Refined: ${refined.name} [${refined.role}]` });
+             }
+          } catch {
+             // non-fatal
+          }
+        }
+      }
     }
   }
 

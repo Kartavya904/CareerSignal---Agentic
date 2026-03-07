@@ -155,6 +155,7 @@ export async function POST(req: Request) {
           sourceUrl: resolvedJobUrl,
           applyUrl: resolvedJobUrl,
           id: runFolderName,
+          location: jobRow.location,
         },
         company: {
           id: company.id,

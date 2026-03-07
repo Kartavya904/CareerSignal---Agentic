@@ -112,6 +112,7 @@ export async function POST(req: Request) {
             sourceUrl: url,
             applyUrl: url,
             id: analysisId,
+            location: typeof jobSummary.location === 'string' ? jobSummary.location : null,
           },
           company: company
             ? {

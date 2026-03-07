@@ -134,6 +134,44 @@ ${truncatedHtml}`;
 }
 
 /**
+ * Extract clean name and role from a LinkedIn profile HTML
+ */
+export async function extractFromLinkedInProfile(
+  html: string,
+  url: string,
+  company: string,
+): Promise<{ name: string; role: string } | null> {
+  const truncatedHtml = html.substring(0, 15000);
+
+  const prompt = `Extract the person's name and current job title from this LinkedIn profile.
+
+HTML:
+${truncatedHtml}
+
+Return JSON: { "name": "Full Name", "role": "Current Title" }`;
+
+  try {
+    const response = await complete(prompt, 'FAST', {
+      format: 'json',
+      temperature: 0.1,
+      maxTokens: 256,
+      timeout: 20000,
+    });
+
+    const parsed = JSON.parse(response);
+    if (parsed.name && parsed.role) {
+      return {
+        name: parsed.name,
+        role: parsed.role,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Filter results to match target archetypes
  */
 export function filterByArchetype(
