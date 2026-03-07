@@ -331,3 +331,141 @@ Logs (84)
  [Admin] Agent finished. Visited 8 URLs, core coverage 100%
  [Admin] Upserting company to database...
  [Admin] Done. Company id=b9ac7e18-9621-4128-a889-1566ca65db8a, elapsed=417.8s
+
+
+ Outreach Research Agent Output: 
+[05:23:26]
+[Fetcher]
+Fetching URL via HTTP: https://www.google.com/about/careers/applications/jobs/results/133410159077532358-software-engineer-android-laptops-and-tablets-early-career
+[05:23:26]
+[Fetcher]
+Fetch completed with status 200. Final URL: https://www.google.com/about/careers/applications/jobs/results/133410159077532358-software-engineer-android-laptops-and-tablets-early-career
+[05:23:26]
+[Browser]
+Launching visible browser...
+[05:23:26]
+[Pipeline]
+Pre-warming GENERAL model (may take 1–2 min on first run)...
+[05:23:41]
+[Pipeline]
+Model ready.
+[05:23:41]
+[Extractor]
+Using cached job listing (job_listing_id=5898c48b-cc24-4e1b-b76c-95fe16d135f0); skipping scraping + extraction.
+[05:23:41]
+[CompanyResolver]
+Resolved company: "Google" (confidence 50%)
+[05:23:41]
+[DeepCompanyDossier]
+Starting deep company enrichment (DB lookup + web research)...
+[05:23:41]
+[DeepCompanyDossier]
+Using existing company record (id=cb0b4954-d6db-4900-98b8-0f16bd21c98b).
+[05:23:41]
+[JobListing]
+Updated job listing (id=5898c48b-cc24-4e1b-b76c-95fe16d135f0).
+[05:23:41]
+[Match]
+Computing profile-job match...
+[05:25:12]
+[Match]
+Score: 75.5/100 (B+)
+[05:25:12]
+[Resume]
+Generating resume suggestions...
+[05:27:14]
+[Resume]
+5 matches, 5 improvements, 10 keywords
+[05:27:14]
+[CoverLetter]
+Generating cover letter...
+[05:28:52]
+[CoverLetter]
+Cover letter ready
+[05:28:52]
+[InterviewPrep]
+Skipping interview talking points for later development purposes.
+[05:28:52]
+[OutReachPipeline]
+Running contact discovery and outreach generation...
+[05:28:52]
+[OutReachPipeline]
+Starting Deep Outreach Research for "Software Engineer, Android Laptops and Tablets, Early Career" at Google
+[05:28:52]
+[OutReachPipeline]
+Computing contact strategy...
+[05:28:52]
+[OutReachPipeline]
+Filtered contact strategy to 3 preferred roles.
+[05:28:52]
+[OutReachPipeline]
+Visiting job posting URL to find contacts and team links: https://www.google.com/about/careers/applications/...
+[05:29:02]
+[OutReachPipeline]
+Found 3 embedded team/about link(s). Visiting directly...
+[05:29:04]
+[OutReachPipeline]
+Visited embedded link https://www.google.com/about/careers/applications/... found 0 priority candidates
+[05:29:17]
+[OutReachPipeline]
+Visited embedded link https://www.google.com/about/careers/applications/... found 0 priority candidates
+[05:29:19]
+[OutReachPipeline]
+Visited embedded link https://www.google.com/about/careers/applications/... found 0 priority candidates
+[05:29:19]
+[OutReachPipeline]
+Running targeted LinkedIn discovery (13 queries across 3 contact types)...
+[05:29:19]
+[OutReachPipeline]
+Searching for HIRING_MANAGER contacts...
+[05:29:34]
+[OutReachPipeline]
+Searching for TECH_RECRUITER contacts...
+[05:29:45]
+[OutReachPipeline]
+└ Query 4/13: found 3 profile(s) [TECH_RECRUITER]
+[05:29:48]
+[OutReachPipeline]
+Searching for CAMPUS_RECRUITER contacts...
+[05:30:14]
+[OutReachPipeline]
+└ Query 8/13: found 5 profile(s) [GENERAL]
+[05:30:35]
+[OutReachPipeline]
+└ Query 11/13: found 1 profile(s) [GENERAL]
+[05:30:42]
+[OutReachPipeline]
+└ Query 12/13: found 9 profile(s) [GENERAL]
+[05:30:52]
+[OutReachPipeline]
+LinkedIn discovery complete: 18 profile(s) found across 3 contact types.
+[05:30:52]
+[OutReachPipeline]
+Refining names and roles for top 6 LinkedIn profiles...
+[05:30:56]
+[OutReachPipeline]
+└ Refined: Vasu Prabhakaran [Engineering Manager]
+[05:30:59]
+[OutReachPipeline]
+└ Refined: Ajesh George [Engineering Manager]
+[05:31:02]
+[OutReachPipeline]
+└ Refined: Sayeed ulla [Infrastructure Modernization Specialist at Google]
+[05:31:03]
+[OutReachPipeline]
+Ranked 5 contact(s). Best: Sayeed ulla.
+[05:31:03]
+[OutReachPipeline]
+Outreach pipeline complete. 5 contact(s). Create drafts on demand from the contacts list.
+[05:31:03]
+[OutReachPipeline]
+Done. 5 contact(s). Create drafts on demand from the contacts list.
+[05:31:39]
+[OutreachDraft]
+Draft created for best contact.
+[05:31:45]
+[EmailAgent]
+Summary email sent.
+[05:31:45]
+[Pipeline]
+Analysis complete!
