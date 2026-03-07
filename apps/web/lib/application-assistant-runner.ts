@@ -21,6 +21,8 @@ import {
   verifyCleaning,
   resolveCompanyIdentity,
   deepResearchCompany,
+  extractHooks,
+  generateSingleDraftForContact,
   type ProfileSnapshot,
 } from '@careersignal/agents';
 import {
@@ -56,6 +58,8 @@ import { transitionAssistantStep } from '@/lib/application-assistant-planner';
 import { getDossierRunFolderName, createDossierDiskWriter } from '@/lib/dossier-disk';
 import { getOutreachRunFolderName } from '@/lib/outreach-research-disk';
 import { runOutreachResearch, OUTREACH_PIPELINE_TIMEOUT_MS } from '@/lib/outreach-research-runner';
+import { sendAnalysisSummaryEmail } from '@/lib/email-agent';
+import { toNormalizedJob, rankedItemToContact } from '@/lib/outreach-draft-helpers';
 
 /** Build a serializable company snapshot for the analysis (minimal DB company fields for the UI card). */
 function toCompanySnapshot(row: {
@@ -1368,11 +1372,127 @@ export async function runApplicationAssistantPipeline(
         },
       });
 
-      // Email pipeline (future): only announce if preference is enabled.
-      if ((preferences as { emailUpdatesEnabled?: boolean } | null)?.emailUpdatesEnabled) {
-        await dbLog(db, analysisId, 'EmailAgent', 'Email Agent not implemented yet, skipping.', {
-          level: 'info',
+      // Generate a single outreach draft for the best contact only (for email and UI).
+      let bestContactDraft: { subject?: string; body: string } | null = null;
+      const ranked = Array.isArray(outreachContacts.ranked) ? outreachContacts.ranked : [];
+      const bestContact = (outreachContacts.bestFirst ?? ranked[0]) as Record<
+        string,
+        unknown
+      > | null;
+      if (profile && bestContact && ranked.length > 0) {
+        try {
+          const companyName = jobDetail.company ?? 'Company';
+          const jobSummary: Record<string, unknown> = {
+            title: jobDetail.title,
+            company: jobDetail.company,
+            description: jobDetail.description,
+            department: (jobDetail as { department?: string }).department ?? 'Engineering',
+          };
+          const normalizedJob = toNormalizedJob(analysisId, jobSummary, resolvedUrl);
+          const contact = rankedItemToContact(bestContact, analysisId, companyName);
+          const candidateName = profile.name ?? 'Candidate';
+          const candidateSkills =
+            (profile.skills as string[]) ?? (preferences?.skills as string[]) ?? [];
+          const hooks = await extractHooks(normalizedJob, contact, candidateSkills);
+          const outreachTonePref = (preferences as { outreachTone?: string | null } | null)
+            ?.outreachTone;
+          const tone =
+            outreachTonePref === 'WARM' || outreachTonePref === 'TECHNICAL'
+              ? outreachTonePref
+              : 'CONCISE';
+          const toneAdjectives = contact.linkedinUrl
+            ? ((preferences as { coldLinkedinTone?: string[] | null } | null)?.coldLinkedinTone ??
+              [])
+            : ((preferences as { coldEmailTone?: string[] | null } | null)?.coldEmailTone ?? []);
+          const draft = await generateSingleDraftForContact(
+            normalizedJob,
+            contact,
+            candidateName,
+            candidateSkills,
+            hooks,
+            { tone, toneAdjectives: Array.isArray(toneAdjectives) ? toneAdjectives : [] },
+          );
+          bestContactDraft = { subject: draft.subject, body: draft.body };
+          const serializedDraft = {
+            id: draft.id,
+            contactId: contact.id,
+            contactName: contact.name,
+            contactIndex: 0,
+            platform: draft.platform,
+            variant: draft.variant,
+            subject: draft.subject,
+            body: draft.body,
+            tone: draft.tone,
+            characterCount: draft.characterCount,
+            withinLimit: draft.withinLimit,
+            userInstruction: null,
+            createdAt: draft.createdAt,
+          };
+          const existingDrafts = Array.isArray(outreachContacts.drafts)
+            ? outreachContacts.drafts
+            : [];
+          await updateAnalysis(db, analysisId, {
+            contacts: { ...outreachContacts, drafts: [...existingDrafts, serializedDraft] },
+          });
+          await dbLog(db, analysisId, 'OutreachDraft', 'Draft created for best contact.', {
+            level: 'info',
+          });
+        } catch (draftErr) {
+          dbLog(
+            db,
+            analysisId,
+            'OutreachDraft',
+            `Best-contact draft failed (non-fatal): ${draftErr instanceof Error ? draftErr.message : String(draftErr)}`,
+            { level: 'warn' },
+          );
+        }
+      }
+
+      // Email pipeline: send summary to user when enabled and min score met. PDF saved to run folder and attached.
+      const emailPrefs = preferences as {
+        emailUpdatesEnabled?: boolean;
+        emailMinMatchScore?: string | null;
+      } | null;
+      if (emailPrefs?.emailUpdatesEnabled) {
+        const analysisRow = await getAnalysisById(db, analysisId);
+        const runFolderPath = getRunFolderPath(runFolderName);
+        const baseUrl =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+          'http://localhost:3000';
+        const matchBreakdown = analysisRow?.matchBreakdown as {
+          strengths?: string[];
+          gaps?: string[];
+        } | null;
+        const result = await sendAnalysisSummaryEmail({
+          db,
+          userId,
+          analysisId,
+          jobTitle: jobDetail.title ?? 'Position',
+          company: jobDetail.company ?? 'Company',
+          location: jobDetail.location ?? null,
+          applyUrl: (jobDetail as { applyUrl?: string }).applyUrl ?? resolvedUrl,
+          matchScore: analysisRow?.matchScore != null ? Number(analysisRow.matchScore) : null,
+          matchGrade: analysisRow?.matchGrade ?? null,
+          matchRationale: analysisRow?.matchRationale ?? null,
+          strengths: matchBreakdown?.strengths ?? [],
+          gaps: matchBreakdown?.gaps ?? [],
+          coverLetters: (analysisRow?.coverLetters as Record<string, string> | null) ?? null,
+          rankedContacts: Array.isArray(outreachContacts.ranked) ? outreachContacts.ranked : [],
+          bestContactDraft,
+          runFolderPath,
+          emailUpdatesEnabled: true,
+          emailMinMatchScore:
+            emailPrefs.emailMinMatchScore != null ? Number(emailPrefs.emailMinMatchScore) : null,
+          baseUrl,
         });
+        if (result.sent) {
+          await dbLog(db, analysisId, 'EmailAgent', 'Summary email sent.', { level: 'success' });
+        } else {
+          await dbLog(db, analysisId, 'EmailAgent', result.reason ?? 'Email not sent.', {
+            level: 'info',
+          });
+        }
       }
 
       await transitionAssistantStep(db, analysisId, 'done', { runStatusOverride: 'done' });

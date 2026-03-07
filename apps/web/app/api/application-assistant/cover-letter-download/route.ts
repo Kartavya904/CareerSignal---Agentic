@@ -2,49 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredUserId } from '@/lib/auth';
 import { getDb, getAnalysisById } from '@careersignal/db';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-
-function getDraftText(coverLetters: Record<string, string> | null | undefined): string | null {
-  if (!coverLetters) return null;
-  return (
-    coverLetters.draft ??
-    coverLetters.formal ??
-    coverLetters.conversational ??
-    coverLetters.bold ??
-    Object.values(coverLetters)[0] ??
-    null
-  );
-}
-
-function wrapTextToWidth(
-  text: string,
-  opts: { maxWidth: number; font: any; fontSize: number },
-): string[] {
-  const { maxWidth, font, fontSize } = opts;
-  const paragraphs = text.replace(/\r\n/g, '\n').split('\n');
-  const lines: string[] = [];
-  for (const p of paragraphs) {
-    const words = p.split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
-      lines.push('');
-      continue;
-    }
-    let current = words[0] ?? '';
-    for (let i = 1; i < words.length; i++) {
-      const w = words[i]!;
-      const candidate = `${current} ${w}`;
-      const width = font.widthOfTextAtSize(candidate, fontSize);
-      if (width <= maxWidth) {
-        current = candidate;
-      } else {
-        lines.push(current);
-        current = w;
-      }
-    }
-    lines.push(current);
-  }
-  return lines;
-}
+import { getDraftText, generateCoverLetterPdfBuffer } from '@/lib/cover-letter-pdf';
 
 export async function GET(req: Request) {
   try {
@@ -67,12 +25,12 @@ export async function GET(req: Request) {
     }
 
     const draftText = getDraftText(analysis.coverLetters as Record<string, string> | null);
-    if (!draftText || !draftText.trim()) {
-      return NextResponse.json({ error: 'Cover letter draft not found' }, { status: 404 });
-    }
-
     const safeId = analysisId.slice(0, 8);
+
     if (format === 'docx') {
+      if (!draftText || !draftText.trim()) {
+        return NextResponse.json({ error: 'Cover letter draft not found' }, { status: 404 });
+      }
       const doc = new Document({
         sections: [
           {
@@ -95,30 +53,14 @@ export async function GET(req: Request) {
       });
     }
 
-    // PDF
-    const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-    const fontSize = 11;
-    const lineHeight = 14;
-    const margin = 54;
-
-    let page = pdfDoc.addPage();
-    const { width, height } = page.getSize();
-    const maxWidth = width - margin * 2;
-    let y = height - margin;
-
-    const lines = wrapTextToWidth(draftText, { maxWidth, font, fontSize });
-    for (const line of lines) {
-      if (y < margin + lineHeight) {
-        page = pdfDoc.addPage();
-        y = page.getSize().height - margin;
-      }
-      page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
-      y -= lineHeight;
+    // PDF (shared helper)
+    const pdfBuffer = await generateCoverLetterPdfBuffer(
+      analysis.coverLetters as Record<string, string> | null,
+    );
+    if (!pdfBuffer) {
+      return NextResponse.json({ error: 'Cover letter draft not found' }, { status: 404 });
     }
-
-    const pdfBytes = await pdfDoc.save();
-    return new NextResponse(new Uint8Array(pdfBytes), {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="cover-letter-${safeId}.pdf"`,

@@ -540,7 +540,7 @@ ScoreBreakdown {
 
 ### Contact Priority Ranking (Global)
 
-When searching for contacts, prioritize in this order:
+This table defines **how we rank and prefer contacts when we have multiple candidates** — not whom we search for. We search for **candidates across all these role types** (targeted to the position); when we find several, we order them by this priority:
 
 | Priority | Contact Type                            | Why                                               |
 | -------- | --------------------------------------- | ------------------------------------------------- |
@@ -552,32 +552,27 @@ When searching for contacts, prioritize in this order:
 | 6        | **Founder**                             | Small companies, startup roles                    |
 | 7        | **Fallback: any reachable person**      | Last resort — anyone from the company             |
 
-The contact must **align with the position** (e.g., don't suggest a marketing manager for a SWE role).
+The contact must **align with the position** (e.g., don't suggest a marketing manager for a SWE role). Discovery flow: **2–3 targeted queries per role type** (dynamic total, max 30; DDG, visit up to 30 pages), then **role-targeted LinkedIn discovery**, then **company LinkedIn fallback** if needed (see root `plan.md` §3).
 
 ### Contact Discovery Flow (Full Multi-Source — Option B Confirmed)
 
 ```
-1. Check job description first: if it contains an email → scrape, save as contact, draft cold email
-2. Otherwise: Contact Strategy Agent decides which archetype to hunt based on job + company size + role type
-3. People Search Agent: searches ALL public web sources (public records, LinkedIn public, company sites, etc.) for names matching archetype
-   - Company team/about pages
-   - LinkedIn public profiles (no login required)
-   - GitHub org members + contributors
-   - Conference speaker lists (recorded talks, event pages)
-   - Blog post authors (company engineering blogs)
-   - Press releases / news articles
-   - Twitter/X profiles (public)
-   - Open-source project maintainers
-   - Company podcasts / interviews
-   - Patent filings, academic papers (for research roles)
-4. Contact Verifier Agent: validates relevance + freshness + confidence
-5. Output: top 3 contacts per job, ranked by priority + confidence
+1. Check job posting first: contact on page or URLs in posting → use those before broader search.
+2. Contact Strategy Agent: decide which role types (archetypes) are relevant for this job + company.
+3. People Search (targeted, not HR-only):
+   - Search for candidates across ALL relevant role types (HM, EM, team lead, tech recruiter, etc.); rank results by Contact Priority Ranking.
+   - DDG phase: 2–3 targeted queries per role type (dynamic total, max 30; job title + company + archetype); visit up to 30 pages per existing budget.
+   - LinkedIn discovery: role-targeted (job title + role types), not generic "company HR".
+   - Last fallback: if nothing useful from above, search for at least someone from the company's LinkedIn (broader company-level).
+   - Sources: company team/about pages, LinkedIn public, GitHub, conferences, blogs, press, etc.
+4. Contact Verifier Agent: validates relevance + freshness + confidence.
+5. Output: top 3 contacts per job, ranked by Contact Priority + confidence.
 6. Draft outreach:
    - If contact has **email** → draft cold email
    - If contact has **LinkedIn** (no email) → draft LinkedIn connection/DM message
 ```
 
-This is the thorough Option B — takes longer per job but produces higher quality contacts with stronger evidence trails.
+This is the thorough Option B — targeted queries per role type, then role-targeted LinkedIn, then company fallback; produces higher quality contacts with stronger evidence trails.
 
 ### Contact Schema
 

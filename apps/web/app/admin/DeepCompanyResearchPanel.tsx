@@ -48,6 +48,7 @@ export function DeepCompanyResearchPanel() {
   const [continueBatch, setContinueBatch] = useState(false);
   const continueBatchRef = useRef(false);
   const streamingRef = useRef(false);
+  const [hardStopping, setHardStopping] = useState(false);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -93,6 +94,23 @@ export function DeepCompanyResearchPanel() {
     const interval = setInterval(() => fetchStatus({ fromPoll: true }), 2500);
     return () => clearInterval(interval);
   }, [running]);
+
+  async function handleHardStop() {
+    setHardStopping(true);
+    try {
+      const res = await fetch('/api/admin/deep-company-research/stop', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setRunning(false);
+        streamingRef.current = false;
+        continueBatchRef.current = false;
+        setContinueBatch(false);
+        await fetchStatus();
+      }
+    } finally {
+      setHardStopping(false);
+    }
+  }
 
   async function fetchUnresearchedCount() {
     try {
@@ -385,6 +403,21 @@ export function DeepCompanyResearchPanel() {
               Stop batch {running ? `(after current)` : ''}
             </Button>
           )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleHardStop}
+            disabled={!running || hardStopping}
+            title="If the DB shows running but no job is actually running (e.g. server was restarted), click to clear the running state."
+          >
+            {hardStopping ? 'Stopping…' : 'Hard stop'}
+          </Button>
+          <span className="text-muted-foreground text-xs">
+            Clears &quot;running&quot; state when the server was stopped without stopping the run.
+          </span>
         </div>
 
         <div className="rounded-md border border-muted bg-muted/20 p-4 space-y-3">

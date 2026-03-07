@@ -152,6 +152,12 @@ npm run dev
 
 Open http://localhost:3000 → Sign up / Sign in → Profile → Preferences → Application Assistant (paste a job URL).
 
+### Running locally (terminals)
+
+- **Terminal 1:** `npm run dev` — Next.js app (Application Assistant, Dashboard, Admin, etc.).
+- **Terminal 2:** `ollama serve` — local LLM runtime (and run your chosen models, e.g. `ollama run qwen2.5:32b-instruct-q4_K_M`).
+- **Email summaries:** No extra process. When a user has “Email updates” enabled and an analysis finishes, the app sends the summary from the same Node process using SMTP. To enable it, set `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` (and optionally `SMTP_PORT`) in `.env.local` (see `.env.example`). Use an Outlook app password if you use Outlook.
+
 ---
 
 ## Documentation
