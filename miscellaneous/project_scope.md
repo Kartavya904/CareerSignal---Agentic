@@ -2,6 +2,22 @@
 
 **Purpose:** Definitive scope document for V1, V2, and V3. All decisions are locked unless explicitly marked `[OPEN]`. Derived from `plan.md` and stakeholder confirmation session.
 
+**See also:** Repo root `plan.md` for remaining work (email agent, CSV application analysis upload, outreach tuning, interview prep).
+
+## Implementation (As Built) — Summary
+
+The following reflects the current codebase. Full schema: `packages/db/src/schema.ts`.
+
+**Database tables (main):** `users`, `profiles`, `user_preferences`, `user_metadata`, `user_profile_insights`; `application_assistant_analyses`, `application_assistant_analysis_logs`, `application_assistant_feedback`; `sources`, `runs`, `jobs`; `companies`, `job_listings`, `job_observations`; `contacts`; `deep_company_research_runs`, `deep_company_research_admin_logs`.
+
+**Application Assistant pipeline (order):** (1) Fetch-first URL normalization (2) Browser launch (Playwright) (3) Navigate + clean HTML (4) Classify page (job / non-job / login_wall / captcha) (5) If login_wall or captcha → wait for user, re-capture (6) If not job and classifier says non-job → resolve to job page (depth ≤ 2) (7) Extract job detail (optional RAG on cleaned HTML, then raw fallback) (8) Company identity resolver (9) Deep company dossier if company in DB (browser + DDG, chunk/embed, persist to company) (10) Persist analysis + upsert `job_listings` (11) Match (rule + LLM, strict filter, rationale, breakdown) (12) Writing: resume suggestions, cover letters, interview prep (13) Optional: outreach (contact discovery + drafts) (14) Done. Step transitions and timeouts in `apps/web/lib/application-assistant-runner.ts` and `application-assistant-planner.ts`.
+
+**Admin:** Two tabs in `/admin`. (1) **Deep company research:** company name input or CSV import (company names), “Deep Research” per company, “Continue deep research” batch, live logs; APIs: GET/POST `/api/admin/deep-company-research`, GET `/api/admin/companies/unresearched`, POST `/api/admin/companies/import`. (2) **Contact/Outreach agent:** run outreach pipeline from job in DB or test job URL; API: POST `/api/admin/contact-outreach`.
+
+**Preferences (as stored):** `user_preferences` includes `targetLocations`, `workAuthorization`, `strictFilterLevel`, `maxContactsPerJob`, `emailUpdatesEnabled`, `emailMinMatchScore`, `outreachTone`, `coverLetterTone`, `coverLetterLength`, `coldLinkedinTone`, `coldEmailTone`, etc. Email agent not yet implemented; settings are stored for future use.
+
+**Analysis storage:** Each assistant run is stored in `application_assistant_analyses` (e.g. `url`, `job_summary`, `match_score`, `match_grade`, `match_rationale`, `match_breakdown`, `company_snapshot`, `company_research`, `cover_letters`, `contacts`, `resume_suggestions`, `interview_prep_bullets`, `run_status`, `current_step`). Canonical jobs are upserted into `job_listings` (dedupe by `dedupe_key`); companies in `companies`; discovered contacts in `contacts` (with `company_id`, archetype, source).
+
 ## Scope Addendum (2026-02-26)
 
 This addendum overrides any older conflicting sections below.
@@ -18,7 +34,7 @@ This addendum overrides any older conflicting sections below.
 
 **Implementation Context (Agentic Rebuild):**
 
-- This is an **agentic re-implementation** of an existing working application. Core focus: **Application Assistant** (user provides a job URL → extract, match, contact hunt, drafts, blueprint) and **profile/preferences/tracker**. The main gap is **contact search/discovery** for that single-job flow; implementation can be ported from the previous version.
+- This is an **agentic re-implementation** of an existing working application. Core focus: **Application Assistant** (user provides a job URL → extract, match, deep company dossier, contact hunt, drafts, blueprint) and **profile/preferences/tracker**. Contact discovery and outreach are implemented (admin tab + optional stage in assistant); planned improvements: job-posting-first discovery and targeted search queries (see root `plan.md`).
 
 **Scope Pivot — No Bulk Scraping:**
 
@@ -789,18 +805,22 @@ From the 35-agent taxonomy in `plan.md`, these are the **agents needed for V1**:
 
 # V1 — Core Workflows
 
-## Workflow 1: "Application Assistant" (Single URL)
+## Workflow 1: "Application Assistant" (Single URL) — As Implemented
 
 ```
 1. User submits a job or careers page URL in the Application Assistant.
 2. Load user profile + preferences + strict filter settings.
-3. Source Validator checks the URL (reachability, content type).
-4. Browser Navigator navigates to that URL only.
-5. DOM Extractor extracts job listing(s) from that page (single page).
-6. Job Normalizer converts to canonical schema; Entity Resolution for dedupe within run if needed.
-7. Rule Scorer + LLM Ranker score job(s) vs profile; combined score; strict filter if enabled.
-8. Results + evidence persisted; UI shows match score, explanation, evidence.
-9. (Optional) User triggers Contact Hunt, Outreach Draft, or Application Blueprint for that job.
+3. Fetch-first URL normalization (follow redirects to final URL).
+4. Browser (Playwright) navigates to URL; clean HTML; classify page (job / non-job / login_wall / captcha).
+5. If login_wall or captcha: wait for user action in browser, then re-capture and re-classify.
+6. If classifier says non-job: optional resolve-to-job-page (depth ≤ 2); else hard-stop.
+7. Extract job detail (optional RAG on cleaned HTML; fallback raw extract); resolve company identity.
+8. If company in DB: run deep company dossier (browser + DuckDuckGo, chunk/embed, persist to company).
+9. Persist analysis; upsert job_listings by dedupe_key.
+10. Rule Scorer + LLM Ranker score job vs profile; combined score; strict filter; rationale and breakdown.
+11. Writing: resume suggestions, cover letters, interview prep (bullets).
+12. (Optional) Contact discovery + outreach drafts (strategy → people search → verify → rank → drafts).
+13. Done; status and logs stream to UI throughout.
 ```
 
 ## Workflow 2: "Contact Hunt" (Per Job — jobs from Assistant only)

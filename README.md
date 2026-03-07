@@ -1,22 +1,25 @@
 # CareerSignal (Agentic)
 
-A semi-autonomous, multi-agent career intelligence platform that discovers jobs, ranks them against your profile, finds the best human contacts per role, and prepares outreach drafts — all under your supervision.
+A semi-autonomous, multi-agent career intelligence platform. You bring job URLs; the system extracts jobs, scores them against your profile, runs deep company research, finds contacts, and prepares cover letters and outreach drafts — all under your supervision.
 
 ---
 
 ## What It Does
 
-1. **You** create a profile (upload resume + set preferences)
-2. **You** add sources (company career pages, job boards, or use the 10 built-in defaults)
-3. **You** trigger a scan
-4. **Agents** hunt:
-   - Extract jobs from every source (headless browser automation)
-   - Normalize, deduplicate, and rank against your profile
-   - Surface the **top 15 per source/company** with match scores (XX.XX precision) and explanations
-   - Find the **best 3 contacts** per job (hiring managers, engineering managers, team leads)
-   - Draft **2–3 outreach variants** per contact (LinkedIn message, email) with personalization
-   - Map application flows into human-readable blueprints
-5. **You** review, approve, and act — the system never sends anything without your click
+1. **You** create a profile (upload resume, set preferences: locations, visa, seniority, roles).
+2. **You** paste a **job posting URL** into the **Application Assistant**.
+3. **Agents** run a single-URL pipeline:
+   - Normalize and open the URL (follow redirects; handle login/captcha with your help).
+   - Classify the page (job vs non-job); resolve to a job page if needed.
+   - Extract job details and infer company identity.
+   - Run **deep company research** (when the company is in the DB or added via admin): dossier from public web, stored per company.
+   - Match the job to your profile (rule + LLM score, strict filter, explanation).
+   - Generate resume suggestions, **cover letters**, and **interview prep** bullets.
+   - Optionally run **contact discovery** (people search + verification) and **outreach drafts** (LinkedIn/email variants).
+4. **You** see match score, rationale, company snapshot, cover letters, contacts, and drafts — all copy-to-clipboard; nothing is sent automatically.
+5. **Dashboard** shows your analyses and open job listings; **Admin** (deep company research + contact outreach) supports company dossiers and testing the outreach pipeline.
+
+**Scope:** Job data enters **only** via the Application Assistant (one URL per run). There is no bulk scraping of job boards or company career pages.
 
 ---
 
@@ -24,35 +27,23 @@ A semi-autonomous, multi-agent career intelligence platform that discovers jobs,
 
 ### Design Philosophy: Code-First, LLM-Assisted
 
-Agents are **not** thin LLM wrappers. Each agent is a hand-built module with deterministic logic at its core. LLMs (via Ollama, running locally) are used only where they provide genuine value that code alone cannot achieve — natural language understanding, nuanced reasoning, and creative drafting.
-
-~60% of the system is pure code (no LLM calls). The remaining ~40% uses LLM as a tool within a code-controlled pipeline.
+Agents are hand-built modules with deterministic logic at the core. LLMs (Ollama, local) are used only where they add value: parsing, reasoning, and drafting. A large share of the system is pure code (classification, scoring rules, URL handling, persistence).
 
 ### Tech Stack
 
-| Layer              | Technology                               | Notes                                     |
-| ------------------ | ---------------------------------------- | ----------------------------------------- |
-| Web UI             | Next.js (TypeScript, App Router)         | Server components, approval UX            |
-| Database           | PostgreSQL + pgvector                    | Structured data + vector embeddings       |
-| LLM Runtime        | Ollama (local models)                    | deepseek-r1:32b, qwen2.5:32b, llama3.1:8b |
-| Browser Automation | Playwright (Chromium, headless)          | Job extraction, evidence capture          |
-| Orchestration      | DB-backed job queue (V1) → Temporal (V2) | Durable, resumable workflows              |
-| Artifact Storage   | Local filesystem (V1) → MinIO (V2)       | HTML snapshots, screenshots, PDFs         |
-| Event Bus          | NATS (V2+)                               | Inter-agent event coordination            |
+| Layer              | Technology                       | Notes                                               |
+| ------------------ | -------------------------------- | --------------------------------------------------- |
+| Web UI             | Next.js (TypeScript, App Router) | Server components, streaming logs, approval UX      |
+| Database           | PostgreSQL + pgvector            | Structured data; embeddings for RAG/dossier         |
+| LLM Runtime        | Ollama (local)                   | deepseek-r1:32b, qwen2.5:32b, llama3.1:8b           |
+| Browser Automation | Playwright (Chromium)            | Visible browser for assistant; extraction, evidence |
+| Artifact Storage   | Local filesystem                 | Per-run folders: HTML, cleaned content, RAG chunks  |
+| Auth               | Session-based (email/password)   | Sign up, sign in; admin flag for admin routes       |
 
-### Agent Taxonomy (V1 — 19 Agents)
+### Where Agents Live
 
-| Category      | Agents                                                                      |
-| ------------- | --------------------------------------------------------------------------- |
-| Governance    | Planner, Policy/Constraint                                                  |
-| Profile       | Resume Parser, Preference Builder                                           |
-| Sources       | Source Validator                                                            |
-| Browser       | Browser Navigator, DOM Extractor, Pagination/Discovery, Screenshot Evidence |
-| Normalization | Job Normalizer, Entity Resolution, Canonicalizer                            |
-| Ranking       | Rule Scorer, LLM Ranker, Top-K Curator                                      |
-| Contacts      | Contact Strategy, People Search, Contact Verifier                           |
-| Outreach      | Outreach Writer, Personalization                                            |
-| Application   | Application Blueprint                                                       |
+- **`agents/`** (repo root, package `@careersignal/agents`): Browser (classify, extract, clean), match (scoring, company research), profile (resume parse, preferences), contacts (strategy, search, verify), outreach (drafts), apply (blueprint), normalize, rank, planner.
+- **`apps/web/lib/`**: Pipeline orchestration — Application Assistant runner, deep company dossier runner, outreach research runner; disk and RAG helpers; planner/step transitions.
 
 ---
 
@@ -60,253 +51,113 @@ Agents are **not** thin LLM wrappers. Each agent is a hand-built module with det
 
 ```
 CareerSignal - Agentic/
-│
 ├── apps/
-│   └── web/                    # Next.js web application (UI + API routes)
-│
-├── agents/
-│   ├── planner/                # Central planner agent + workflow orchestration
-│   ├── profile/                # Resume Parser, Preference Builder agents
-│   ├── browser/                # Browser Navigator, DOM Extractor, Pagination, Screenshot agents
-│   ├── normalize/              # Job Normalizer, Entity Resolution, Canonicalizer agents
-│   ├── rank/                   # Rule Scorer, LLM Ranker, Top-K Curator agents
-│   ├── contacts/               # Contact Strategy, People Search, Contact Verifier agents
-│   ├── outreach/               # Outreach Writer, Personalization agents
-│   ├── apply/                  # Application Blueprint agent
-│   └── shared/                 # Common agent utilities, Ollama client, base interfaces
-│
+│   └── web/                    # Next.js app: Application Assistant, Dashboard, Profile, Preferences, Admin
+├── agents/                     # @careersignal/agents: all agent implementations
+│   ├── src/
+│   │   ├── browser/            # cleanHtml, classifyPage, extractJobDetail, resolveToJobPage
+│   │   ├── profile/            # resume parser, preferences from profile
+│   │   ├── match/              # matchProfileToJob, company research, deepResearchCompany
+│   │   ├── contacts/           # strategy, people search, verifier
+│   │   ├── outreach/           # draft generation, personalization
+│   │   ├── apply/              # blueprint, resume suggestions, cover letter, interview prep
+│   │   ├── normalize/          # job normalizer, entity resolution
+│   │   ├── rank/               # rule scorer, LLM ranker
+│   │   └── shared/             # Ollama client, base utilities
 ├── packages/
-│   ├── schemas/                # Zod schemas for all entities (Job, Contact, Profile, etc.)
-│   ├── db/                     # PostgreSQL client, migrations, query helpers
-│   ├── vector/                 # pgvector embedding utilities, similarity search
-│   ├── llm/                    # Ollama model router, prompt templates, response parsers
-│   ├── tools/                  # Browser tools, HTML parsers, HTTP fetchers
-│   └── core/                   # Shared domain logic, constants, utilities
-│
-├── evals/
-│   ├── datasets/               # Golden test fixtures (saved HTML, expected outputs)
-│   └── harness/                # Evaluation runner, metrics collection
-│
-├── artifacts/
-│   └── runs/                   # Per-run artifact storage (HTML snapshots, screenshots, extracts)
-│
-├── docs/
-│   └── architecture/           # Architecture Decision Records (ADRs), system diagrams
-│
-├── scripts/                    # Dev scripts (seed data, run agents manually, utilities)
-│
-├── infra/
-│   └── docker/                 # Docker Compose for PostgreSQL + pgvector
-│
-├── miscellaneous/              # Project plans, scope documents, archived experiments
-│   ├── plan.md                 # Original project plan (source of truth for vision)
-│   └── project_scope.md        # Locked-down scope with all decisions (V1/V2/V3)
-│
-├── .cursorrules                # Cursor IDE rules for consistent AI-assisted development
+│   ├── db/                     # Drizzle schema, migrations, CRUD (users, profiles, preferences, analyses, companies, job_listings, contacts)
+│   ├── schemas/                # Zod schemas for API and validation
+│   ├── llm/                    # LLM utilities
+│   └── core/                   # Shared domain logic
+├── data_*/                     # Run artifacts (application assistant, dossier, outreach) — gitignored
+├── miscellaneous/
+│   ├── plan.md                 # High-level project plan and vision
+│   └── project_scope.md       # Locked scope and detailed spec (V1/V2/V3)
+├── plan.md                     # Final plan: remaining work (email agent, CSV upload, outreach tuning, interview prep)
 └── README.md                   # This file
 ```
 
 ---
 
-## Prerequisites
+## Routes
 
-Before starting development, ensure the following are installed and running:
-
-### Required
-
-- **Node.js** >= 20.x (LTS) — [nodejs.org](https://nodejs.org/)
-- **npm** >= 10.x (comes with Node.js)
-- **PostgreSQL** >= 15 with **pgvector** extension — [pgvector setup](https://github.com/pgvector/pgvector)
-- **Ollama** — [ollama.com](https://ollama.com/) with the following models pulled:
-  - `deepseek-r1:32b-qwen-distill-q4_K_M` (reasoning, scoring, planning)
-  - `qwen2.5:32b-instruct-q4_K_M` (extraction, drafting)
-  - `qwen2.5-coder:32b-instruct-q4_K_M` (code generation, selector building)
-  - `llama3.1:8b-instruct-q4_K_M` (fast bulk tasks — normalization, validation)
-- **Playwright** (installed via npm, Chromium auto-downloaded)
-
-### Hardware Requirements
-
-| Component | Minimum        | Recommended (this project)      |
-| --------- | -------------- | ------------------------------- |
-| RAM       | 32 GB          | 64 GB DDR5                      |
-| GPU       | 8 GB VRAM      | NVIDIA RTX 5070 Ti (16 GB VRAM) |
-| CPU       | 8 cores        | Intel i9-12900K (16C/24T)       |
-| Disk      | 50 GB free SSD | 100 GB+ SSD                     |
-
-### Optional (V2+)
-
-- **Docker** — for containerized Postgres, MinIO, NATS
-- **Temporal** — self-hosted workflow engine
-- **Ray** — parallel agent execution cluster
-- **NATS** — event bus for inter-agent messaging
-- **MinIO** — S3-compatible object storage for artifacts
-
----
-
-## Quick Start
-
-> **Status:** Phase 0 complete. App runs with profile, sources, and runs (scan trigger). Agents not yet implemented.
-
-```bash
-# 1. Verify prerequisites
-node --version        # >= 20.x
-npm --version         # >= 10.x
-psql --version        # >= 15.x (or use Docker below)
-
-# 2. Install dependencies
-npm install
-
-# 3. Start PostgreSQL (with pgvector). From repo root:
-docker compose -f infra/docker/docker-compose.yml up -d
-# Wait for DB to be ready, then push schema:
-npm run db:migrate
-# (If your local Postgres uses different credentials, set DATABASE_URL or edit packages/db/package.json db:push script.)
-
-# 4. Copy env and run the app
-cp .env.example .env.local
-# Edit .env.local: set DATABASE_URL if your Postgres user/password differ from postgres:postgres
-# and set AUTH_SECRET (e.g. run: openssl rand -base64 24)
-npm run dev
-```
-
-Open http://localhost:3000. Sign up (create account) or sign in, then create a profile, add sources, and trigger a run (scan).
+| Route                         | Purpose                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------- |
+| `/`                           | Landing: hero, sign in / sign up                                                       |
+| `/dashboard`                  | Profile/preferences summary; list of analyses; open job listings                       |
+| `/application-assistant`      | Main flow: paste URL, run pipeline, view logs, match, cover letters, contacts          |
+| `/application-assistant/[id]` | Same assistant UI with analysis `id` in route                                          |
+| `/profile`                    | Edit profile; upload/parse resume; view insights                                       |
+| `/preferences`                | Locations, visa, seniority, roles, strict filter, email/outreach/cover letter settings |
+| `/admin`                      | Two tabs: Deep company research (dossier + CSV import), Contact/Outreach agent         |
+| `/signin`, `/signup`          | Auth                                                                                   |
 
 ---
 
 ## Core Workflows
 
-### Workflow 1: Scan & Rank
+### Application Assistant (single URL)
 
 ```
-User triggers scan
-  → Validate sources (URL alive?)
-  → Browser navigates to each source
-  → Extract ALL job listings (pagination, load-more)
-  → Normalize to canonical Job schema
-  → Deduplicate (fuzzy title + company match)
-  → Rule Scorer: deterministic scoring (visa, location, seniority, skills)
-  → LLM Ranker: deep reasoning via Ollama (nuance, explanation)
-  → Combined score (40% rule + 60% LLM)
-  → Strict filter applied (global setting — exclude mismatches)
-  → Top 15 per source/company surfaced
+Paste URL → Fetch/normalize → Browser → Classify (job / non-job / login_wall / captcha)
+  → [If needed] Resolve to job page (depth ≤ 2)
+  → Extract job detail (RAG-focused or raw HTML)
+  → Resolve company identity → Deep company dossier (if company in DB; async)
+  → Persist job_listing + analysis
+  → Match (rule + LLM), strict filter, explanation
+  → Writing: resume suggestions, cover letters, interview prep
+  → [Optional] Contact discovery + outreach drafts
+  → Done
 ```
 
-### Workflow 2: Contact Hunt
+### Deep Company Research (admin)
 
-```
-For each top-15 job:
-  → Contact Strategy Agent picks archetype (HM > EM > TL > Recruiter > Founder)
-  → People Search Agent scans public web (company pages, LinkedIn, GitHub, conferences, blogs)
-  → Contact Verifier validates relevance + assigns confidence score
-  → Top 3 contacts per job stored with evidence trails
-```
+Import companies by name (or CSV); run “Deep Research” per company. Browser + DuckDuckGo gather public info; results are chunked, embedded, and stored on the company record. Used by the Application Assistant to show company snapshot and research.
 
-### Workflow 3: Draft Outreach
+### Contact / Outreach (admin or inside assistant)
 
-```
-For each job + contact pair:
-  → Detect platform (LinkedIn, email)
-  → Generate 2–3 draft variants (concise, warm, technical)
-  → Personalize with job/company-specific hooks
-  → Apply platform character limits automatically
-  → User reviews, edits, copies to clipboard
-```
-
-### Workflow 4: Application Blueprint
-
-```
-User requests blueprint for a specific job:
-  → Navigate to apply URL (Playwright)
-  → Extract form structure (fields, steps, required docs)
-  → Map user profile fields to form fields
-  → Generate human-readable checklist
-  → User follows blueprint manually
-```
+For a job (from DB or test URL): contact strategy → people search (DDG, then LinkedIn) → verify → rank by archetype → email pattern inference → outreach drafts. Drafts and contacts are shown in the assistant or admin panel; copy-to-clipboard only.
 
 ---
 
-## Scoring System
+## Scoring and Preferences
 
-Match scores use **XX.XX precision** (0.00 – 99.99) for granular ranking distinction.
-
-| Component       | Weight | Method                                             |
-| --------------- | ------ | -------------------------------------------------- |
-| Rule Score      | 40%    | Deterministic: binary checks + dimension scores    |
-| LLM Score       | 60%    | Reasoning via Ollama: profile-to-job deep analysis |
-| **Final Score** | 100%   | Weighted combination, with strict filter gate      |
-
-### Mandatory Preference Dimensions (Strict Filter)
-
-When strict mode is enabled (global setting), jobs **must match all three** to appear:
-
-1. **Work Authorization** — visa/sponsorship compatibility
-2. **Location** — geographic match (US, international, remote)
-3. **Seniority** — level alignment
+- **Match score:** XX.XX (0–99.99); combined rule + LLM; strict filter can exclude jobs that fail visa/location/seniority.
+- **Preferences:** Target locations, work authorization, seniority, roles, remote preference, salary range, strict filter level, outreach/cover letter tone and length. Email agent settings (e.g. min match for updates) are stored; email sending not yet implemented.
 
 ---
 
-## Contact Priority Ranking
+## Contact Priority (project scope)
 
-When discovering contacts for a job, the system prioritizes in this order:
-
-| Priority | Type                            | Best For                    |
-| -------- | ------------------------------- | --------------------------- |
-| 1        | Hiring Manager                  | Direct decision-maker       |
-| 2        | Engineering Manager             | Understands team needs      |
-| 3        | Team Lead / Senior Engineer     | Peer-level, insider context |
-| 4        | Technical Recruiter             | Owns the req                |
-| 5        | University/Campus Recruiter     | Entry-level roles           |
-| 6        | Founder                         | Startups, small companies   |
-| 7        | Fallback (any reachable person) | Last resort                 |
+When discovering contacts: Hiring Manager > Engineering Manager > Team Lead / Senior Engineer > Technical Recruiter > Campus Recruiter > Founder > Fallback (any reachable person). Contacts must align with the position.
 
 ---
 
-## Versioning Roadmap
+## Prerequisites
 
-### V1 — MVP (~1 week)
+- **Node.js** >= 20.x, **npm** >= 10.x
+- **PostgreSQL** >= 15 with **pgvector**
+- **Ollama** with models: `deepseek-r1:32b-qwen-distill-q4_K_M`, `qwen2.5:32b-instruct-q4_K_M`, `llama3.1:8b-instruct-q4_K_M` (and optionally `qwen2.5-coder:32b-instruct-q4_K_M`)
+- **Playwright** (installed via npm; Chromium used for Application Assistant)
 
-Full vertical slice: Profile → Sources → Scan → Rank → Contact → Draft → Track
+### Quick Start
 
-- 19 agents, 4 workflows
-- Single Playwright instance (sequential source scanning)
-- Ollama local models for all LLM tasks
-- PostgreSQL + pgvector for storage
-- Local filesystem for artifacts
+```bash
+npm install
+# Start Postgres (e.g. Docker): docker compose -f infra/docker/docker-compose.yml up -d
+npm run db:migrate
+cp .env.example .env.local   # Set DATABASE_URL, AUTH_SECRET
+npm run dev
+```
 
-### V2 — Seriously Agentic (weeks/months)
-
-- Parallel browser swarm (3–10 workers via Ray)
-- Self-healing source discovery and validation
-- ATS reverse-engineering library (Workday, Greenhouse, Lever, etc.)
-- Multi-step contact enrichment (email pattern inference + verification)
-- Competing hypothesis agents (multiple extractors + rankers, consensus)
-- Weekly/daily digests and pipeline reminders
-
-### V3 — Research-Grade (long-term)
-
-- Multi-user tenancy with privacy isolation
-- Graph memory (relationship graph: Company ↔ Team ↔ Person ↔ Job)
-- Outcome-driven optimization (what sources yield interviews, which messages convert)
-- Offer simulation + negotiation agent
-- Multi-modal parsing (PDFs, images, screenshots via local vision models)
-- Agent marketplace (enable/disable agent packs, bring-your-own tools)
-
----
-
-## Key Principles
-
-- **Semi-autonomous:** Agents act within constraints. No auto-sending emails, no auto-submitting applications. User approves all irreversible actions.
-- **Evidence-backed:** Every claim carries source URLs, extracted snippets, confidence scores, and timestamps.
-- **Code-first:** Agents are hand-built modules with deterministic logic. LLM is a tool, not the brain.
-- **$0 budget:** Everything runs locally. No paid APIs, no cloud services, no subscriptions.
-- **Reproducible:** Every workflow run has a run_id, structured logs, stored artifacts, and replay capability.
+Open http://localhost:3000 → Sign up / Sign in → Profile → Preferences → Application Assistant (paste a job URL).
 
 ---
 
 ## Documentation
 
-| Document                                                           | Purpose                                           |
-| ------------------------------------------------------------------ | ------------------------------------------------- |
-| [`miscellaneous/plan.md`](miscellaneous/plan.md)                   | Original project plan and vision                  |
-| [`miscellaneous/project_scope.md`](miscellaneous/project_scope.md) | Locked-down scope with all decisions (V1/V2/V3)   |
-| [`docs/architecture/`](docs/architecture/)                         | ADRs, system diagrams, threat model (coming soon) |
+| Document                                                         | Purpose                                                                                       |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [miscellaneous/plan.md](miscellaneous/plan.md)                   | High-level plan, north star, principles, roadmap                                              |
+| [miscellaneous/project_scope.md](miscellaneous/project_scope.md) | Locked scope, schemas, workflows, V1/V2/V3                                                    |
+| [plan.md](plan.md)                                               | Remaining work: email agent, CSV application analysis upload, outreach tuning, interview prep |

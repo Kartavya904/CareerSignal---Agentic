@@ -6,6 +6,19 @@
 
 **Supersedes:** `miscellaneous/project_plan_next.md` (continuous source-cache direction is deprecated).
 
+**See also:** `plan.md` (repo root) for the **final plan** — remaining work (email agent, CSV application analysis upload, outreach tuning, interview prep).
+
+## Current Implementation (As Built)
+
+The following is implemented and in use:
+
+- **Application Assistant:** Single-URL pipeline: fetch/normalize URL → Playwright browser → classify page (job / non-job / login_wall / captcha) → optional resolve-to-job-page → extract job detail (with optional RAG on cleaned HTML) → company identity resolution → **deep company dossier** (when company exists in DB; browser + DuckDuckGo, chunk/embed, persist) → persist `job_listings` and analysis → **match** (rule + LLM, strict filter, explanation) → **writing** (resume suggestions, cover letters, interview prep) → optional **outreach** (contact discovery + drafts). Logs and state stream to the UI; login/captcha require user action in the browser.
+- **Profile & Preferences:** Profile (resume upload, parse via agents), preferences (locations, visa, seniority, roles, strict filter, outreach/cover letter tone, email agent settings). Stored in Postgres (`profiles`, `user_preferences`).
+- **Dashboard:** Lists user’s analyses and open job listings (from `job_listings`); links to Application Assistant and profile/preferences.
+- **Admin (two tabs):** (1) **Deep company research** — company name or CSV import, run dossier per company, view logs; (2) **Contact/Outreach agent** — run outreach pipeline from a job in DB or a test job URL, view contacts and drafts.
+- **Database:** `users`, `profiles`, `user_preferences`, `application_assistant_analyses`, `application_assistant_analysis_logs`, `application_assistant_feedback`, `companies`, `job_listings`, `job_observations`, `contacts`, `sources`, `runs`, `jobs`, `deep_company_research_runs`, `deep_company_research_admin_logs`. Full schema in `packages/db/src/schema.ts` and **project_scope.md**.
+- **Agents:** Live in **`agents/`** (repo root), package `@careersignal/agents`. Orchestration and disk/RAG in `apps/web/lib/` (application-assistant-runner, dossier, outreach-research-runner, etc.).
+
 ## Scope Addendum (2026-02-26)
 
 The following decisions are locked for the active rebuild:
@@ -370,43 +383,33 @@ Every action has:
 
 ---
 
-## 9) Directory Structure (monorepo, agent-native)
+## 9) Directory Structure (monorepo, as built)
 
 ```
-career-signal-agentic/
+CareerSignal - Agentic/
 ├─ apps/
-│  ├─ web/                         # Next.js UI (user control center)
-│  └─ admin/                       # (optional) ops dashboard
-├─ services/
-│  ├─ orchestrator/                # Temporal workers + API surface
-│  ├─ agent-runtime/               # Ray cluster entrypoints
-│  └─ browser-farm/                # Playwright headless orchestration
-├─ agents/
-│  ├─ planner/                     # central planner, constraint enforcer
-│  ├─ browser/                     # navigate/extract/paginate/evidence
-│  ├─ normalize/                   # canonicalization, dedupe
-│  ├─ rank/                        # rule scorer, LLM rankers, consensus
-│  ├─ contacts/                    # people search, verification, email inference
-│  ├─ apply/                       # application blueprinting
-│  ├─ evaluate/                    # evals, regression tests, feedback loops
-│  └─ shared/                      # common agent utils
+│  └─ web/                         # Next.js App Router: /, /dashboard, /application-assistant, /profile, /preferences, /admin
+│       app/                       # routes (page.tsx, layout.tsx)
+│       lib/                       # orchestration: application-assistant-runner, dossier, outreach-research-runner, RAG, disk, planner
+├─ agents/                         # @careersignal/agents (repo root, not under packages/)
+│  └─ src/
+│       browser/                   # cleanHtml, classifyPage, extractJobDetail, resolveToJobPage, etc.
+│       profile/                  # resume parser, preferences from profile
+│       match/                    # matchProfileToJob, company research, deepResearchCompany
+│       contacts/                 # strategy, people search, verifier
+│       outreach/                 # draft generation, personalization
+│       apply/                    # blueprint, resume suggestions, cover letter, interview prep
+│       normalize/, rank/, planner/, shared/
 ├─ packages/
-│  ├─ schemas/                     # zod/protobuf schemas for events + entities
-│  ├─ db/                          # migrations + db client
-│  ├─ vector/                      # embeddings + similarity utilities
-│  ├─ llm/                         # model router, prompt packs, guardrails
-│  ├─ tools/                       # browser tools, parsers, fetchers
+│  ├─ db/                          # Drizzle schema, migrations, CRUD (users, profiles, preferences, analyses, companies, job_listings, contacts, deep research)
+│  ├─ schemas/                     # Zod schemas for API/validation
+│  ├─ llm/                         # LLM utilities
 │  └─ core/                        # shared domain logic
-├─ infra/
-│  ├─ docker/                      # compose for local dev
-│  ├─ k8s/                         # optional manifests later
-│  └─ terraform/                   # optional cloud infra later
-├─ evals/
-│  ├─ datasets/                    # labeled jobs/preferences, contact truth sets
-│  └─ harness/                     # eval runner, metrics dashboards
-├─ docs/
-│  ├─ architecture/                # ADRs, diagrams, threat model
-│  └─ runbooks/                    # ops + debugging
+├─ infra/docker/                   # Docker Compose for Postgres + pgvector
+├─ miscellaneous/
+│  ├─ plan.md                      # this file (high-level plan)
+│  └─ project_scope.md             # locked scope, detailed spec, schemas
+├─ plan.md                         # final plan: remaining work (root)
 └─ scripts/                        # dev scripts, data imports
 ```
 
@@ -454,24 +457,13 @@ This keeps the project within a passive, user‑driven assistance model.
 
 ## 12) Roadmap (phased, modular, measurable)
 
-### Phase 0 — Foundations (2–4 days)
+### Phase 0 — Foundations — **Done**
 
-- repo scaffold + monorepo tooling
-- core schemas + db migrations
-- minimal UI shell (profile, preferences, sources, runs)
-- basic event model + run logs
+- Repo scaffold, monorepo, core schemas, DB migrations, auth (email/password), profile + preferences UI, dashboard.
 
-**Exit criteria:** can create a profile + preference set + add sources + start a run.
+### Phase 1 — Application Assistant MVP — **Done**
 
-### Phase 1 — Application Assistant MVP (1–2 weeks)
-
-- Playwright browser agent for **single-URL** navigation (user‑provided)
-- extractor + normalizer for that page/job
-- evidence artifacts
-- basic ranking (rule scorer) for that job vs profile
-- tracker UI for jobs the user has run through the assistant
-
-**Exit criteria:** user can paste a job URL and get extracted job + match + evidence; no bulk scraping.
+- Single-URL pipeline: browser, classify, extract, company identity, deep company dossier (when company in DB), match (rule + LLM), strict filter, resume suggestions, cover letters, interview prep, optional contact discovery + outreach drafts. Analyses and logs persisted; UI with streaming logs and results.
 
 ### Phase 2 — LLM Ranking Engine (1–2 weeks)
 
@@ -482,32 +474,24 @@ This keeps the project within a passive, user‑driven assistance model.
 
 **Exit criteria:** preference correctness is high; user trusts “all preferences met.”
 
-### Phase 3 — Contact Hunting (2 weeks)
+### Phase 3 — Contact Hunting + Outreach — **Done (with follow-up planned)**
 
-- people search agent + verifier
-- confidence scoring + evidence
-- outreach drafts (message + email)
-- user approval gates + draft storage
+- Contact strategy, people search (DDG + LinkedIn), verifier, ranking by archetype, email pattern inference, outreach drafts. Integrated in assistant and in admin (Contact/Outreach tab). **Planned:** Make search more targeted (job-posting-first, targeted queries; see root `plan.md`).
 
-**Exit criteria:** for top jobs, system finds credible contacts and produces usable drafts.
+### Phase 4 — Application Blueprinting — **Partial**
 
-### Phase 4 — Application Blueprinting (2 weeks)
-
-- application flow capture (pre-submit)
-- form schema extraction
-- field mapping + checklist generation
+- Blueprint agent exists; full apply-flow capture and checklist UI can be extended. Focus has been on cover letter + resume suggestions + interview prep in the assistant.
 - reusable “ATS blueprints” library
 
 **Exit criteria:** user can open a blueprint and apply quickly with guidance.
 
-### Phase 5 — Distributed + Evaluation (ongoing)
+### Phase 5 — Remaining (see root `plan.md`)
 
-- Temporal + Ray + NATS
-- eval harness + regression suites
-- feedback loops (what led to interviews)
-- agent improvements and new packs
-
-**Exit criteria:** system scales, is debuggable, and improves over time.
+- **Email agent:** Options and design (free, send-to-self); not yet implemented.
+- **Application analysis CSV upload:** Table for CSV job URLs per user; background processing; admin tab for per-user play/pause.
+- **Outreach tuning:** Job-posting-first contact discovery; targeted people-search queries; contact priority ranking applied consistently.
+- **Interview prep:** Revisit after outreach tuning.
+- **Distributed / evaluation (V2+):** Temporal, Ray, eval harness — deferred.
 
 ---
 
