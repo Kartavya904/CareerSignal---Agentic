@@ -17,19 +17,25 @@ import {
 } from './outreach-research-disk';
 
 export type { OutreachMemory } from './outreach-research-disk';
-import { searchWebViaBrowser, cleanHtml, type SearchResult } from '@careersignal/agents';
 import {
+  searchWebViaBrowser,
+  cleanHtml,
+  type SearchResult,
+  type ContactArchetype,
   determineContactStrategy,
-  extractFromTeamPage,
-  filterByArchetype,
+  type NormalizedJob,
   verifyContact,
   selectTopContacts,
-  inferEmailPattern,
-  type ContactSearchResult,
-  type ContactStrategy,
   type Contact,
+  type ContactSearchResult,
+  inferEmailPattern,
 } from '@careersignal/agents';
-import type { NormalizedJob } from '@careersignal/agents';
+import {
+  extractFromTeamPage,
+  filterByArchetype,
+  type ContactStrategy,
+} from '@careersignal/agents';
+// import type { NormalizedJob } from '@careersignal/agents'; // This was moved into the combined import
 
 /**
  * Timeout for the full outreach pipeline (admin or assistant).
@@ -42,7 +48,13 @@ export const OUTREACH_PIPELINE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min
 const MAX_PAGES_TO_VISIT = 30;
 /** Reserve this much time (ms) for LinkedIn + verify + ranking + drafts. Rest is for DDG + visiting. */
 const RESERVE_FOR_FINAL_PHASE_MS = 4 * 60 * 1000; // 4 min
-const DDG_DELAY_MS = 1500;
+const DDG_DELAY_MIN_MS = 2500;
+const DDG_DELAY_MAX_MS = 5000;
+/** Randomized delay between search queries to avoid bot detection. */
+function randomDelay(): Promise<void> {
+  const ms = DDG_DELAY_MIN_MS + Math.random() * (DDG_DELAY_MAX_MS - DDG_DELAY_MIN_MS);
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 export interface OutreachJobInput {
   title: string;
@@ -91,14 +103,8 @@ export interface RunOutreachResearchOptions {
   abortSignal?: AbortSignal | null;
   /** Fallback: existing contacts for the same company from DB (reuse for this role). */
   existingContactsFromDb?: ExistingContactFromDb[];
-  /** When true, save raw + cleaned HTML per visited URL under pages/<urlSlug>/ and optionally run RAG. */
+  /** Whether to save raw and cleaned HTML to disk per URL visited (default: false). */
   saveHtmlPerUrl?: boolean;
-  /** When set with saveHtmlPerUrl, run RAG (chunk, embed, focused content) for each visited page. */
-  runRagForVisitedPages?: (
-    outputDir: string,
-    cleanedHtml: string,
-    onLog?: (msg: string) => void,
-  ) => Promise<{ focusedHtml: string | null }>;
   /** Optional: called after major steps with current memory; return 'stop' to exit early, 'continue' to proceed (enables brain/retry integration). */
   onProgress?: (phase: string, memory: OutreachMemory) => Promise<OutreachProgressDecision>;
   /** How many ranked contacts to return (default 15). */
@@ -121,15 +127,26 @@ function now(): string {
 }
 
 /** Parse job description for email or LinkedIn URL (priority contact). */
-function parseJobBodyForContact(description: string): { email?: string; linkedinUrl?: string } {
-  const out: { email?: string; linkedinUrl?: string } = {};
+function parseJobBodyForContact(description: string): { email?: string; linkedinUrl?: string; teamLinks?: string[] } {
+  const out: { email?: string; linkedinUrl?: string; teamLinks?: string[] } = {};
   if (!description || !description.trim()) return out;
-  const emailMatch = description.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
-  if (emailMatch) out.email = emailMatch[0];
+  const emailMatches = description.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g);
+  if (emailMatches) {
+    const generic = /^(info|careers|jobs|privacy|contact|hello|support|hr|admin)@/i;
+    const personalEmail = emailMatches.find((e) => !generic.test(e));
+    if (personalEmail) out.email = personalEmail;
+  }
   const linkedInMatch = description.match(
     /https?:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+\/?/,
   );
   if (linkedInMatch) out.linkedinUrl = linkedInMatch[0];
+
+  const urlRegex = /https?:\/\/[^\s"'>]+/g;
+  const urls = description.match(urlRegex) || [];
+  const teamLinks = urls.filter((u) => /\/(team|about|people|leadership|careers)/i.test(u) && !u.includes('linkedin.com') && !u.includes('greenhouse.io') && !u.includes('lever.co'));
+  if (teamLinks.length > 0) {
+    out.teamLinks = Array.from(new Set(teamLinks)).slice(0, 3);
+  }
   return out;
 }
 
@@ -247,7 +264,7 @@ export async function runOutreachResearch(
   };
 
   await ensureOutreachRunFolder(runFolderName);
-  const { saveHtmlPerUrl, runRagForVisitedPages, onProgress } = options;
+  const { saveHtmlPerUrl, onProgress } = options;
   let memory: OutreachMemory = {
     updatedAt: now(),
     runFolderName,
@@ -321,15 +338,241 @@ export async function runOutreachResearch(
     };
   }
 
-  /** Candidates may include optional email (e.g. from DB reuse). */
-  const candidates: (ContactSearchResult & { email?: string })[] = priorityContact
+  /** Candidates may include optional email or location. */
+  const candidates: (ContactSearchResult & { email?: string; location?: string })[] = priorityContact
     ? [priorityContact]
     : [];
   const visitedUrls = new Set<string>(memory.visitedUrls);
 
-  // 2b. Fallback: add existing contacts for this company from DB (reuse for this position)
+  // 3. People search via DuckDuckGo: track all page-1 results, rank, visit top 2 per query; save HTML per URL when requested
+  const searchResultTracking: SearchResultTrackingEntry[] = [];
+  const discoveredUrlsList: string[] = [];
+  const urlsToVisitList: string[] = [];
+  const contactDiscoveryDeadline = deadline - RESERVE_FOR_FINAL_PHASE_MS;
+
+  // 2c. Visit Job Page directly & Extract Contacts / Team links from it
+  if (browserPage && job.sourceUrl) {
+    try {
+      log({ level: 'info', message: `Visiting job posting URL to find contacts and team links: ${job.sourceUrl.slice(0, 50)}...` });
+      const key = normalizeUrlForDedupe(job.sourceUrl);
+      if (!visitedUrls.has(key)) {
+        await browserPage.goto(job.sourceUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+        const rawHtml = await browserPage.content();
+        visitedUrls.add(key);
+        if (!discoveredUrlsList.includes(job.sourceUrl)) discoveredUrlsList.push(job.sourceUrl);
+
+        const cleanResult = cleanHtml(rawHtml, job.sourceUrl);
+        
+        // Extract people directly from the job posting HTML
+        const people = await extractFromTeamPage(cleanResult.html, job.companyName, job.sourceUrl);
+        const filtered = filterByArchetype(people, strategy.targetArchetypes);
+        for (const p of filtered) {
+          if (!candidates.some((c) => c.name === p.name && c.evidenceUrl === p.evidenceUrl)) {
+            candidates.push({ ...p, source: 'job_posting_page' });
+          }
+        }
+        if (filtered.length > 0) {
+          log({ level: 'info', message: `Found ${filtered.length} priority candidates directly on the job posting page!` });
+        }
+
+        // Try extracting team links from this DOM directly
+        const pageTeamLinks = await browserPage.evaluate(() => {
+          return Array.from(document.querySelectorAll('a'))
+            .map(a => a.href)
+            .filter(href => /\/(team|about|people|leadership|careers)/i.test(href) && !href.includes('linkedin.com') && !href.includes('greenhouse.io') && !href.includes('lever.co'));
+        });
+        
+        if (pageTeamLinks.length > 0) {
+           const newLinks = Array.from(new Set(pageTeamLinks)).slice(0, 3);
+           jobContact.teamLinks = Array.from(new Set([...(jobContact.teamLinks || []), ...newLinks])).slice(0, 3);
+        }
+      }
+    } catch {
+       const key = normalizeUrlForDedupe(job.sourceUrl);
+       visitedUrls.add(key);
+    }
+  }
+
+  // 2d. Direct extraction from embedded "Team/About" links in job description or job page
+  if (browserPage && jobContact.teamLinks && jobContact.teamLinks.length > 0) {
+    log({
+      level: 'info',
+      message: `Found ${jobContact.teamLinks.length} embedded team/about link(s). Visiting directly...`,
+    });
+    for (const link of jobContact.teamLinks) {
+      throwIfAborted();
+      const key = normalizeUrlForDedupe(link);
+      if (visitedUrls.has(key)) continue;
+      try {
+        await browserPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+        const rawHtml = await browserPage.content();
+        visitedUrls.add(key);
+        if (!discoveredUrlsList.includes(link)) discoveredUrlsList.push(link);
+
+        const cleanResult = cleanHtml(rawHtml, link);
+        const people = await extractFromTeamPage(cleanResult.html, job.companyName, link);
+        const filtered = filterByArchetype(people, strategy.targetArchetypes);
+        
+        for (const p of filtered) {
+          if (!candidates.some((c) => c.name === p.name && c.evidenceUrl === p.evidenceUrl)) {
+            candidates.push({ ...p, source: 'job_description_links' });
+          }
+        }
+        log({
+          level: 'info',
+          message: `Visited embedded link ${link.slice(0, 50)}... found ${filtered.length} priority candidates`,
+        });
+      } catch {
+        visitedUrls.add(key);
+      }
+    }
+  }
+
+  const startCandidatesCount = candidates.filter(c => c.source !== 'reuse').length;
+  if (startCandidatesCount > 0) {
+    log({ level: 'info', message: `Found ${startCandidatesCount} targeted contacts directly from job posting & team pages. Skipping fallback DDG/LinkedIn searches.` });
+  }
+
+  // 3. LinkedIn discovery: the primary targeted contact discovery engine
+  if (browserPage) {
+    const decision = await onProgress?.('before_linkedin', memory);
+    if (decision !== 'stop') {
+      const linkedInQueries = strategy.linkedInQueries?.length > 0 ? strategy.linkedInQueries : [
+        `site:linkedin.com/in "${job.companyName}" "${job.title}"`,
+      ];
+      const archetypes = strategy.targetArchetypes;
+      // Each archetype generates 2 queries, plus 1 catch-all at the end
+      const queriesPerArchetype = 2;
+
+      log({
+        level: 'info',
+        message: `Running targeted LinkedIn discovery (${linkedInQueries.length} queries across ${archetypes.length} contact types)...`,
+      });
+
+      for (let qi = 0; qi < linkedInQueries.length; qi++) {
+        throwIfAborted();
+        if (Date.now() >= contactDiscoveryDeadline) break;
+
+        const query = linkedInQueries[qi]!;
+        // Map query index to archetype (2 queries per archetype, last query is catch-all)
+        const archetypeIndex = Math.floor(qi / queriesPerArchetype);
+        const currentArchetype = (archetypeIndex < archetypes.length ? archetypes[archetypeIndex] : 'GENERAL') ?? 'GENERAL';
+
+        // Log when we start searching for a new archetype
+        if (qi % queriesPerArchetype === 0 && archetypeIndex < archetypes.length) {
+          log({
+            level: 'info',
+            message: `Searching for ${currentArchetype} contacts...`,
+          });
+        }
+
+        const results: SearchResult[] = await searchWebViaBrowser(browserPage, query);
+        let foundThisQuery = 0;
+        for (const r of results) {
+          if (!r.url.includes('linkedin.com/in/')) continue;
+          const key = normalizeUrlForDedupe(r.url);
+          if (visitedUrls.has(key)) continue;
+          visitedUrls.add(key);
+          discoveredUrlsList.push(r.url);
+          const nameFromTitle =
+            r.title && r.title !== 'LinkedIn'
+              ? r.title.replace(/\s*\|\s*LinkedIn.*$/i, '').trim()
+              : undefined;
+
+          // Try to extract location from snippet (LinkedIn snippets often start with location: "City, State, Country · ...")
+          const snippetParts = r.snippet?.split(' · ');
+          const locationFromSnippet = snippetParts && snippetParts.length > 1 ? snippetParts[0] : undefined;
+
+          candidates.push({
+            name: nameFromTitle ?? 'LinkedIn profile',
+            role: undefined,
+            company: job.companyName,
+            linkedinUrl: r.url,
+            evidenceUrl: r.url,
+            evidenceSnippet: r.snippet ?? `Found via: ${query}`,
+            confidence: 0.6,
+            source: `linkedin_${currentArchetype.toLowerCase()}`,
+            location: locationFromSnippet,
+          });
+          foundThisQuery++;
+        }
+
+        if (foundThisQuery > 0) {
+          log({
+            level: 'info',
+            message: `  └ Query ${qi + 1}/${linkedInQueries.length}: found ${foundThisQuery} profile(s) [${currentArchetype}]`,
+          });
+        }
+        await randomDelay();
+      }
+
+      const totalLinkedIn = candidates.filter((c) => c.source?.startsWith('linkedin_')).length;
+      log({
+        level: 'info',
+        message: `LinkedIn discovery complete: ${totalLinkedIn} profile(s) found across ${archetypes.length} contact types.`,
+      });
+      memory.discoveredUrls = [...discoveredUrlsList];
+      memory.visitedUrls = Array.from(visitedUrls);
+      await writeOutreachMemory(runFolderName, memory);
+    }
+  }
+
+  // 4. Fallback: if still no candidates and time left, try extra LinkedIn recruiter searches
+  if (
+    browserPage &&
+    candidates.length === 0 &&
+    Date.now() < contactDiscoveryDeadline &&
+    strategy.linkedInQueries.length > 0
+  ) {
+    const fallbackQueries = [
+      `site:linkedin.com/in "${job.companyName}" recruiter`,
+      `site:linkedin.com/in "${job.companyName}" hiring manager`,
+      `site:linkedin.com/in "${job.companyName}" talent`,
+      `site:linkedin.com/in "${job.companyName}" careers`,
+    ];
+    log({
+      level: 'info',
+      message: 'Running extra fallback LinkedIn queries...',
+    });
+    for (const query of fallbackQueries) {
+      throwIfAborted();
+      if (Date.now() >= contactDiscoveryDeadline) break;
+
+      const results: SearchResult[] = await searchWebViaBrowser(browserPage, query);
+      for (const r of results) {
+        if (!r.url.includes('linkedin.com/in/')) continue;
+        const key = normalizeUrlForDedupe(r.url);
+        if (visitedUrls.has(key)) continue;
+        visitedUrls.add(key);
+        discoveredUrlsList.push(r.url);
+
+        const nameFromTitle =
+          r.title && r.title !== 'LinkedIn'
+            ? r.title.replace(/\s*\|\s*LinkedIn.*$/i, '').trim()
+            : undefined;
+
+        candidates.push({
+          name: nameFromTitle ?? 'LinkedIn profile (fallback)',
+          role: undefined,
+          company: job.companyName,
+          linkedinUrl: r.url,
+          evidenceUrl: r.url,
+          evidenceSnippet: r.snippet ?? `Found via fallback: ${query}`,
+          confidence: 0.45,
+          source: 'linkedin_fallback',
+        });
+      }
+      await randomDelay();
+    }
+    memory.visitedUrls = Array.from(visitedUrls);
+    memory.discoveredUrls = [...discoveredUrlsList];
+    await writeOutreachMemory(runFolderName, memory);
+  }
+
+  // 4b. Last-resort fallback: add existing contacts from DB only if we found NOBODY
+  const freshCandidateCount = candidates.filter(c => c.source !== 'reuse').length;
   const existingFromDb = options.existingContactsFromDb ?? [];
-  if (existingFromDb.length > 0) {
+  if (freshCandidateCount === 0 && existingFromDb.length > 0) {
     for (const ec of existingFromDb) {
       candidates.push({
         name: ec.name,
@@ -345,247 +588,8 @@ export async function runOutreachResearch(
     }
     log({
       level: 'info',
-      message: `Added ${existingFromDb.length} existing company contact(s) from DB as fallback.`,
+      message: `No contacts found via LinkedIn. Adding ${existingFromDb.length} existing company contact(s) from DB as last-resort fallback.`,
     });
-  }
-
-  // 3. People search via DuckDuckGo: track all page-1 results, rank, visit top 2 per query; save HTML per URL when requested
-  const searchResultTracking: SearchResultTrackingEntry[] = [];
-  const discoveredUrlsList: string[] = [];
-  const urlsToVisitList: string[] = [];
-  const contactDiscoveryDeadline = deadline - RESERVE_FOR_FINAL_PHASE_MS;
-
-  if (browserPage && strategy.searchQueries.length > 0) {
-    log({
-      level: 'info',
-      message: `Running DuckDuckGo people search (${strategy.searchQueries.length} queries); visiting up to ${MAX_PAGES_TO_VISIT} pages until ${new Date(contactDiscoveryDeadline).toISOString()} then LinkedIn.`,
-    });
-    let pagesVisited = 0;
-    for (let i = 0; i < strategy.searchQueries.length; i++) {
-      throwIfAborted();
-      if (Date.now() >= contactDiscoveryDeadline) {
-        log({ level: 'info', message: 'Contact discovery time budget used; moving to LinkedIn.' });
-        break;
-      }
-      const decision = await onProgress?.('ddg_people_search', memory);
-      if (decision === 'stop') break;
-
-      const query = strategy.searchQueries[i]!;
-      const results: SearchResult[] = await searchWebViaBrowser(browserPage, query);
-
-      const page1Snapshot = results.map((r) => ({
-        url: r.url,
-        title: r.title,
-        snippet: r.snippet,
-      }));
-      const entry: SearchResultTrackingEntry = {
-        query,
-        page1Results: page1Snapshot,
-        topPickedUrls: [],
-      };
-      searchResultTracking.push(entry);
-
-      for (const r of results) {
-        const key = normalizeUrlForDedupe(r.url);
-        visitedUrls.add(key);
-        if (!discoveredUrlsList.includes(key)) discoveredUrlsList.push(r.url);
-      }
-
-      const relevant = results.filter((r) => {
-        if (r.url.includes('linkedin.com')) return false;
-        return isRelevantForPeopleSearch(r.url, job.companyName, company?.websiteDomain ?? null);
-      });
-      const ranked = rankSearchResultsForContacts(relevant, job.companyName);
-      const top2 = ranked.slice(0, 2);
-      entry.topPickedUrls = top2.map((r) => r.url);
-      for (const r of top2) urlsToVisitList.push(r.url);
-
-      for (const r of top2) {
-        if (pagesVisited >= MAX_PAGES_TO_VISIT) break;
-        throwIfAborted();
-        try {
-          await browserPage.goto(r.url, {
-            waitUntil: 'domcontentloaded',
-            timeout: 15_000,
-          });
-          const rawHtml = await browserPage.content();
-          pagesVisited++;
-
-          const cleanResult = cleanHtml(rawHtml, r.url);
-          const cleanedHtml = cleanResult.html;
-          let htmlForExtract = cleanedHtml;
-
-          if (saveHtmlPerUrl) {
-            const urlSlug = urlToOutreachSlug(r.url, pagesVisited - 1);
-            await writeOutreachPageRawAndCleaned(runFolderName, urlSlug, rawHtml, cleanedHtml);
-            if (runRagForVisitedPages) {
-              const pageDir = getOutreachPageDir(runFolderName, urlSlug);
-              const ragResult = await runRagForVisitedPages(pageDir, cleanedHtml, (msg) =>
-                log({ level: 'info', message: msg }),
-              );
-              if (ragResult?.focusedHtml) htmlForExtract = ragResult.focusedHtml;
-            }
-          }
-
-          const people = await extractFromTeamPage(htmlForExtract, job.companyName, r.url);
-          const filtered = filterByArchetype(people, strategy.targetArchetypes);
-          for (const p of filtered) {
-            if (!candidates.some((c) => c.name === p.name && c.evidenceUrl === p.evidenceUrl)) {
-              candidates.push(p);
-            }
-          }
-          log({
-            level: 'info',
-            message: `Visited (top pick) ${r.url.slice(0, 50)}... found ${filtered.length} candidates`,
-          });
-        } catch {
-          // already in visitedUrls
-        }
-      }
-
-      memory.searchResultTracking = searchResultTracking;
-      memory.discoveredUrls = [...discoveredUrlsList];
-      memory.urlsToVisit = [...urlsToVisitList];
-      memory.visitedUrls = Array.from(visitedUrls);
-      await writeOutreachMemory(runFolderName, memory);
-
-      if (i < strategy.searchQueries.length - 1) {
-        await new Promise((r) => setTimeout(r, DDG_DELAY_MS));
-      }
-    }
-  }
-
-  // 4. LinkedIn discovery: always run when we have a browser (not only when DDG people search ran)
-  if (browserPage) {
-    const decision = await onProgress?.('before_linkedin', memory);
-    if (decision !== 'stop') {
-      const linkedInQueries = [
-        `site:linkedin.com/in "${job.companyName}"`,
-        `linkedin "${job.companyName}" ${job.title}`,
-        `linkedin "${job.companyName}" recruiter`,
-        `linkedin "${job.companyName}" hiring`,
-        `"${job.companyName}" site:linkedin.com/in`,
-      ];
-      log({
-        level: 'info',
-        message: `Running LinkedIn discovery (${linkedInQueries.length} queries)...`,
-      });
-      for (const query of linkedInQueries) {
-        throwIfAborted();
-        if (Date.now() >= contactDiscoveryDeadline) break;
-        const results: SearchResult[] = await searchWebViaBrowser(browserPage, query);
-        for (const r of results) {
-          if (!r.url.includes('linkedin.com/in/')) continue;
-          const key = normalizeUrlForDedupe(r.url);
-          if (visitedUrls.has(key)) continue;
-          visitedUrls.add(key);
-          discoveredUrlsList.push(r.url);
-          const nameFromTitle =
-            r.title && r.title !== 'LinkedIn'
-              ? r.title.replace(/\s*\|\s*LinkedIn.*$/i, '').trim()
-              : undefined;
-          candidates.push({
-            name: nameFromTitle ?? 'LinkedIn profile',
-            role: undefined,
-            company: job.companyName,
-            linkedinUrl: r.url,
-            evidenceUrl: r.url,
-            evidenceSnippet: r.snippet ?? `Found via: ${query}`,
-            confidence: 0.6,
-            source: 'linkedin_search',
-          });
-        }
-        await new Promise((r) => setTimeout(r, DDG_DELAY_MS));
-      }
-      log({
-        level: 'info',
-        message: `LinkedIn discovery: ${candidates.filter((c) => c.source === 'linkedin_search').length} profile(s) found.`,
-      });
-      memory.discoveredUrls = [...discoveredUrlsList];
-      memory.visitedUrls = Array.from(visitedUrls);
-      await writeOutreachMemory(runFolderName, memory);
-    }
-  }
-
-  // 4b. Fallback: if still no candidates and time left, try extra DDG queries (recruiter, hiring manager, careers contact)
-  if (
-    browserPage &&
-    candidates.length === 0 &&
-    Date.now() < contactDiscoveryDeadline &&
-    strategy.searchQueries.length > 0
-  ) {
-    const fallbackQueries = [
-      `"${job.companyName}" recruiter`,
-      `"${job.companyName}" hiring manager`,
-      `"${job.companyName}" talent team`,
-      `"${job.companyName}" careers contact`,
-    ];
-    log({
-      level: 'info',
-      message: `No candidates yet; running ${fallbackQueries.length} fallback DDG queries until ${new Date(contactDiscoveryDeadline).toISOString()}...`,
-    });
-    let pagesVisitedFallback = 0;
-    const maxFallbackVisits = Math.min(8, MAX_PAGES_TO_VISIT - 0); // up to 8 more pages (we already counted visits above)
-    for (const query of fallbackQueries) {
-      throwIfAborted();
-      if (Date.now() >= contactDiscoveryDeadline || pagesVisitedFallback >= maxFallbackVisits)
-        break;
-      const results: SearchResult[] = await searchWebViaBrowser(browserPage, query);
-      const relevant = results.filter((r) => {
-        if (r.url.includes('linkedin.com')) return false;
-        return isRelevantForPeopleSearch(r.url, job.companyName, company?.websiteDomain ?? null);
-      });
-      const ranked = rankSearchResultsForContacts(relevant, job.companyName);
-      const top2 = ranked.slice(0, 2);
-      for (const r of top2) {
-        if (pagesVisitedFallback >= maxFallbackVisits) break;
-        const key = normalizeUrlForDedupe(r.url);
-        if (visitedUrls.has(key)) continue;
-        throwIfAborted();
-        try {
-          await browserPage.goto(r.url, { waitUntil: 'domcontentloaded', timeout: 15_000 });
-          const rawHtml = await browserPage.content();
-          pagesVisitedFallback++;
-          visitedUrls.add(key);
-          discoveredUrlsList.push(r.url);
-
-          const cleanResult = cleanHtml(rawHtml, r.url);
-          const cleanedHtml = cleanResult.html;
-          let htmlForExtract = cleanedHtml;
-          if (saveHtmlPerUrl) {
-            const urlSlug = urlToOutreachSlug(
-              r.url,
-              memory.visitedUrls.length + pagesVisitedFallback - 1,
-            );
-            await writeOutreachPageRawAndCleaned(runFolderName, urlSlug, rawHtml, cleanedHtml);
-            if (runRagForVisitedPages) {
-              const pageDir = getOutreachPageDir(runFolderName, urlSlug);
-              const ragResult = await runRagForVisitedPages(pageDir, cleanedHtml, (msg) =>
-                log({ level: 'info', message: msg }),
-              );
-              if (ragResult?.focusedHtml) htmlForExtract = ragResult.focusedHtml;
-            }
-          }
-          const people = await extractFromTeamPage(htmlForExtract, job.companyName, r.url);
-          const filtered = filterByArchetype(people, strategy.targetArchetypes);
-          for (const p of filtered) {
-            if (!candidates.some((c) => c.name === p.name && c.evidenceUrl === p.evidenceUrl)) {
-              candidates.push(p);
-            }
-          }
-          log({
-            level: 'info',
-            message: `Fallback visit ${r.url.slice(0, 50)}... found ${filtered.length} candidates`,
-          });
-        } catch {
-          visitedUrls.add(key);
-        }
-      }
-      await new Promise((r) => setTimeout(r, DDG_DELAY_MS));
-    }
-    memory.visitedUrls = Array.from(visitedUrls);
-    memory.discoveredUrls = [...discoveredUrlsList];
-    await writeOutreachMemory(runFolderName, memory);
   }
 
   memory.candidates = candidates;
@@ -608,10 +612,18 @@ export async function runOutreachResearch(
 
   // 5. Contact verifier and ranking (best-first + list)
   const verified: Contact[] = [];
-  const archetypeOrder = strategy.targetArchetypes;
   for (const cand of candidates) {
     throwIfAborted();
-    const archetype = archetypeOrder[0] ?? 'HIRING_MANAGER';
+    // Reconstruct archetype from source tag if possible
+    let archetype: ContactArchetype = strategy.targetArchetypes[0] ?? 'HIRING_MANAGER';
+    if (cand.source.startsWith('linkedin_')) {
+      const archPart = cand.source.replace('linkedin_', '').toUpperCase();
+      // Validate this is a known archetype
+      if (['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER'].includes(archPart)) {
+        archetype = archPart as ContactArchetype;
+      }
+    }
+    
     const { contact, isVerified } = await verifyContact(cand, normalizedJob, archetype);
     if (isVerified || contact.confidence >= 0.35) {
       verified.push(contact);

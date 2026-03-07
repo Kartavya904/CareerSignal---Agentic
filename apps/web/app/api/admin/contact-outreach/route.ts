@@ -17,8 +17,6 @@ import {
   OUTREACH_PIPELINE_TIMEOUT_MS,
   type OutreachMemory,
 } from '@/lib/outreach-research-runner';
-import { OUTREACH_TEST_JOBS } from '@/lib/outreach-test-jobs';
-import { runCompanyPageRag } from '@/lib/application-assistant-rag';
 
 export const maxDuration = 320; // slightly over 5 min for pipeline + buffer
 
@@ -43,18 +41,10 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const jobUrl = typeof body?.jobUrl === 'string' ? body.jobUrl.trim() : '';
-  const jobPostingId = typeof body?.jobPostingId === 'string' ? body.jobPostingId.trim() : '';
-  const useDb = body?.source === 'db' && typeof body?.applyUrl === 'string';
-  const applyUrl = useDb ? body.applyUrl.trim() : '';
-  if (!useDb && !jobUrl) {
+
+  if (!jobUrl) {
     return NextResponse.json(
-      { error: 'jobUrl is required (or source=db and applyUrl)', success: false },
-      { status: 400 },
-    );
-  }
-  if (useDb && !applyUrl) {
-    return NextResponse.json(
-      { error: 'applyUrl is required when source=db', success: false },
+      { error: 'jobUrl is required', success: false },
       { status: 400 },
     );
   }
@@ -69,104 +59,59 @@ export async function POST(req: Request) {
       writeLogLine(writer, encoder, {
         ts: new Date().toISOString(),
         level: 'info',
-        message: useDb
-          ? '[Admin] Loading job and company from DB...'
-          : '[Admin] Resolving job and company...',
+        message: '[Admin] Loading job and company from DB...',
       });
 
       const db = getDb();
-      let company: Awaited<ReturnType<typeof findCompanyByNameOrDomain>>;
+      let company: Awaited<ReturnType<typeof findCompanyByNameOrDomain>> | null = null;
       let jobTitle: string;
       let resolvedJobUrl: string;
       let jobDescription: string;
       let jobListingId: string | null = null;
 
-      if (useDb) {
-        const jobRow = await getJobListingByApplyUrl(db, applyUrl);
-        if (!jobRow || !jobRow.companyId) {
-          writeLogLine(writer, encoder, {
-            ts: new Date().toISOString(),
-            level: 'error',
-            message: `[Admin] Job not found in DB for applyUrl. Run: node packages/db/scripts/seed-outreach-test-jobs.mjs`,
-          });
-          await writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'result',
-                success: false,
-                error: 'Job not found in DB for this applyUrl. Run the seed script first.',
-              }) + '\n',
-            ),
-          );
-          return;
-        }
-        company = await getCompanyById(db, jobRow.companyId);
-        if (!company) {
-          writeLogLine(writer, encoder, {
-            ts: new Date().toISOString(),
-            level: 'error',
-            message: '[Admin] Company for this job not found in DB.',
-          });
-          await writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'result',
-                success: false,
-                error: 'Company not found for job.',
-              }) + '\n',
-            ),
-          );
-          return;
-        }
-        jobTitle = jobRow.title;
-        resolvedJobUrl = jobRow.applyUrl ?? jobRow.jobUrl ?? applyUrl;
-        jobDescription = jobRow.descriptionText ?? '';
-        jobListingId = jobRow.id;
-      } else {
-        const testJob = jobPostingId ? OUTREACH_TEST_JOBS.find((j) => j.id === jobPostingId) : null;
-        const companyName = testJob?.companyName ?? (body?.companyName as string) ?? '';
-        jobTitle = testJob?.title ?? (body?.title as string) ?? 'Job';
-
-        if (!companyName) {
-          writeLogLine(writer, encoder, {
-            ts: new Date().toISOString(),
-            level: 'error',
-            message:
-              '[Admin] companyName could not be resolved. For test jobs use jobPostingId from the list.',
-          });
-          await writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'result',
-                success: false,
-                error: 'companyName required (use a test job or pass companyName)',
-              }) + '\n',
-            ),
-          );
-          return;
-        }
-
-        company = await findCompanyByNameOrDomain(db, { name: companyName });
-        if (!company) {
-          writeLogLine(writer, encoder, {
-            ts: new Date().toISOString(),
-            level: 'error',
-            message: `[Admin] Company "${companyName}" not found in DB. Add the company (e.g. via Deep Company Research) first.`,
-          });
-          await writer.write(
-            encoder.encode(
-              JSON.stringify({
-                type: 'result',
-                success: false,
-                error: `Company "${companyName}" must exist in DB for this pipeline.`,
-              }) + '\n',
-            ),
-          );
-          return;
-        }
-        resolvedJobUrl = jobUrl;
-        jobDescription = '';
+      // Use the provided jobUrl. The function gets job via applyUrl OR jobUrl matching.
+      const jobRow = await getJobListingByApplyUrl(db, jobUrl);
+      if (!jobRow || !jobRow.companyId) {
+        writeLogLine(writer, encoder, {
+          ts: new Date().toISOString(),
+          level: 'error',
+          message: `[Admin] Job not found in DB for URL. Provide a different URL or run Application Analysis first.`,
+        });
+        await writer.write(
+          encoder.encode(
+            JSON.stringify({
+              type: 'result',
+              success: false,
+              error: 'Job not found in DB. Provide a different URL or run Application Analysis first.',
+            }) + '\n',
+          ),
+        );
+        return;
       }
+
+      company = await getCompanyById(db, jobRow.companyId);
+      if (!company) {
+        writeLogLine(writer, encoder, {
+          ts: new Date().toISOString(),
+          level: 'error',
+          message: '[Admin] Company for this job not found in DB.',
+        });
+        await writer.write(
+          encoder.encode(
+            JSON.stringify({
+              type: 'result',
+              success: false,
+              error: 'Company not found for job.',
+            }) + '\n',
+          ),
+        );
+        return;
+      }
+
+      jobTitle = jobRow.title;
+      resolvedJobUrl = jobRow.applyUrl ?? jobRow.jobUrl ?? jobUrl;
+      jobDescription = jobRow.descriptionText ?? '';
+      jobListingId = jobRow.id;
 
       const profile = user?.id ? await getProfileByUserId(db, user.id) : null;
       const preferences = user?.id ? await getPreferencesByUserId(db, user.id) : null;
@@ -232,10 +177,6 @@ export async function POST(req: Request) {
         maxRankedContacts: 15,
         existingContactsFromDb,
         saveHtmlPerUrl: true,
-        runRagForVisitedPages: async (outputDir, html, onLog) => {
-          const r = await runCompanyPageRag(outputDir, html, onLog);
-          return { focusedHtml: r.focusedHtml };
-        },
         onProgress: async (phase: string, memory: OutreachMemory) => {
           writeLogLine(writer, encoder, {
             ts: new Date().toISOString(),

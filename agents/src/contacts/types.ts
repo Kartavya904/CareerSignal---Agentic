@@ -33,7 +33,9 @@ export const ContactSchema = z.object({
   linkedinUrl: z.string().optional(),
   email: z.string().optional(),
   platform: ContactPlatformSchema,
+  location: z.string().optional(),
   foundVia: z.string(),
+  rank: z.number().optional(),
   createdAt: z.string(),
 });
 
@@ -48,6 +50,7 @@ export const ContactSearchResultSchema = z.object({
   evidenceSnippet: z.string().optional(),
   confidence: z.number().min(0).max(1),
   source: z.string(),
+  location: z.string().optional(),
 });
 
 export type ContactSearchResult = z.infer<typeof ContactSearchResultSchema>;
@@ -55,6 +58,7 @@ export type ContactSearchResult = z.infer<typeof ContactSearchResultSchema>;
 export const ContactStrategySchema = z.object({
   targetArchetypes: z.array(ContactArchetypeSchema),
   searchQueries: z.array(z.string()),
+  linkedInQueries: z.array(z.string()),
   reasoning: z.string(),
 });
 

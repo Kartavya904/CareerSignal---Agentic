@@ -17,22 +17,22 @@ export default function AdminPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="deep-company-research" className="w-full">
+          <Tabs defaultValue="application-analysis-queue" className="w-full">
             <TabsList className="w-full max-w-2xl flex-wrap">
-              <TabsTrigger value="deep-company-research">Deep company research</TabsTrigger>
-              <TabsTrigger value="contact-outreach">Contact / Outreach agent</TabsTrigger>
               <TabsTrigger value="application-analysis-queue">
                 Application analysis (per user)
               </TabsTrigger>
+              <TabsTrigger value="deep-company-research">Deep company research</TabsTrigger>
+              <TabsTrigger value="contact-outreach">Contact / Outreach agent</TabsTrigger>
             </TabsList>
+            <TabsContent value="application-analysis-queue" className="mt-6">
+              <ApplicationAnalysisQueuePanel />
+            </TabsContent>
             <TabsContent value="deep-company-research" className="mt-6">
               <DeepCompanyResearchPanel />
             </TabsContent>
             <TabsContent value="contact-outreach" className="mt-6">
               <ContactOutreachPanel />
-            </TabsContent>
-            <TabsContent value="application-analysis-queue" className="mt-6">
-              <ApplicationAnalysisQueuePanel />
             </TabsContent>
           </Tabs>
         </CardContent>

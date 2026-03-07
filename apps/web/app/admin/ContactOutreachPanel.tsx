@@ -3,20 +3,13 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  OUTREACH_TEST_JOBS,
-  OUTREACH_DB_TEST_JOBS,
-  type OutreachTestJob,
-  type OutreachDbTestJob,
-} from '@/lib/outreach-test-jobs';
+import { Input } from '@/components/ui/input';
 
 /**
  * Panel for the Contact / Outreach agent (Deep Outreach Research Pipeline).
- * - "From DB" (2 links): job + company loaded from DB, skip extraction → contact scraping only.
- * - "Test jobs" (5 links): resolve company by name, then run full pipeline.
+ * Takes a URL to an existing job in the DB and runs the pipeline.
  */
 export function ContactOutreachPanel() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [logs, setLogs] = useState<{ ts: string; level: string; message: string }[]>([]);
   const [result, setResult] = useState<{
@@ -27,28 +20,11 @@ export function ContactOutreachPanel() {
     runFolderName?: string;
   } | null>(null);
 
-  async function handleRunDb(dbJob: OutreachDbTestJob) {
-    setSelectedId(dbJob.id);
-    setRunning(true);
-    setLogs([]);
-    setResult(null);
-    try {
-      const res = await fetch('/api/admin/contact-outreach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: 'db', applyUrl: dbJob.applyUrl }),
-      });
-      await consumeStream(res);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setResult({ success: false, error: `Request failed: ${msg}` });
-    } finally {
-      setRunning(false);
-    }
-  }
+  const [jobUrl, setJobUrl] = useState('');
 
-  async function handleRun(job: OutreachTestJob) {
-    setSelectedId(job.id);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!jobUrl.trim()) return;
     setRunning(true);
     setLogs([]);
     setResult(null);
@@ -56,7 +32,7 @@ export function ContactOutreachPanel() {
       const res = await fetch('/api/admin/contact-outreach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobUrl: job.jobUrl, jobPostingId: job.id }),
+        body: JSON.stringify({ jobUrl }),
       });
       await consumeStream(res);
     } catch (err) {
@@ -160,40 +136,18 @@ export function ContactOutreachPanel() {
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <p className="text-sm font-medium">
-            From DB (skip extraction — job + company from database)
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {OUTREACH_DB_TEST_JOBS.map((job) => (
-              <Button
-                key={job.id}
-                variant={selectedId === job.id ? 'default' : 'outline'}
-                size="sm"
-                disabled={running}
-                onClick={() => handleRunDb(job)}
-              >
-                {job.companyName} — {job.title}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Test job postings (company must exist in DB)</p>
-          <div className="flex flex-wrap gap-2">
-            {OUTREACH_TEST_JOBS.map((job) => (
-              <Button
-                key={job.id}
-                variant={selectedId === job.id ? 'default' : 'outline'}
-                size="sm"
-                disabled={running}
-                onClick={() => handleRun(job)}
-              >
-                {job.companyName} — {job.title ?? 'Job'}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
+            placeholder="URL of a job posting..."
+            value={jobUrl}
+            onChange={(e) => setJobUrl(e.target.value)}
+            disabled={running}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={running || !jobUrl.trim()}>
+            {running ? 'Running...' : 'Run Pipeline'}
+          </Button>
+        </form>
 
         {logs.length > 0 && (
           <div className="rounded-md border bg-muted/30 p-3 font-mono text-xs max-h-60 overflow-y-auto">
@@ -231,10 +185,30 @@ export function ContactOutreachPanel() {
                 {result.runFolderName && (
                   <p className="mt-1 text-muted-foreground">Folder: {result.runFolderName}</p>
                 )}
-                {result.contacts != null && (
-                  <p className="mt-1">
-                    Contacts: {Array.isArray(result.contacts) ? result.contacts.length : '—'}
-                  </p>
+                {result.contacts != null && Array.isArray(result.contacts) && (
+                  <div className="mt-2">
+                    <p className="mt-1 font-semibold">
+                      Contacts ({result.contacts.length}):
+                    </p>
+                    {result.contacts.length > 0 && (
+                      <div className="mt-2 text-xs bg-black/10 dark:bg-black/20 p-2 rounded max-h-64 overflow-auto font-mono whitespace-pre-wrap">
+                        {JSON.stringify(
+                          result.contacts.map((c: any) => ({
+                            rank: c.rank,
+                            name: c.name,
+                            role: c.role,
+                            archetype: c.archetype,
+                            email: c.email,
+                            linkedinUrl: c.linkedinUrl,
+                            evidenceUrl: c.evidenceUrl,
+                            source: c.source
+                          })),
+                          null,
+                          2
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {result.drafts != null && (
                   <p className="mt-1">

@@ -24,7 +24,6 @@ import {
   OUTREACH_PIPELINE_TIMEOUT_MS,
   type OutreachMemory,
 } from '@/lib/outreach-research-runner';
-import { runCompanyPageRag } from '@/lib/application-assistant-rag';
 
 export const maxDuration = 320;
 
@@ -149,10 +148,6 @@ export async function POST(req: Request) {
           maxRankedContacts:
             (prefs as { maxContactsPerJob?: number } | null)?.maxContactsPerJob ?? 2,
           saveHtmlPerUrl: true,
-          runRagForVisitedPages: async (outputDir, html, onLog) => {
-            const r = await runCompanyPageRag(outputDir, html, onLog);
-            return { focusedHtml: r.focusedHtml };
-          },
           onProgress: async (phase: string, memory: OutreachMemory) => {
             const msg = `[Progress] ${phase} | visited=${memory.visitedUrls?.length ?? 0} discovered=${memory.discoveredUrls?.length ?? 0} candidates=${(memory.candidates as unknown[])?.length ?? 0}`;
             writeLogLine(writer, encoder, {
