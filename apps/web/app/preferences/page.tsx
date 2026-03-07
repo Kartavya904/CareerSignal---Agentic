@@ -30,6 +30,14 @@ const EMPLOYMENT_TYPES = [
 ] as const;
 const STRICT_OPTIONS = ['STRICT', 'SEMI_STRICT', 'OFF'] as const;
 const MAX_CONTACTS_OPTIONS = [1, 2, 3, 5] as const;
+const CONTACT_ROLE_OPTIONS = [
+  'HIRING_MANAGER',
+  'ENG_MANAGER',
+  'TEAM_LEAD',
+  'TECH_RECRUITER',
+  'CAMPUS_RECRUITER',
+  'FOUNDER',
+] as const;
 
 // Unified tone options for cover letter and cold messages (user wanted same options in both)
 const TONE_OPTIONS = [
@@ -127,6 +135,7 @@ const defaultForm: PreferencesPutBody = {
   cold_email_tone: [],
   cold_email_length: 'SHORT',
   cold_email_notes: null,
+  target_contact_roles: ['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER'],
 };
 
 export default function PreferencesPage() {
@@ -174,6 +183,7 @@ export default function PreferencesPage() {
             cold_email_tone: (d as ApiPreferences).cold_email_tone ?? [],
             cold_email_length: (d as ApiPreferences).cold_email_length ?? 'SHORT',
             cold_email_notes: (d as ApiPreferences).cold_email_notes ?? null,
+            target_contact_roles: d.target_contact_roles ?? defaultForm.target_contact_roles,
           });
         }
       })
@@ -303,6 +313,7 @@ export default function PreferencesPage() {
           cold_email_notes: data.cold_email_notes ?? null,
           email_updates_enabled: data.email_updates_enabled ?? false,
           email_min_match_score: data.email_min_match_score ?? 60,
+          target_contact_roles: data.target_contact_roles ?? defaultForm.target_contact_roles,
         });
         addToast('Preferences filled from profile. Review and save.', 'success');
       })
@@ -827,6 +838,48 @@ export default function PreferencesPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div style={{ marginTop: '1.25rem' }}>
+            <label className="label">Roles to capture for outreach</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {CONTACT_ROLE_OPTIONS.map((o) => {
+                const selected = (form.target_contact_roles ?? []).includes(o);
+                return (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => {
+                      setForm((f) => ({
+                        ...f,
+                        target_contact_roles: selected
+                          ? (f.target_contact_roles ?? []).filter((x) => x !== o)
+                          : [...(f.target_contact_roles ?? []), o],
+                      }));
+                    }}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: 8,
+                      border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: selected ? 'var(--accent-muted)' : 'var(--surface-elevated)',
+                      color: selected ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.875rem',
+                      fontWeight: selected ? 600 : 500,
+                      cursor: 'pointer',
+                      transition:
+                        'border-color 0.15s ease, background 0.15s ease, color 0.15s ease',
+                    }}
+                  >
+                    {o.replace(/_/g, ' ')}
+                  </button>
+                );
+              })}
+            </div>
+            <p
+              style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginTop: '0.4rem' }}
+            >
+              Which roles should we look for when researching a job? Default is all.
+            </p>
           </div>
         </div>
 

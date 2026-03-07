@@ -42,6 +42,14 @@ function rowToJson(row: Awaited<ReturnType<typeof getPreferencesByUserId>>) {
     cold_email_tone: (row as { coldEmailTone?: string[] }).coldEmailTone ?? [],
     cold_email_length: (row as { coldEmailLength?: string }).coldEmailLength ?? 'SHORT',
     cold_email_notes: (row as { coldEmailNotes?: string | null }).coldEmailNotes ?? null,
+    target_contact_roles: (row as { targetContactRoles?: string[] }).targetContactRoles ?? [
+      'HIRING_MANAGER',
+      'ENG_MANAGER',
+      'TEAM_LEAD',
+      'TECH_RECRUITER',
+      'CAMPUS_RECRUITER',
+      'FOUNDER',
+    ],
     synced_from_profile_at: row.syncedFromProfileAt?.toISOString() ?? null,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
@@ -125,6 +133,7 @@ export async function PUT(request: Request) {
       coldEmailTone: data.cold_email_tone,
       coldEmailLength: data.cold_email_length,
       coldEmailNotes: data.cold_email_notes ?? undefined,
+      targetContactRoles: data.target_contact_roles,
     });
     return NextResponse.json(rowToJson(row));
   } catch (e) {

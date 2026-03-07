@@ -43,6 +43,7 @@ export interface UserPreferencesRow {
   coldEmailTone: string[];
   coldEmailLength: string;
   coldEmailNotes: string | null;
+  targetContactRoles: string[];
   syncedFromProfileAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -77,6 +78,7 @@ export interface UpsertPreferencesInput {
   coldEmailTone?: string[];
   coldEmailLength?: string;
   coldEmailNotes?: string | null;
+  targetContactRoles?: string[];
   syncedFromProfileAt?: Date | null;
 }
 
@@ -164,6 +166,7 @@ export async function upsertPreferences(
       coldEmailTone: data.coldEmailTone ?? [],
       coldEmailLength: data.coldEmailLength ?? 'SHORT',
       coldEmailNotes: data.coldEmailNotes ?? null,
+      targetContactRoles: data.targetContactRoles ?? ['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER'],
       syncedFromProfileAt: data.syncedFromProfileAt ?? null,
     })
     .onConflictDoUpdate({
@@ -198,6 +201,7 @@ export async function upsertPreferences(
         coldEmailTone: data.coldEmailTone ?? [],
         coldEmailLength: data.coldEmailLength ?? 'SHORT',
         coldEmailNotes: data.coldEmailNotes ?? null,
+        targetContactRoles: data.targetContactRoles ?? ['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER'],
         syncedFromProfileAt: data.syncedFromProfileAt ?? null,
         updatedAt: new Date(),
       },

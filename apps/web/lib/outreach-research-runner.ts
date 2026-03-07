@@ -109,6 +109,10 @@ export interface RunOutreachResearchOptions {
   onProgress?: (phase: string, memory: OutreachMemory) => Promise<OutreachProgressDecision>;
   /** How many ranked contacts to return (default 15). */
   maxRankedContacts?: number;
+  /** User preferences to respect during research (e.g. target archetypes). */
+  preferences?: {
+    targetContactRoles?: string[];
+  } | null;
 }
 
 export interface RunOutreachResearchResult {
@@ -310,6 +314,15 @@ export async function runOutreachResearch(
   // 2. Contact strategy
   log({ level: 'info', message: 'Computing contact strategy...' });
   const strategy: ContactStrategy = await determineContactStrategy(normalizedJob, companySize);
+  
+  if (options.preferences?.targetContactRoles?.length) {
+    const preferredRoles = options.preferences.targetContactRoles;
+    strategy.targetArchetypes = strategy.targetArchetypes.filter(a => preferredRoles.includes(a));
+    // Also update queries to only include those for preferred archetypes if logic exists there, 
+    // but strategy.targetArchetypes is the primary driver for extraction.
+    log({ level: 'info', message: `Filtered contact strategy to ${strategy.targetArchetypes.length} preferred roles.` });
+  }
+
   memory.strategy = strategy;
   memory.priorityContact = priorityContact ?? undefined;
   memory.updatedAt = now();

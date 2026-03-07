@@ -163,6 +163,7 @@ export const userPreferences = pgTable('user_preferences', {
   coldEmailTone: jsonb('cold_email_tone').$type<string[]>().default([]),
   coldEmailLength: varchar('cold_email_length', { length: 32 }).default('SHORT'),
   coldEmailNotes: text('cold_email_notes'),
+  targetContactRoles: jsonb('target_contact_roles').$type<string[]>().default(['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER']),
   syncedFromProfileAt: timestamp('synced_from_profile_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

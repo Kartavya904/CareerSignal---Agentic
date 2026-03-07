@@ -55,6 +55,7 @@ export const preferencesPutBodySchema = z
     cold_email_tone: z.array(z.string()).default([]),
     cold_email_length: coldMessageLengthSchema.optional().default('SHORT'),
     cold_email_notes: z.string().nullable().optional(),
+    target_contact_roles: z.array(z.string()).default(['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER']),
   })
   .strict();
 

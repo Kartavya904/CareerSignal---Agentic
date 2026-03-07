@@ -1325,6 +1325,9 @@ export async function runApplicationAssistantPipeline(
             hardTimeoutMs: Math.min(OUTREACH_PIPELINE_TIMEOUT_MS, getRemainingMs() - 5000),
             abortSignal: effectiveSignal,
             maxRankedContacts: maxContactsPerJob,
+            preferences: preferences
+              ? { targetContactRoles: (preferences as any).targetContactRoles as string[] }
+              : null,
           });
           outreachContacts = {
             bestFirst: outreachResult.bestFirst ?? null,

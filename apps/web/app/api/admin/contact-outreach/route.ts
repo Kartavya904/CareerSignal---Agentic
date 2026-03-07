@@ -176,6 +176,7 @@ export async function POST(req: Request) {
         hardTimeoutMs: OUTREACH_PIPELINE_TIMEOUT_MS,
         maxRankedContacts: 15,
         existingContactsFromDb,
+        preferences: preferences ? { targetContactRoles: (preferences as any).targetContactRoles } : null,
         saveHtmlPerUrl: true,
         onProgress: async (phase: string, memory: OutreachMemory) => {
           writeLogLine(writer, encoder, {
