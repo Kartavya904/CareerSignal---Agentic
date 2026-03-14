@@ -233,104 +233,262 @@ Analysis complete!
 
 
 Deep Research Company Pipeline: (Perfect Example)
-{
-  "id": "b9ac7e18-9621-4128-a889-1566ca65db8a",
-  "name": "Airbnb",
-  "normalizedName": "airbnb",
-  "websiteDomain": "airbnb.com",
-  "hqLocation": "888 Brannan Street, San Francisco",
-  "sizeRange": "5,001-10,000 employees",
-  "fundingStage": "IPO",
-  "enrichmentStatus": "DONE",
-  "lastEnrichedAt": "2026-02-28T07:16:36.563Z",
-  "visitedUrlsCount": 8,
-  "coreFieldCoverage": 1
-}
-Logs (84)
- [Admin] Starting deep company research for: "Airbnb"
+ [Admin] Starting deep company research for: "Kinetic Vision"
  [Admin] Using browser-based search (DuckDuckGo); no API key required.
  [Admin] Launching visible browser...
  [Admin] Browser ready; running discovery and enrichment...
  [Admin] Pre-warming GENERAL model (may take 1–2 min on first run)...
  [Admin] Model ready.
- Search (browser): "Airbnb official website" Extracted 1 links from the results (saved to memory!)
- Search (browser): "Airbnb company about us" Extracted 1 links from the results (saved to memory!)
- Search (browser): "Airbnb Wikipedia" Extracted 1 links from the results (saved to memory!)
- Search (browser): "site:reddit.com Airbnb company" Extracted 1 links from the results (saved to memory!)
- Search (browser): "Airbnb careers jobs" Extracted 1 links from the results (saved to memory!)
- Search (browser): "Airbnb company size employees headquarters" Extracted 1 links from the results (saved to memory!)
- Search (browser): "Airbnb funding series stock" Extracted 1 links from the results (saved to memory!)
- Search (browser): "Airbnb H1B visa sponsorship" Extracted 1 links from the results (saved to memory!)
- Fetching: https://www.airbnb.com/
+ Search (browser): "Kinetic Vision official website" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Kinetic Vision company about us" Extracted 1 links from the results (saved to memory!)
+ Search (browser): "Kinetic Vision Wikipedia" Extracted 1 links from the results (saved to memory!)
+ Fetching: https://kinetic-vision.com/
  RAG (company): Chunking HTML...
- RAG (company): 2 chunks saved.
+ RAG (company): Embedding chunks (local model)...
+ RAG (company): 39 chunks saved.
+ RAG (company): Scoring chunks with company query...
+ RAG (company): Kept 39/39 chunks.
+ RAG (company): Focused content saved.
+ Memory updated. Coverage 33%
+ Fetching: https://kinetic-vision.com/our-story/
+ RAG (company): Chunking HTML...
+ RAG (company): 43 chunks saved.
  RAG (company): Embedding chunks (local model)...
  RAG (company): Scoring chunks with company query...
- RAG (company): Kept 2/2 chunks.
+ RAG (company): Kept 40/43 chunks.
  RAG (company): Focused content saved.
- Memory updated. Coverage 0%
- Fetching: https://news.airbnb.com/about-us/
+ Memory updated. Coverage 33%
+ Continuing initial URLs: 1 remaining to visit
+ Fetching: https://powerlisting.fandom.com/wiki/Kinetic_Vision
+ Retry fetch: https://powerlisting.fandom.com/wiki/Kinetic_Vision
+ Retry with browser: https://powerlisting.fandom.com/wiki/Kinetic_Vision
  RAG (company): Chunking HTML...
- RAG (company): 48 chunks saved.
  RAG (company): Embedding chunks (local model)...
+ RAG (company): 51 chunks saved.
  RAG (company): Scoring chunks with company query...
- RAG (company): Kept 40/48 chunks.
+ RAG (company): Kept 40/51 chunks.
  RAG (company): Focused content saved.
- Memory updated. Coverage 46%
- Fetching: https://en.wikipedia.org/wiki/Airbnb
- RAG (company): Chunking HTML...
- RAG (company): 619 chunks saved.
- RAG (company): Embedding chunks (local model)...
- RAG (company): Scoring chunks with company query...
- RAG (company): Kept 40/619 chunks.
- RAG (company): Focused content saved.
- Memory updated. Coverage 62%
- Fetching: https://www.reddit.com/r/airbnb_hosts/comments/1chc0fi/current_best_property_management_companies/
- RAG (company): Chunking HTML...
- RAG (company): 9 chunks saved.
- RAG (company): Embedding chunks (local model)...
- RAG (company): Scoring chunks with company query...
- RAG (company): Kept 9/9 chunks.
- RAG (company): Focused content saved.
- Memory updated. Coverage 62%
- Fetching: https://careers.airbnb.com/
- RAG (company): Chunking HTML...
- RAG (company): 15 chunks saved.
- RAG (company): Embedding chunks (local model)...
- RAG (company): Scoring chunks with company query...
- RAG (company): Kept 15/15 chunks.
- RAG (company): Focused content saved.
- Memory updated. Coverage 77%
- Fetching: https://www.linkedin.com/company/airbnb
- RAG (company): Chunking HTML...
- RAG (company): 50 chunks saved.
- RAG (company): Embedding chunks (local model)...
- RAG (company): Scoring chunks with company query...
- RAG (company): Kept 40/50 chunks.
- RAG (company): Focused content saved.
- Memory updated. Coverage 92%
- Fetching: https://eqvista.com/airbnb-ipo-all-you-need-to-know/
- RAG (company): Chunking HTML...
- RAG (company): 117 chunks saved.
- RAG (company): Embedding chunks (local model)...
- RAG (company): Scoring chunks with company query...
- RAG (company): Kept 40/117 chunks.
- RAG (company): Focused content saved.
- Memory updated. Coverage 100%
- Fetching: https://h1bgrader.com/h1b-sponsors/airbnb-inc-8r0v6v69k1
- Retry fetch: https://h1bgrader.com/h1b-sponsors/airbnb-inc-8r0v6v69k1
- Retry with browser: https://h1bgrader.com/h1b-sponsors/airbnb-inc-8r0v6v69k1
- RAG (company): Chunking HTML...
- RAG (company): 70 chunks saved.
- RAG (company): Embedding chunks (local model)...
- RAG (company): Scoring chunks with company query...
- RAG (company): Kept 40/70 chunks.
- RAG (company): Focused content saved.
- Memory updated. Coverage 100%
- Coverage >= 70% and no missing fields. Finalizing.
- [Admin] Agent finished. Visited 8 URLs, core coverage 100%
+ Memory updated. Coverage 33%
+ Targeted search: "Kinetic Vision careers page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn company page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision remote policy" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official careers page link" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn profile" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office locations" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career opportunities page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn business page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office and headquarters locations" — 0 URLs extracted
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career page link" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn company profile" — 0 URLs extracted
+ Targeted search: "Kinetic Vision remote work policy" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career site" — 0 URLs extracted
+ Targeted search: "Kinetic Vision corporate LinkedIn page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office and remote work details" — 0 URLs extracted
+ Targeted search: "Kinetic Vision hiring locations overview" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career opportunities" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn professional page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office and remote work locations" — 0 URLs extracted
+ Targeted search: "Kinetic Vision hiring locations details" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn company link" — 0 URLs extracted
+ Targeted search: "Kinetic Vision remote work details" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office locations overview" — 0 URLs extracted
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career portal" — 0 URLs extracted
+ Targeted search: "Kinetic Vision corporate LinkedIn presence" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office and branch locations" — 0 URLs extracted
+ Targeted search: "Kinetic Vision remote work opportunities" — 0 URLs extracted
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career opportunities site" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn corporate page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office and branch locations overview" — 0 URLs extracted
+ Targeted search: "Kinetic Vision remote work policy details" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career site link" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn company page link" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Skipping targeted search "Kinetic Vision office and branch locations overview" (already tried in this run).
+ Skipping targeted search "Kinetic Vision remote work policy details" (already tried in this run).
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision career opportunities page" — 0 URLs extracted
+ Targeted search: "Kinetic Vision corporate LinkedIn profile" — 0 URLs extracted
+ Targeted search: "Kinetic Vision office and branch locations details" — 0 URLs extracted
+ Targeted search: "Kinetic Vision remote work policy overview" — 0 URLs extracted
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision career opportunities" — 0 URLs extracted
+ Targeted search: "Kinetic Vision LinkedIn corporate presence" — 0 URLs extracted
+ Skipping targeted search "Kinetic Vision office and branch locations details" (already tried in this run).
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Skipping targeted search "Kinetic Vision remote work policy overview" (already tried in this run).
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ Targeted search: "Kinetic Vision official career opportunities page link" — 0 URLs extracted
+ Targeted search: "Kinetic Vision headquarters and office locations" — 0 URLs extracted
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Initial URLs done. Running fallback search for missing fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear
+ Skipping targeted search "Kinetic Vision remote work policy overview" (already tried in this run).
+ Fallback search: "Kinetic Vision careers jobs hiring"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision LinkedIn company"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision remote work policy"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision careers hiring locations"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision hiring process interview"
+ Fallback search: "Kinetic Vision founded year"
+ Fallback search: "Kinetic Vision founded year"
+ [Admin] Agent finished. Visited 3 URLs, core coverage 22%
+ [Admin] Missing core fields: careersPageUrl, linkedInCompanyUrl, remotePolicy, hiringLocations, hiringProcessDescription, foundedYear, techStackHints
  [Admin] Upserting company to database...
- [Admin] Done. Company id=b9ac7e18-9621-4128-a889-1566ca65db8a, elapsed=417.8s
+ [Admin] Done. Company id=8ad3cdc0-eac5-4b85-a717-eb3e69b28ba7, elapsed=823.8s
 
 
  Outreach Research Agent Output: 

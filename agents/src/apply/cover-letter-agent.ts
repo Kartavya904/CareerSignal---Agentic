@@ -130,7 +130,7 @@ Return ONLY the raw cover letter text (no JSON, no key). Start directly with the
     const response = await complete(prompt, 'GENERAL', {
       temperature: 0.6,
       maxTokens: 2048,
-      timeout: 120000,
+      timeout: 180000, // 3 min for application assistant single cover letter
     });
     const draft = (response?.trim() ||
       'Cover letter generation failed. Please try again.') as string;

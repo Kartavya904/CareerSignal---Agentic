@@ -139,7 +139,7 @@ Be honest and specific. A 70+ score means strong match. 50-69 is moderate. Below
       format: 'json',
       temperature: 0.2,
       maxTokens: 2048,
-      timeout: 180000, // 3 min minimum for application assistant
+      timeout: 240000, // 4 min for application assistant profile match
     });
     const parsed = JSON.parse(response);
     const rawScore = typeof parsed.overallScore === 'number' ? parsed.overallScore : 50;
