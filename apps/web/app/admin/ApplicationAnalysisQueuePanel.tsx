@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Play, Trash2 } from 'lucide-react';
 
 type QueueUser = {
   userId: string;
@@ -21,7 +22,8 @@ export function ApplicationAnalysisQueuePanel() {
   const [loading, setLoading] = useState(true);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [priorityActionUserId, setPriorityActionUserId] = useState<string | null>(null);
-  const [globalAction, setGlobalAction] = useState(false);
+  const [priorityPlayLoading, setPriorityPlayLoading] = useState(false);
+  const [clearPriorityLoading, setClearPriorityLoading] = useState(false);
 
   async function fetchUsers() {
     try {
@@ -100,7 +102,7 @@ export function ApplicationAnalysisQueuePanel() {
   }
 
   async function handleStartPriorityRotation() {
-    setGlobalAction(true);
+    setPriorityPlayLoading(true);
     try {
       const res = await fetch('/api/admin/application-analysis-queue/start-priority', {
         method: 'POST',
@@ -111,7 +113,27 @@ export function ApplicationAnalysisQueuePanel() {
         return;
       }
     } finally {
-      setGlobalAction(false);
+      setPriorityPlayLoading(false);
+    }
+  }
+
+  async function handleClearPriorityPending() {
+    if (!window.confirm('Clear all pending items for priority users and stop the automation?')) {
+      return;
+    }
+    setClearPriorityLoading(true);
+    try {
+      const res = await fetch('/api/admin/application-analysis-queue/clear-priority-pending', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error ?? 'Failed to clear pending items');
+        return;
+      }
+      await fetchUsers();
+    } finally {
+      setClearPriorityLoading(false);
     }
   }
 
@@ -150,17 +172,33 @@ export function ApplicationAnalysisQueuePanel() {
             <CardTitle>Application analysis (per user)</CardTitle>
             <p className="text-muted-foreground text-sm">
               One row per user with at least one queue item. Play starts (or resumes) processing;
-              Hard stop aborts after the current URL. No Pause — run to completion or stop.
+              Hard stop aborts after the current URL. Use priority controls to rotate across
+              selected users.
             </p>
+            <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  disabled={priorityPlayLoading}
+                  onClick={handleStartPriorityRotation}
+                  aria-label="Play priority users"
+                >
+                  <Play className="h-4 w-4" />
+                </Button>
+                <span>Priority</span>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={clearPriorityLoading}
+                onClick={handleClearPriorityPending}
+                aria-label="Clear pending for priority users"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <Button
-            size="sm"
-            variant="default"
-            disabled={globalAction}
-            onClick={handleStartPriorityRotation}
-          >
-            Play priority users
-          </Button>
         </div>
       </CardHeader>
       <CardContent>

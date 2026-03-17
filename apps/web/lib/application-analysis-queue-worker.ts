@@ -36,6 +36,11 @@ export function isStopRequestedForUser(userId: string): boolean {
   return queueStopRequestedForUserId === userId;
 }
 
+/** Request stop for the priority rotation worker (global). */
+export function requestPriorityQueueStop(): void {
+  queueStopRequestedForUserId = PRIORITY_WORKER_ID;
+}
+
 /** Run the queue worker for the given user. Call from admin start API; runs in background. */
 export function runQueueWorker(userId: string): void {
   if (queueWorkerRunningUserId != null) {

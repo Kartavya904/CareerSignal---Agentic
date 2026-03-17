@@ -1581,6 +1581,34 @@ export async function runApplicationAssistantPipeline(
                 }
               });
 
+              // Expand all collapsible sections so the downloaded HTML shows full content.
+              await htmlPage.evaluate(() => {
+                try {
+                  // Generic pattern: look for buttons/toggles that control expanded state and force them open.
+                  const toggles = Array.from(
+                    document.querySelectorAll<HTMLButtonElement>(
+                      'button[aria-label*="Collapse"],button[aria-label*="Expand"]',
+                    ),
+                  );
+                  for (const btn of toggles) {
+                    const label = btn.getAttribute('aria-label') || '';
+                    if (label.toLowerCase().includes('expand')) {
+                      (btn as HTMLButtonElement).click();
+                    }
+                  }
+
+                  // Also expand any <details> elements.
+                  const details = Array.from(
+                    document.querySelectorAll<HTMLDetailsElement>('details'),
+                  );
+                  for (const el of details) {
+                    el.open = true;
+                  }
+                } catch {
+                  // best-effort; ignore if anything fails
+                }
+              });
+
               const htmlContent = await htmlPage.content();
 
               htmlPath = path.join(runFolderPath, 'analysis-summary.html');
