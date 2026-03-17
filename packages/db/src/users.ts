@@ -83,13 +83,23 @@ export async function getUserByEmail(
 export async function getUserById(
   db: Db,
   id: string,
-): Promise<{ id: string; email: string | null; name: string | null; admin: boolean } | undefined> {
+): Promise<
+  | {
+      id: string;
+      email: string | null;
+      name: string | null;
+      admin: boolean;
+      applicationAnalysisPriority: boolean;
+    }
+  | undefined
+> {
   const [row] = await db
     .select({
       id: users.id,
       email: users.email,
       name: users.name,
       admin: users.admin,
+      applicationAnalysisPriority: users.applicationAnalysisPriority,
     })
     .from(users)
     .where(eq(users.id, id))

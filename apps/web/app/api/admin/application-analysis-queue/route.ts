@@ -21,6 +21,7 @@ export async function GET() {
         userId: q.userId,
         email: u?.email ?? null,
         name: u?.name ?? null,
+        priority: u?.applicationAnalysisPriority ?? false,
         pending: q.pending,
         running: q.running,
         completed: q.completed,

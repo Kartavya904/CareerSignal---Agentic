@@ -8,6 +8,7 @@ type QueueUser = {
   userId: string;
   email: string | null;
   name: string | null;
+  priority: boolean;
   pending: number;
   running: number;
   completed: number;
@@ -19,6 +20,8 @@ export function ApplicationAnalysisQueuePanel() {
   const [users, setUsers] = useState<QueueUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
+  const [priorityActionUserId, setPriorityActionUserId] = useState<string | null>(null);
+  const [globalAction, setGlobalAction] = useState(false);
 
   async function fetchUsers() {
     try {
@@ -77,6 +80,41 @@ export function ApplicationAnalysisQueuePanel() {
     }
   }
 
+  async function handleTogglePriority(userId: string, nextPriority: boolean) {
+    setPriorityActionUserId(userId);
+    try {
+      const res = await fetch('/api/admin/application-analysis-queue/priority', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, priority: nextPriority }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error ?? 'Failed to update priority');
+        return;
+      }
+      await fetchUsers();
+    } finally {
+      setPriorityActionUserId(null);
+    }
+  }
+
+  async function handleStartPriorityRotation() {
+    setGlobalAction(true);
+    try {
+      const res = await fetch('/api/admin/application-analysis-queue/start-priority', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error ?? 'Failed to start priority rotation');
+        return;
+      }
+    } finally {
+      setGlobalAction(false);
+    }
+  }
+
   if (loading) {
     return (
       <Card>
@@ -107,11 +145,23 @@ export function ApplicationAnalysisQueuePanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Application analysis (per user)</CardTitle>
-        <p className="text-muted-foreground text-sm">
-          One row per user with at least one queue item. Play starts (or resumes) processing; Hard
-          stop aborts after the current URL. No Pause — run to completion or stop.
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle>Application analysis (per user)</CardTitle>
+            <p className="text-muted-foreground text-sm">
+              One row per user with at least one queue item. Play starts (or resumes) processing;
+              Hard stop aborts after the current URL. No Pause — run to completion or stop.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="default"
+            disabled={globalAction}
+            onClick={handleStartPriorityRotation}
+          >
+            Play priority users
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -131,7 +181,18 @@ export function ApplicationAnalysisQueuePanel() {
               {users.map((u) => (
                 <tr key={u.userId} className="border-b last:border-0">
                   <td className="py-2 pr-4">
-                    <span className="font-medium">{u.email ?? u.name ?? u.userId}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-lg leading-none disabled:opacity-50"
+                        disabled={priorityActionUserId === u.userId}
+                        onClick={() => handleTogglePriority(u.userId, !u.priority)}
+                        aria-label={u.priority ? 'Unset priority' : 'Set priority'}
+                      >
+                        {u.priority ? '★' : '☆'}
+                      </button>
+                      <span className="font-medium">{u.email ?? u.name ?? u.userId}</span>
+                    </div>
                     {u.name && u.email && (
                       <span className="text-muted-foreground ml-1">({u.name})</span>
                     )}
