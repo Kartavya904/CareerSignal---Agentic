@@ -15,10 +15,38 @@ import type { ContactStrategy, ContactArchetype } from './types.js';
 
 // Contact priority by job type — ordered from most to least desirable
 const CONTACT_PRIORITIES: Record<string, ContactArchetype[]> = {
-  engineering: ['HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER', 'FOUNDER'],
-  internship: ['CAMPUS_RECRUITER', 'TECH_RECRUITER', 'HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'FOUNDER'],
-  startup: ['FOUNDER', 'HIRING_MANAGER', 'ENG_MANAGER', 'TEAM_LEAD', 'TECH_RECRUITER', 'CAMPUS_RECRUITER'],
-  default: ['HIRING_MANAGER', 'TECH_RECRUITER', 'ENG_MANAGER', 'TEAM_LEAD', 'CAMPUS_RECRUITER', 'FOUNDER'],
+  engineering: [
+    'HIRING_MANAGER',
+    'ENG_MANAGER',
+    'TEAM_LEAD',
+    'TECH_RECRUITER',
+    'CAMPUS_RECRUITER',
+    'FOUNDER',
+  ],
+  internship: [
+    'CAMPUS_RECRUITER',
+    'TECH_RECRUITER',
+    'HIRING_MANAGER',
+    'ENG_MANAGER',
+    'TEAM_LEAD',
+    'FOUNDER',
+  ],
+  startup: [
+    'FOUNDER',
+    'HIRING_MANAGER',
+    'ENG_MANAGER',
+    'TEAM_LEAD',
+    'TECH_RECRUITER',
+    'CAMPUS_RECRUITER',
+  ],
+  default: [
+    'HIRING_MANAGER',
+    'TECH_RECRUITER',
+    'ENG_MANAGER',
+    'TEAM_LEAD',
+    'CAMPUS_RECRUITER',
+    'FOUNDER',
+  ],
 };
 
 /**
@@ -55,7 +83,11 @@ function classifyJobType(job: NormalizedJob): string {
   const titleLower = job.title.toLowerCase();
 
   // Detect internship/new grad
-  const isNewGrad = titleLower.includes('202') || titleLower.includes('grad') || titleLower.includes('entry') || titleLower.includes('junior');
+  const isNewGrad =
+    titleLower.includes('202') ||
+    titleLower.includes('grad') ||
+    titleLower.includes('entry') ||
+    titleLower.includes('junior');
   if (job.seniority === 'INTERN' || isNewGrad) return 'internship';
 
   if (titleLower.includes('engineer') || titleLower.includes('developer')) return 'engineering';
@@ -82,7 +114,9 @@ function generateSearchQueries(job: NormalizedJob, archetypes: ContactArchetype[
         queries.push(`"${company}" "tech lead" OR "staff engineer" team`);
         break;
       case 'TECH_RECRUITER':
-        queries.push(`site:linkedin.com "${company}" "technical recruiter" OR "engineering recruiter"`);
+        queries.push(
+          `site:linkedin.com "${company}" "technical recruiter" OR "engineering recruiter"`,
+        );
         queries.push(`"${company}" technical talent acquisition`);
         break;
       case 'CAMPUS_RECRUITER':
@@ -114,54 +148,71 @@ function generateLinkedInQueries(job: NormalizedJob, archetypes: ContactArchetyp
   // Extract core keywords from job title: strip year, parentheticals, dashes, special chars
   const titleKeywords = job.title
     .replace(/[-–—]/g, ' ')
-    .replace(/\b\d{4}\b/g, '')        // strip years like 2026
-    .replace(/\([^)]*\)/g, '')         // strip (US), (Remote), etc.
+    .replace(/\b\d{4}\b/g, '') // strip years like 2026
+    .replace(/\([^)]*\)/g, '') // strip (US), (Remote), etc.
     .replace(/[|,]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   // Extract location keywords (city and/or country)
   const locationKeywords = job.location
-    ? job.location.split(/[,|\s]+/).map(k => k.trim()).filter(k => k.length > 2).slice(0, 2).join(' ')
+    ? job.location
+        .split(/[,|\s]+/)
+        .map((k) => k.trim())
+        .filter((k) => k.length > 2)
+        .slice(0, 2)
+        .join(' ')
     : '';
 
-  // Generate 2 targeted queries per archetype
+  // Generate 2 targeted queries per archetype, biased toward LinkedIn *people* profiles.
   for (const archetype of archetypes) {
     const locPrefix = locationKeywords ? `${locationKeywords} ` : '';
     switch (archetype) {
       case 'HIRING_MANAGER':
-        queries.push(`linkedin "${company}" ${locPrefix}${titleKeywords} hiring manager`);
-        queries.push(`linkedin "${company}" hiring manager software engineer`);
+        queries.push(
+          `site:linkedin.com/in "${company}" ${locPrefix}${titleKeywords} hiring manager people`,
+        );
+        queries.push(`site:linkedin.com/in "${company}" hiring manager software engineer people`);
         break;
       case 'ENG_MANAGER':
-        queries.push(`linkedin "${company}" ${locPrefix}${titleKeywords} engineering manager`);
-        queries.push(`linkedin "${company}" engineering manager software`);
+        queries.push(
+          `site:linkedin.com/in "${company}" ${locPrefix}${titleKeywords} engineering manager people`,
+        );
+        queries.push(`site:linkedin.com/in "${company}" engineering manager software people`);
         break;
       case 'TEAM_LEAD':
-        queries.push(`linkedin "${company}" ${locPrefix}${titleKeywords} tech lead OR team lead`);
-        queries.push(`linkedin "${company}" senior engineer OR staff engineer`);
+        queries.push(
+          `site:linkedin.com/in "${company}" ${locPrefix}${titleKeywords} tech lead OR team lead people`,
+        );
+        queries.push(`site:linkedin.com/in "${company}" senior engineer OR staff engineer people`);
         break;
       case 'TECH_RECRUITER':
-        queries.push(`linkedin "${company}" ${locPrefix}${titleKeywords} technical recruiter`);
-        queries.push(`linkedin "${company}" recruiter software engineer`);
+        queries.push(
+          `site:linkedin.com/in "${company}" ${locPrefix}${titleKeywords} technical recruiter people`,
+        );
+        queries.push(`site:linkedin.com/in "${company}" recruiter software engineer people`);
         break;
       case 'CAMPUS_RECRUITER':
-        queries.push(`linkedin "${company}" ${locPrefix}${titleKeywords} campus recruiter`);
-        queries.push(`linkedin "${company}" university recruiter OR campus hiring`);
+        queries.push(
+          `site:linkedin.com/in "${company}" ${locPrefix}${titleKeywords} campus recruiter people`,
+        );
+        queries.push(
+          `site:linkedin.com/in "${company}" university recruiter OR campus hiring people`,
+        );
         break;
       case 'FOUNDER':
-        queries.push(`linkedin "${company}" founder OR CEO OR CTO`);
-        queries.push(`linkedin "${company}" co-founder engineer`);
+        queries.push(`site:linkedin.com/in "${company}" "${company}" founder OR CEO OR CTO people`);
+        queries.push(`site:linkedin.com/in "${company}" co-founder engineer people`);
         break;
       default:
         // FALLBACK archetype - generic company search
-        queries.push(`linkedin "${company}" ${locPrefix}${titleKeywords}`);
+        queries.push(`site:linkedin.com/in "${company}" ${locPrefix}${titleKeywords} people`);
         break;
     }
   }
 
   // One final catch-all query for broad matches at this company
-  queries.push(`linkedin "${company}" ${locationKeywords} ${titleKeywords}`);
+  queries.push(`site:linkedin.com/in "${company}" ${locationKeywords} ${titleKeywords} people`);
 
   return queries;
 }

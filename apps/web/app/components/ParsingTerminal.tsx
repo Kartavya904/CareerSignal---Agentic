@@ -399,7 +399,8 @@ export function ParsingTerminal({
       <div
         ref={terminalRef}
         style={{
-          maxHeight: '200px',
+          height: '200px',
+          resize: 'vertical',
           overflowY: 'auto',
           padding: '12px',
           fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", Consolas, monospace',

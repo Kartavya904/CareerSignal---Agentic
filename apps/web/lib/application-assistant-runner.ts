@@ -61,6 +61,9 @@ import { getOutreachRunFolderName } from '@/lib/outreach-research-disk';
 import { runOutreachResearch, OUTREACH_PIPELINE_TIMEOUT_MS } from '@/lib/outreach-research-runner';
 import { sendAnalysisSummaryEmail } from '@/lib/email-agent';
 import { toNormalizedJob, rankedItemToContact } from '@/lib/outreach-draft-helpers';
+import { createSessionToken, SESSION_COOKIE_NAME } from '@/lib/session';
+import { writeCoverLetterDocxToRunFolder } from '@/lib/cover-letter-docx';
+import { writeFile } from 'fs/promises';
 
 /** Build a serializable company snapshot for the analysis (minimal DB company fields for the UI card). */
 function toCompanySnapshot(row: {
@@ -392,11 +395,23 @@ export async function runApplicationAssistantPipeline(
 
       // Pre-warm the GENERAL (32B) model so Ollama loads it before the pipeline times out
       try {
-        await dbLog(db, analysisId, 'Pipeline', 'Pre-warming GENERAL model (may take 1–2 min on first run)...', { level: 'info' });
+        await dbLog(
+          db,
+          analysisId,
+          'Pipeline',
+          'Pre-warming GENERAL model (may take 1–2 min on first run)...',
+          { level: 'info' },
+        );
         await complete('Reply with exactly: OK', 'GENERAL', { maxTokens: 5, timeout: 300_000 });
         await dbLog(db, analysisId, 'Pipeline', 'Model ready.', { level: 'info' });
       } catch (e) {
-        await dbLog(db, analysisId, 'Pipeline', `Pre-warm skipped or failed: ${e instanceof Error ? e.message : String(e)}`, { level: 'warn' });
+        await dbLog(
+          db,
+          analysisId,
+          'Pipeline',
+          `Pre-warm skipped or failed: ${e instanceof Error ? e.message : String(e)}`,
+          { level: 'warn' },
+        );
       }
       throwIfAborted(effectiveSignal);
 
@@ -1475,6 +1490,165 @@ export async function runApplicationAssistantPipeline(
           process.env.NEXT_PUBLIC_APP_URL ||
           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
           'http://localhost:3000';
+
+        let docxPath: string | null = null;
+        let htmlPath: string | null = null;
+
+        try {
+          docxPath = await writeCoverLetterDocxToRunFolder(
+            analysisRow?.coverLetters as Record<string, string> | null,
+            runFolderPath,
+          );
+        } catch (e) {
+          dbLog(
+            db,
+            analysisId,
+            'EmailAgent',
+            `Failed to generate DOCX: ${e instanceof Error ? e.message : String(e)}`,
+            { level: 'warn' },
+          );
+        }
+
+        if (browser) {
+          try {
+            const context = await browser.newContext();
+            try {
+              const token = createSessionToken(userId);
+              const cookieUrl = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
+              const domain = new URL(cookieUrl).hostname;
+              await context.addCookies([
+                {
+                  name: SESSION_COOKIE_NAME,
+                  value: token,
+                  domain: domain === 'localhost' ? 'localhost' : domain,
+                  path: '/',
+                  httpOnly: true,
+                  secure: cookieUrl.startsWith('https'),
+                  sameSite: 'Lax',
+                },
+              ]);
+
+              const analysisPageUrl = `${baseUrl.replace(/\/$/, '')}/application-assistant/${analysisId}`;
+              const htmlPage = await context.newPage();
+              await htmlPage.goto(analysisPageUrl, { waitUntil: 'networkidle', timeout: 30000 });
+
+              try {
+                // Wait for text that indicates the UI has populated
+                await htmlPage.waitForFunction(
+                  () => {
+                    const text = document.body.innerText;
+                    return (
+                      text.includes('Pipeline finished') ||
+                      text.includes('Pipeline failed') ||
+                      document.querySelector('.card')
+                    );
+                  },
+                  { timeout: 15000 },
+                );
+                // Give it a tiny bit more time for any final React re-renders (like contacts list)
+                await htmlPage.waitForTimeout(2000);
+              } catch (waitErr) {
+                dbLog(
+                  db,
+                  analysisId,
+                  'EmailAgent',
+                  `Wait for render timed out, saving HTML anyway: ${
+                    waitErr instanceof Error ? waitErr.message : String(waitErr)
+                  }`,
+                  { level: 'warn' },
+                );
+              }
+
+              // Inline all stylesheets so the downloaded HTML has styling
+              await htmlPage.evaluate(async () => {
+                const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
+                for (const link of links) {
+                  try {
+                    const href = (link as HTMLLinkElement).href;
+                    if (!href) continue;
+                    // Only inline same-origin CSS to avoid CORS issues
+                    if (href.startsWith(window.location.origin) || href.startsWith('/')) {
+                      const res = await fetch(href);
+                      const css = await res.text();
+                      const style = document.createElement('style');
+                      style.textContent = css;
+                      document.head.appendChild(style);
+                      link.remove();
+                    }
+                  } catch {
+                    // ignore
+                  }
+                }
+              });
+
+              const htmlContent = await htmlPage.content();
+
+              htmlPath = path.join(runFolderPath, 'analysis-summary.html');
+              await writeFile(htmlPath, htmlContent, 'utf-8');
+              await htmlPage.close();
+              await dbLog(
+                db,
+                analysisId,
+                'EmailAgent',
+                'Downloaded HTML analysis page for email.',
+                {
+                  level: 'info',
+                },
+              );
+            } finally {
+              await context.close();
+            }
+          } catch (e) {
+            dbLog(
+              db,
+              analysisId,
+              'EmailAgent',
+              `Failed to download HTML page: ${e instanceof Error ? e.message : String(e)}`,
+              { level: 'warn' },
+            );
+            // Fallback: try fetching the analysis page HTML directly with a session cookie
+            try {
+              const token = createSessionToken(userId);
+              const analysisPageUrl = `${baseUrl.replace(/\/$/, '')}/application-assistant/${analysisId}`;
+              const res = await fetch(analysisPageUrl, {
+                headers: {
+                  Cookie: `${SESSION_COOKIE_NAME}=${token}`,
+                },
+              });
+              if (res.ok) {
+                const htmlContent = await res.text();
+                htmlPath = path.join(runFolderPath, 'analysis-summary.html');
+                await writeFile(htmlPath, htmlContent, 'utf-8');
+                await dbLog(
+                  db,
+                  analysisId,
+                  'EmailAgent',
+                  'Downloaded HTML analysis page via fetch fallback for email.',
+                  { level: 'info' },
+                );
+              } else {
+                await dbLog(
+                  db,
+                  analysisId,
+                  'EmailAgent',
+                  `Fetch fallback for HTML page failed with status ${res.status}`,
+                  { level: 'warn' },
+                );
+              }
+            } catch (fallbackErr) {
+              await dbLog(
+                db,
+                analysisId,
+                'EmailAgent',
+                `Fetch fallback for HTML page threw: ${
+                  fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+                }`,
+                { level: 'warn' },
+              );
+            }
+          }
+        }
+
         const matchBreakdown = analysisRow?.matchBreakdown as {
           strengths?: string[];
           gaps?: string[];
@@ -1504,6 +1678,8 @@ export async function runApplicationAssistantPipeline(
           emailMinMatchScore:
             emailPrefs.emailMinMatchScore != null ? Number(emailPrefs.emailMinMatchScore) : null,
           baseUrl,
+          docxPath,
+          htmlPath,
         });
         if (result.sent) {
           await dbLog(db, analysisId, 'EmailAgent', 'Summary email sent.', { level: 'success' });

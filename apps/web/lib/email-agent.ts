@@ -9,7 +9,8 @@ import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type { Db } from '@careersignal/db';
 import { getUserById } from '@careersignal/db';
-import { writeCoverLetterPdfToRunFolder } from '@/lib/cover-letter-pdf';
+import { getDynamicCoverLetterName, writeCoverLetterPdfToRunFolder } from '@/lib/cover-letter-pdf';
+import { unlink } from 'fs/promises';
 
 const MAX_SUBJECT_TITLE_LENGTH = 50;
 const SUBJECT_SUFFIX = ' - CareerSignal';
@@ -40,6 +41,8 @@ export interface SendAnalysisSummaryEmailInput {
   emailUpdatesEnabled: boolean;
   emailMinMatchScore: number | null;
   baseUrl: string;
+  docxPath?: string | null;
+  htmlPath?: string | null;
 }
 
 export interface SendAnalysisSummaryEmailResult {
@@ -110,6 +113,8 @@ export async function sendAnalysisSummaryEmail(
     emailUpdatesEnabled,
     emailMinMatchScore,
     baseUrl,
+    docxPath,
+    htmlPath,
   } = input;
 
   if (!emailUpdatesEnabled) {
@@ -243,7 +248,13 @@ ${normalizedDraftBody ? `<p><strong>A draft of the message you should send:</str
 
   const attachments: { filename: string; content?: Buffer; path?: string }[] = [];
   if (pdfPath) {
-    attachments.push({ filename: 'cover-letter.pdf', path: pdfPath });
+    attachments.push({ filename: getDynamicCoverLetterName(user.name, company, 'pdf'), path: pdfPath });
+  }
+  if (docxPath) {
+    attachments.push({ filename: getDynamicCoverLetterName(user.name, company, 'docx'), path: docxPath });
+  }
+  if (htmlPath) {
+    attachments.push({ filename: 'analysis-summary.html', path: htmlPath });
   }
 
   try {
@@ -256,6 +267,13 @@ ${normalizedDraftBody ? `<p><strong>A draft of the message you should send:</str
       html: bodyHtml,
       attachments: attachments.length > 0 ? attachments : undefined,
     });
+
+    const unlinkPromises = [];
+    if (pdfPath) unlinkPromises.push(unlink(pdfPath).catch(() => {}));
+    if (docxPath) unlinkPromises.push(unlink(docxPath).catch(() => {}));
+    if (htmlPath) unlinkPromises.push(unlink(htmlPath).catch(() => {}));
+    await Promise.all(unlinkPromises);
+
     return { sent: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

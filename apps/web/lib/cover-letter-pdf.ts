@@ -58,6 +58,20 @@ function wrapTextToWidth(
   return lines;
 }
 
+export function getDynamicCoverLetterName(userName: string | null | undefined, company: string | null | undefined, extension: 'pdf' | 'docx'): string {
+  const firstName = userName ? userName.split(' ')[0] : 'Applicant';
+  const cleanFirstName = firstName?.replace(/[^a-zA-Z0-9]/g, '') || 'Applicant';
+  
+  const companyStr = company?.replace(/[^a-zA-Z0-9\s]/g, '') || 'Company';
+  const companyWords = companyStr.split(/\s+/).filter(Boolean);
+  
+  const capitalizedCompanyWords = companyWords.map(
+    w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  );
+  
+  return `${cleanFirstName}_Cover_Letter_${capitalizedCompanyWords.join('_')}.${extension}`;
+}
+
 /**
  * Build PDF bytes from cover letter draft text. Returns null if no draft text.
  */

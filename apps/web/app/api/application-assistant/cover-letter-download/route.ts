@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getRequiredUserId } from '@/lib/auth';
-import { getDb, getAnalysisById } from '@careersignal/db';
-import { Document, Packer, Paragraph, TextRun } from 'docx';
-import { getDraftText, generateCoverLetterPdfBuffer } from '@/lib/cover-letter-pdf';
+import { getDb, getAnalysisById, getUserById } from '@careersignal/db';
+import { getDraftText, generateCoverLetterPdfBuffer, getDynamicCoverLetterName } from '@/lib/cover-letter-pdf';
+import { generateCoverLetterDocxBuffer } from '@/lib/cover-letter-docx';
 
 export async function GET(req: Request) {
   try {
@@ -25,30 +25,23 @@ export async function GET(req: Request) {
     }
 
     const draftText = getDraftText(analysis.coverLetters as Record<string, string> | null);
-    const safeId = analysisId.slice(0, 8);
+    
+    // Fetch user to get their first name for the filename
+    const user = await getUserById(db, userId);
+    
+    const companyName = (analysis.jobSummary as { company?: string })?.company;
 
     if (format === 'docx') {
-      if (!draftText || !draftText.trim()) {
+      const docxBuffer = await generateCoverLetterDocxBuffer(
+        analysis.coverLetters as Record<string, string> | null,
+      );
+      if (!docxBuffer) {
         return NextResponse.json({ error: 'Cover letter draft not found' }, { status: 404 });
       }
-      const doc = new Document({
-        sections: [
-          {
-            properties: {},
-            children: draftText.split(/\r?\n/).map(
-              (line) =>
-                new Paragraph({
-                  children: [new TextRun({ text: line })],
-                }),
-            ),
-          },
-        ],
-      });
-      const buf = await Packer.toBuffer(doc);
-      return new NextResponse(new Uint8Array(buf), {
+      return new NextResponse(new Uint8Array(docxBuffer), {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'Content-Disposition': `attachment; filename="cover-letter-${safeId}.docx"`,
+          'Content-Disposition': `attachment; filename="${getDynamicCoverLetterName(user?.name, companyName, 'docx')}"`,
         },
       });
     }
@@ -63,7 +56,7 @@ export async function GET(req: Request) {
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="cover-letter-${safeId}.pdf"`,
+        'Content-Disposition': `attachment; filename="${getDynamicCoverLetterName(user?.name, companyName, 'pdf')}"`,
       },
     });
   } catch (e) {

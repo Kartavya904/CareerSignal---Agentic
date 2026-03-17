@@ -322,8 +322,17 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
   const [showHistory, setShowHistory] = useState(false);
   const [starting, setStarting] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-  const [coverRegenerateInstruction, setCoverRegenerateInstruction] = useState('');
+  // Cover letter regenerating
   const [coverRegenerateLoading, setCoverRegenerateLoading] = useState(false);
+  const [coverRegenerateInstruction, setCoverRegenerateInstruction] = useState('');
+  const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
+
+  // Application Q&A feature
+  const [qaQuery, setQaQuery] = useState('');
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaResult, setQaResult] = useState<string | null>(null);
+  const [qaError, setQaError] = useState<string | null>(null);
+
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -630,6 +639,33 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
   });
 
   const historyTotalPages = Math.max(1, Math.ceil((sortedHistory.length || 0) / HISTORY_PAGE_SIZE));
+
+  const handleAskQuestion = useCallback(async () => {
+    if (!analysis?.id || !qaQuery.trim()) return;
+    setQaLoading(true);
+    setQaError(null);
+    setQaResult(null);
+    try {
+      const res = await fetch('/api/application-assistant/qa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysisId: analysis.id,
+          question: qaQuery,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setQaError(data.error ?? 'Failed to get an answer.');
+        return;
+      }
+      setQaResult(data.answer);
+    } catch (err) {
+      setQaError(err instanceof Error ? err.message : 'An error occurred.');
+    } finally {
+      setQaLoading(false);
+    }
+  }, [analysis, qaQuery]);
   const historyCurrentPage = Math.min(historyPage, historyTotalPages);
   const historyStartIndex = (historyCurrentPage - 1) * HISTORY_PAGE_SIZE;
   const historyPageItems = sortedHistory.slice(
@@ -644,7 +680,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
     });
   };
 
-  const handleRegenerateCoverLetter = async () => {
+  const handleRegenerateCoverLetter = useCallback(async () => {
     if (!analysis?.id || coverRegenerateLoading) return;
     setCoverRegenerateLoading(true);
     try {
@@ -672,7 +708,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
     } finally {
       setCoverRegenerateLoading(false);
     }
-  };
+  }, [analysis, coverRegenerateInstruction, addToast]);
 
   const handleExport = () => {
     if (!analysis) return;
@@ -1593,7 +1629,8 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
             <div
               ref={terminalRef}
               style={{
-                maxHeight: 280,
+                height: 280,
+                resize: 'vertical',
                 overflow: 'auto',
                 background: '#0d1117',
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
@@ -1638,6 +1675,73 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                   );
                 })
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Application Q&A (Ask the AI) */}
+      {analysis && (analysis.runStatus === 'done' || status?.currentStep === 'done') && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h2 className="section-title" style={{ margin: '0 0 0.75rem 0' }}>
+            Job Q&A
+          </h2>
+          <p
+            style={{
+              fontSize: '0.875rem',
+              color: 'var(--text-secondary)',
+              marginTop: 0,
+              marginBottom: '1rem',
+            }}
+          >
+            Ask me anything about this job posting, the company, or your profile match!
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="input"
+              style={{ flex: 1, minWidth: '200px' }}
+              placeholder="e.g. What are the key skills I need to highlight?"
+              value={qaQuery}
+              onChange={(e) => setQaQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAskQuestion();
+                }
+              }}
+              disabled={qaLoading}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={qaLoading || !qaQuery.trim()}
+              onClick={handleAskQuestion}
+            >
+              {qaLoading ? 'Thinking…' : 'Ask'}
+            </button>
+          </div>
+          {qaError && (
+            <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--danger)' }}>
+              {qaError}
+            </div>
+          )}
+          {qaResult && (
+            <div
+              style={{
+                marginTop: '1rem',
+                padding: '1rem',
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                fontSize: '0.875rem',
+                lineHeight: 1.6,
+                color: 'var(--text-secondary)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {qaResult}
             </div>
           )}
         </div>
@@ -2221,76 +2325,109 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  marginBottom: '0.75rem',
+                  marginBottom: coverLetterExpanded ? '0.75rem' : '0',
                 }}
               >
-                <h2 className="section-title" style={{ margin: 0 }}>
-                  Cover Letter
-                </h2>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <h2 className="section-title" style={{ margin: 0 }}>
+                    Cover Letter
+                  </h2>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <HoverDownloadMenu
+                      label="⬇"
+                      items={[
+                        {
+                          label: 'Download DOCX',
+                          href: `/api/application-assistant/cover-letter-download?analysisId=${analysis.id}&format=docx`,
+                        },
+                        {
+                          label: 'Download PDF',
+                          href: `/api/application-assistant/cover-letter-download?analysisId=${analysis.id}&format=pdf`,
+                        },
+                      ]}
+                    />
+                  </div>
                   <EvidenceInfoIcon
                     evidence={analysis.coverLettersEvidence ?? undefined}
                     cardTitle="Cover Letter"
                   />
-                  <HoverDownloadMenu
-                    label="Download"
-                    items={[
-                      {
-                        label: 'Download DOCX',
-                        href: `/api/application-assistant/cover-letter-download?analysisId=${analysis.id}&format=docx`,
-                      },
-                      {
-                        label: 'Download PDF',
-                        href: `/api/application-assistant/cover-letter-download?analysisId=${analysis.id}&format=pdf`,
-                      },
-                    ]}
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setCoverLetterExpanded((prev) => !prev)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: '0.25rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    aria-label={
+                      coverLetterExpanded ? 'Collapse cover letter' : 'Expand cover letter'
+                    }
+                  >
+                    <span style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
+                      {coverLetterExpanded ? '▲' : '▼'}
+                    </span>
+                  </button>
                 </div>
               </div>
-              <div
-                style={{
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  padding: '1rem',
-                  fontSize: '0.875rem',
-                  lineHeight: 1.7,
-                  whiteSpace: 'pre-wrap',
-                  color: 'var(--text-secondary)',
-                  maxHeight: 400,
-                  overflow: 'auto',
-                }}
-              >
-                {draftText}
-              </div>
-              <div
-                style={{
-                  marginTop: '0.75rem',
-                  display: 'flex',
-                  gap: '0.5rem',
-                  flexWrap: 'wrap',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                  onClick={() => copyToClipboard(draftText, 'draft')}
-                >
-                  {copyFeedback === 'draft' ? 'Copied!' : 'Copy to clipboard'}
-                </button>
-                <FeedbackThumbs
-                  analysisId={analysis.id}
-                  component="outreach"
-                  feedbackValue={
-                    (feedbackList?.find((f) => f.component === 'outreach')?.value as
-                      | 'up'
-                      | 'down') ?? null
-                  }
-                  onFeedbackSubmitted={setFeedbackList}
-                />
-              </div>
+              {coverLetterExpanded && (
+                <>
+                  <div
+                    style={{
+                      background: 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: '1rem',
+                      fontSize: '0.875rem',
+                      lineHeight: 1.7,
+                      whiteSpace: 'pre-wrap',
+                      color: 'var(--text-secondary)',
+                      maxHeight: 400,
+                      overflow: 'auto',
+                    }}
+                  >
+                    {draftText}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        copyToClipboard(draftText, 'draft');
+                      }}
+                    >
+                      {copyFeedback === 'draft' ? 'Copied!' : 'Copy to clipboard'}
+                    </button>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <FeedbackThumbs
+                        analysisId={analysis.id}
+                        component="outreach"
+                        feedbackValue={
+                          (feedbackList?.find((f) => f.component === 'outreach')?.value as
+                            | 'up'
+                            | 'down') ?? null
+                        }
+                        onFeedbackSubmitted={setFeedbackList}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
               <div
                 style={{
                   marginTop: '1rem',
@@ -2501,10 +2638,18 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                         rel="noopener noreferrer"
                         style={{ fontWeight: 600, color: 'var(--accent)' }}
                       >
-                        {bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}
+                        {bestContact.name ?? '—'}
+                        {bestContact.contactRole || bestContact.role
+                          ? ` [${bestContact.contactRole || bestContact.role}]`
+                          : ''}
                       </a>
                     ) : (
-                      <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {bestContact.name ?? '—'}
+                        {bestContact.contactRole || bestContact.role
+                          ? ` [${bestContact.contactRole || bestContact.role}]`
+                          : ''}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -2538,10 +2683,18 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                           rel="noopener noreferrer"
                           style={{ fontWeight: 600, color: 'var(--accent)' }}
                         >
-                          {bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}
+                          {bestContact.name ?? '—'}
+                          {bestContact.contactRole || bestContact.role
+                            ? ` [${bestContact.contactRole || bestContact.role}]`
+                            : ''}
                         </a>
                       ) : (
-                        <span style={{ fontWeight: 600 }}>{bestContact.name ?? '—'}{ (bestContact.contactRole || bestContact.role) ? ` [${bestContact.contactRole || bestContact.role}]` : ''}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {bestContact.name ?? '—'}
+                          {bestContact.contactRole || bestContact.role
+                            ? ` [${bestContact.contactRole || bestContact.role}]`
+                            : ''}
+                        </span>
                       )}
                     </div>
                   )}
@@ -2591,25 +2744,29 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                               >
                                 {i + 1}
                               </span>
-                                {r.linkedinUrl ? (
-                                  <a
-                                    href={r.linkedinUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      fontWeight: 600,
-                                      color: 'var(--accent)',
-                                      textOverflow: 'ellipsis',
-                                      overflow: 'hidden',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {r.name ?? '—'}{ (r.contactRole || r.role) ? ` [${r.contactRole || r.role}]` : ''}
-                                  </a>
-                                ) : (
-                                  <span style={{ fontWeight: 600 }}>{r.name ?? '—'}{ (r.contactRole || r.role) ? ` [${r.contactRole || r.role}]` : ''}</span>
-                                )}
-                              </span>
+                              {r.linkedinUrl ? (
+                                <a
+                                  href={r.linkedinUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontWeight: 600,
+                                    color: 'var(--accent)',
+                                    textOverflow: 'ellipsis',
+                                    overflow: 'hidden',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {r.name ?? '—'}
+                                  {r.contactRole || r.role ? ` [${r.contactRole || r.role}]` : ''}
+                                </a>
+                              ) : (
+                                <span style={{ fontWeight: 600 }}>
+                                  {r.name ?? '—'}
+                                  {r.contactRole || r.role ? ` [${r.contactRole || r.role}]` : ''}
+                                </span>
+                              )}
+                            </span>
                             <button
                               type="button"
                               title="Create outreach draft for this contact"
