@@ -2370,7 +2370,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
                     }
                   >
                     <span style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
-                      {coverLetterExpanded ? '▲' : '▼'}
+                      {coverLetterExpanded ? '▼' : '◀'}
                     </span>
                   </button>
                 </div>
@@ -2486,7 +2486,7 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
           );
         })()}
 
-      {/* Extras: Salary check, Contacts (or Run Deep Outreach), Checklist, Interview prep */}
+      {/* Extras: Salary check, Interview prep, Contacts (or Run Deep Outreach), Checklist */}
       {analysis?.salaryLevelCheck && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <h2 className="section-title" style={{ margin: '0 0 0.5rem 0' }}>
@@ -2495,6 +2495,60 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
           <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             {analysis.salaryLevelCheck}
           </p>
+        </div>
+      )}
+
+      {analysis?.interviewPrepBullets && analysis.interviewPrepBullets.length > 0 && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <button
+            type="button"
+            onClick={() => setInterviewOpen(!interviewOpen)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              background: 'none',
+              border: 'none',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            <h2 className="section-title" style={{ margin: 0 }}>
+              Interview Prep
+            </h2>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
+              {interviewOpen ? 'Collapse' : 'Expand'}
+            </span>
+          </button>
+          {interviewOpen && (
+            <div
+              style={{
+                marginTop: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
+            >
+              {analysis.interviewPrepBullets.map((bullet, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: '0.6rem 0.75rem',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.6,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {bullet}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -3036,60 +3090,6 @@ function ApplicationAssistantClient({ initialAnalysisId }: ApplicationAssistantP
               </>
             )}
           </div>
-        </div>
-      )}
-
-      {analysis?.interviewPrepBullets && analysis.interviewPrepBullets.length > 0 && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <button
-            type="button"
-            onClick={() => setInterviewOpen(!interviewOpen)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              background: 'none',
-              border: 'none',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            <h2 className="section-title" style={{ margin: 0 }}>
-              Interview Prep
-            </h2>
-            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
-              {interviewOpen ? 'Collapse' : 'Expand'}
-            </span>
-          </button>
-          {interviewOpen && (
-            <div
-              style={{
-                marginTop: '0.75rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem',
-              }}
-            >
-              {analysis.interviewPrepBullets.map((bullet, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: '0.6rem 0.75rem',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    fontSize: '0.8125rem',
-                    lineHeight: 1.6,
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  {bullet}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
